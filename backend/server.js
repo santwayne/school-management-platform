@@ -8,6 +8,7 @@ import analyticsRoutes from './routes/analytics.js';
 import financeRoutes from './routes/finance.js';
 import whatsappRoutes from './routes/whatsapp.js';
 import premiumAiRoutes from './routes/premiumAi.js';
+import adminRoutes from './routes/admin.js';
 
 // Starting the workers here means `node server.js` runs API + background
 // processing together — fine for early deploys. Split into a separate
@@ -36,6 +37,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/premium-ai', premiumAiRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {
