@@ -11,21 +11,27 @@ const guidanceWorker = new Worker(
     console.log(`Processing daily guidance job: ${job.id}`);
     const today = new Date().toISOString().split('T')[0];
 
-    // Today's active chapters per class, joined to the teacher(s) assigned
-    // to that class/subject, plus the latest AI/admin homework suggestion.
+    // Today's active chapters per class, joined to the SPECIFIC teacher
+    // assigned to that class+subject (not every teacher in the school),
+    // plus the latest AI/admin homework suggestion. Falls back to the
+    // teacher's regular phone if no WhatsApp-specific number is set yet.
     const targetChapters = await pool.query(
-      `SELECT sc.school_id, sc.class_id, sc.subject_id, sc.chapter_id, sc.target_end_date,
-              c.name AS class_name, t.id AS teacher_id, t.name AS teacher_name, t.phone AS teacher_phone,
-              hs.suggested_text
+      `SELECT sc.school_id, sc.class_id, sc.subject_id, sc.chapter_id, sc.chapter_name, sc.target_end_date,
+              c.name AS class_name, t.id AS teacher_id, t.name AS teacher_name,
+              COALESCE(t.whatsapp_number, t.phone) AS teacher_phone, hs.suggested_text
        FROM syllabus_calendar sc
        JOIN classes c ON sc.class_id = c.id
-       JOIN teachers t ON t.school_id = sc.school_id
+       JOIN class_subject_teachers cst
+         ON cst.class_id = sc.class_id
+        AND cst.subject_id::text = sc.subject_id -- subjects table id vs syllabus_calendar's loose text subject_id
+       JOIN teachers t ON t.id = cst.teacher_id
        LEFT JOIN LATERAL (
          SELECT suggested_text FROM homework_suggestions
          WHERE chapter_id = sc.chapter_id
          ORDER BY created_at DESC LIMIT 1
        ) hs ON true
-       WHERE $1 BETWEEN sc.target_start_date AND sc.target_end_date`,
+       WHERE $1 BETWEEN sc.target_start_date AND sc.target_end_date
+         AND t.whatsapp_opt_in_status = 'OPTED_IN'`,
       [today]
     );
 
@@ -34,7 +40,7 @@ const guidanceWorker = new Worker(
         await sendTemplateMessage(row.teacher_phone, GUIDANCE_TEMPLATE_NAME, 'en', [
           row.teacher_name,
           row.class_name,
-          row.chapter_id,
+          row.chapter_name || row.chapter_id,
           row.suggested_text || 'Review today\u2019s chapter and assign practice questions.',
         ]);
         console.log(`Guidance sent to ${row.teacher_name} (${row.class_name} / ${row.chapter_id})`);

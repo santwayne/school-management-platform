@@ -75,6 +75,17 @@ export default function ClassManager() {
     }
   };
 
+  const handleSetTeacherWhatsapp = async (teacherId, whatsappNumber) => {
+    setError('');
+    try {
+      await apiRequest(`/api/teachers/${teacherId}/whatsapp`, { method: 'POST', body: { whatsapp_number: whatsappNumber } });
+      setMessage('Teacher WhatsApp number saved.');
+      loadBaseData();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleAssignTeacher = async (classId, subjectId, teacherId) => {
     if (!teacherId) return;
     setError('');
@@ -142,6 +153,24 @@ export default function ClassManager() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="space-y-6">
+          <div className="bg-white p-5 border rounded-lg shadow-sm space-y-3">
+            <h2 className="text-lg font-semibold text-gray-800">Teacher WhatsApp Numbers</h2>
+            <p className="text-xs text-gray-400">Teachers don't log in — set their WhatsApp number here so they get "what to teach today" and student notes automatically.</p>
+            {teachers.map((t) => (
+              <div key={t.id} className="flex items-center gap-2">
+                <span className="text-sm text-gray-700 w-32 truncate">{t.name}</span>
+                <input
+                  type="text"
+                  placeholder="+91..."
+                  defaultValue={t.whatsapp_number || ''}
+                  onBlur={(e) => e.target.value && handleSetTeacherWhatsapp(t.id, e.target.value)}
+                  className="flex-1 p-1.5 border text-xs rounded"
+                />
+                {t.whatsapp_opt_in_status === 'OPTED_IN' && <span className="text-xs text-emerald-600">✓</span>}
+              </div>
+            ))}
+          </div>
+
           <form onSubmit={handleAddClass} className="bg-white p-5 border rounded-lg shadow-sm space-y-3">
             <h2 className="text-lg font-semibold text-gray-800">Add Class</h2>
             <input type="text" placeholder="e.g. Class 8A" value={newClass} onChange={(e) => setNewClass(e.target.value)} required className="w-full p-2 border text-sm rounded" />

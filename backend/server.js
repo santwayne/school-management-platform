@@ -20,6 +20,7 @@ import transportRoutes from './routes/transport.js';
 import './workers/gpsPollWorker.js';
 import './workers/teacherAttendanceAggregationWorker.js';
 import './workers/classNoteWorker.js';
+import './workers/studentNoteWorker.js';
 
 // Starting the workers here means `node server.js` runs API + background
 // processing together — fine for early deploys. Split into a separate

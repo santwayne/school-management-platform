@@ -6,8 +6,6 @@ export default function ClassNotesComposer() {
   const [subjects, setSubjects] = useState([]);
   const [notes, setNotes] = useState([]);
   const [form, setForm] = useState({ class_id: '', subject_id: '', title: '', body_text: '', attachment_url: '' });
-  const [whatsappNumber, setWhatsappNumber] = useState('');
-  const [optedIn, setOptedIn] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -29,19 +27,6 @@ export default function ClassNotesComposer() {
   useEffect(() => {
     load();
   }, []);
-
-  const handleOptInToggle = async () => {
-    setError('');
-    try {
-      const data = await apiRequest('/api/teachers/whatsapp-opt-in', {
-        method: 'POST',
-        body: { whatsapp_number: whatsappNumber, opt_in: !optedIn },
-      });
-      setOptedIn(data.whatsapp_opt_in_status === 'OPTED_IN');
-    } catch (err) {
-      setError(err.message);
-    }
-  };
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -72,20 +57,6 @@ export default function ClassNotesComposer() {
       <h1 className="text-2xl font-bold text-gray-900">Class Notes</h1>
       {message && <div className="p-3 bg-green-100 text-green-700 text-sm rounded">{message}</div>}
       {error && <div className="p-3 bg-red-100 text-red-700 text-sm rounded">{error}</div>}
-
-      <div className="bg-white p-4 border rounded-lg shadow-sm flex items-center gap-3">
-        <span className="text-sm font-medium text-gray-700">My WhatsApp opt-in:</span>
-        <input
-          type="text"
-          placeholder="Your WhatsApp number"
-          value={whatsappNumber}
-          onChange={(e) => setWhatsappNumber(e.target.value)}
-          className="p-1.5 border text-sm rounded w-48"
-        />
-        <button onClick={handleOptInToggle} className={`text-xs px-3 py-1.5 rounded font-medium ${optedIn ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700'}`}>
-          {optedIn ? 'Opted In ✓' : 'Opt In'}
-        </button>
-      </div>
 
       <form onSubmit={handleCreate} className="bg-white p-5 border rounded-lg shadow-sm space-y-3">
         <h2 className="text-lg font-semibold text-gray-800">New Note / Class Plan</h2>

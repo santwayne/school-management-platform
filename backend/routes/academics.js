@@ -41,7 +41,7 @@ router.get('/teachers', requireAuth, async (req, res) => {
   const schoolId = req.user.school_id;
   try {
     const { rows } = await pool.query(
-      `SELECT id, name, role FROM teachers WHERE school_id = $1 ORDER BY name ASC`,
+      `SELECT id, name, role, whatsapp_number, whatsapp_opt_in_status FROM teachers WHERE school_id = $1 ORDER BY name ASC`,
       [schoolId]
     );
     res.json(rows);

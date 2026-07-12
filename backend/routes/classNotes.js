@@ -147,6 +147,36 @@ router.post('/staff-broadcast', requireAuth, requirePrincipal, async (req, res) 
   }
 });
 
+// POST /api/teachers/:id/whatsapp — principal sets a teacher's WhatsApp number directly,
+// since teachers here never log in themselves (WhatsApp-only staff, principal runs the account).
+// Principal is vouching for this number, so it's marked OPTED_IN immediately —
+// matching how parent numbers are handled in this codebase (opt-in isn't a
+// separate self-serve reply flow here either).
+router.post('/teachers/:id/whatsapp', requireAuth, requirePrincipal, async (req, res) => {
+  const { id } = req.params;
+  const { whatsapp_number } = req.body;
+  const schoolId = req.user.school_id;
+
+  if (!whatsapp_number) {
+    return res.status(400).json({ error: 'whatsapp_number is required' });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE teachers SET whatsapp_number = $1, whatsapp_opt_in_status = 'OPTED_IN'
+       WHERE id = $2 AND school_id = $3
+       RETURNING id, name, whatsapp_number, whatsapp_opt_in_status`,
+      [whatsapp_number, id, schoolId]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Teacher not found for this school' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/teachers/whatsapp-opt-in — a teacher opts themself in/out (must originate from the user, not an admin)
 router.post('/teachers/whatsapp-opt-in', requireAuth, async (req, res) => {
   const { whatsapp_number, opt_in } = req.body;

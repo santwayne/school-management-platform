@@ -25,5 +25,9 @@ export const classNoteQueue = new Queue('ClassNoteQueue', { connection });
 // GPS polling: fetches current location for every pull-based-vendor bus on an interval
 export const gpsPollQueue = new Queue('GpsPollQueue', { connection });
 
+// Student performance notes: after AI grades a submission, generates a note
+// about the student and pushes it to the assigned teacher's WhatsApp
+export const studentNoteQueue = new Queue('StudentNoteQueue', { connection });
+
 // How long to wait for a parent reply before escalating to a voice call (ms)
 export const ESCALATION_DELAY_MS = Number(process.env.ESCALATION_DELAY_MS || 2 * 60 * 60 * 1000); // default 2 hrs

@@ -3,6 +3,7 @@ import pool from '../config/db.js';
 import { gradeAnswerSheetWithAI } from '../services/ocrGradingService.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { requireAuth } from '../middleware/auth.js';
+import { studentNoteQueue } from '../config/queue.js';
 
 const router = express.Router();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -72,6 +73,11 @@ router.post('/ocr/grade', requireAuth, async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [student_id, test_id, question_num, ocr_text, evaluation.score, evaluation.justification]
     );
+
+    // Fire-and-forget: generates an AI note about this student's performance
+    // and pushes it to the assigned teacher's WhatsApp — queued so grading
+    // stays fast even if the AI note / WhatsApp send is slow.
+    await studentNoteQueue.add('studentNote', { studentId: student_id, testId: test_id });
 
     res.status(200).json({ success: true, evaluation });
   } catch (err) {
