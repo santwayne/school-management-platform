@@ -47,6 +47,26 @@ export async function sendTextMessage(toPhone, body) {
   return data;
 }
 
+// Sends a document/image link with a caption — used for class notes/plans
+// that have an attachment (e.g. a PDF worksheet). Only valid inside an open
+// 24h conversation window, same as sendTextMessage.
+export async function sendMediaMessage(toPhone, mediaUrl, caption) {
+  const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(mediaUrl);
+  const payload = {
+    messaging_product: 'whatsapp',
+    to: toPhone,
+    type: isImage ? 'image' : 'document',
+    [isImage ? 'image' : 'document']: {
+      link: mediaUrl,
+      caption,
+      ...(isImage ? {} : { filename: mediaUrl.split('/').pop() || 'attachment' }),
+    },
+  };
+
+  const { data } = await client().post('', payload);
+  return data;
+}
+
 export async function downloadMedia(mediaId) {
   const metaRes = await axios.get(`https://graph.facebook.com/v20.0/${mediaId}`, {
     headers: { Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` },

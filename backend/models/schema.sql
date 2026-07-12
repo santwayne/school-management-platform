@@ -173,6 +173,31 @@ CREATE TABLE IF NOT EXISTS tutor_sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_tutor_sessions_student ON tutor_sessions(student_id);
 
+-- ---------- Teacher WhatsApp: class notes & staff broadcast ----------
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(20);
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS whatsapp_opt_in_status VARCHAR(20) NOT NULL DEFAULT 'OPTED_OUT';
+
+CREATE TABLE IF NOT EXISTS class_notes (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id),
+    subject_id INT REFERENCES subjects(id),
+    teacher_id INT NOT NULL REFERENCES teachers(id),
+    title VARCHAR(255) NOT NULL,
+    body_text TEXT,
+    attachment_url TEXT,
+    sent_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS class_note_deliveries (
+    id SERIAL PRIMARY KEY,
+    note_id INT NOT NULL REFERENCES class_notes(id) ON DELETE CASCADE,
+    parent_id INT NOT NULL REFERENCES parents(id),
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- 'PENDING' | 'SENT' | 'FAILED' | 'SKIPPED_NOT_OPTED_IN'
+    sent_at TIMESTAMP
+);
+
 -- ---------- Teacher biometric attendance (multi-vendor) ----------
 CREATE TABLE IF NOT EXISTS biometric_devices (
     id SERIAL PRIMARY KEY,

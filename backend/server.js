@@ -14,7 +14,9 @@ import superAdminRoutes from './routes/superAdmin.js';
 import academicsRoutes from './routes/academics.js';
 import syllabusRoutes from './routes/syllabus.js';
 import biometricRoutes from './routes/biometric.js';
+import classNotesRoutes from './routes/classNotes.js';
 import './workers/teacherAttendanceAggregationWorker.js';
+import './workers/classNoteWorker.js';
 
 // Starting the workers here means `node server.js` runs API + background
 // processing together — fine for early deploys. Split into a separate
@@ -50,6 +52,7 @@ app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/academics', academicsRoutes);
 app.use('/api/syllabus', syllabusRoutes);
 app.use('/api/biometric', biometricRoutes);
+app.use('/api', classNotesRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {
