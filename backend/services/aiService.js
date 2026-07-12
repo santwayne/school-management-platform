@@ -18,7 +18,7 @@ export async function generateAIHint(studentQuery) {
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 300,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: studentQuery }],
@@ -39,7 +39,7 @@ export async function tagDoubtChapter(studentQuery, syllabusChapters = []) {
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 30,
       system:
         'Reply with ONLY the single best-matching chapter name from the provided list, nothing else. If none match, reply "Untagged".',

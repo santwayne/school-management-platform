@@ -19,7 +19,7 @@ router.post('/test/generate', requireAuth, async (req, res) => {
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 800,
       system:
         'You are a school exam-paper setter. Return ONLY a JSON array, no other text, of objects: ' +

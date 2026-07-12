@@ -54,7 +54,7 @@ const worker = new Worker(
     let note;
     try {
       const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-5',
         max_tokens: 300,
         system:
           "You write short, warm, actionable notes for teachers about one student's test performance, " +
