@@ -1,4 +1,8 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+// In production this app and the API are served from the same domain
+// (Vercel Services routes /api/* to the backend service) — so the correct
+// default there is a relative path, not localhost. localhost:5000 is only
+// right for local development, where Vite's import.meta.env.DEV is true.
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5000' : '');
 
 function authHeaders() {
   const token = localStorage.getItem('token');
