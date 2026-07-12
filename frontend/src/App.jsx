@@ -7,10 +7,26 @@ import AttendanceForm from './components/AttendanceForm';
 import PrincipalDashboard from './components/PrincipalDashboard';
 import FinanceAdmin from './components/FinanceAdmin';
 import AIGradingPrototype from './components/AIGradingPrototype';
+import StudentLogin from './components/StudentLogin';
+import TutorChat from './components/TutorChat';
 
 function NavBar() {
   const { user, logout } = useAuth();
   if (!user) return null;
+
+  if (user.role === 'student') {
+    return (
+      <nav className="bg-white border-b px-6 py-3 flex items-center justify-between">
+        <div className="flex gap-6 text-sm font-medium text-gray-700">
+          <Link to="/tutor" className="hover:text-indigo-600">Ask for Help</Link>
+        </div>
+        <div className="flex items-center gap-3 text-sm text-gray-500">
+          <span>{user.name}</span>
+          <button onClick={logout} className="text-indigo-600 font-medium hover:text-indigo-800">Log out</button>
+        </div>
+      </nav>
+    );
+  }
 
   return (
     <nav className="bg-white border-b px-6 py-3 flex items-center justify-between">
@@ -32,17 +48,25 @@ function NavBar() {
   );
 }
 
+function HomeRedirect() {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  return <Navigate to={user.role === 'student' ? '/tutor' : '/attendance'} replace />;
+}
+
 function AppRoutes() {
   return (
     <BrowserRouter>
       <NavBar />
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/student-login" element={<StudentLogin />} />
         <Route path="/attendance" element={<ProtectedRoute><AttendanceForm /></ProtectedRoute>} />
         <Route path="/dashboard" element={<ProtectedRoute principalOnly><PrincipalDashboard /></ProtectedRoute>} />
         <Route path="/finance" element={<ProtectedRoute principalOnly><FinanceAdmin /></ProtectedRoute>} />
         <Route path="/grading" element={<ProtectedRoute><AIGradingPrototype /></ProtectedRoute>} />
-        <Route path="*" element={<Navigate to="/attendance" replace />} />
+        <Route path="/tutor" element={<ProtectedRoute studentOnly><TutorChat /></ProtectedRoute>} />
+        <Route path="*" element={<HomeRedirect />} />
       </Routes>
     </BrowserRouter>
   );

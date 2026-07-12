@@ -47,6 +47,13 @@ CREATE TABLE IF NOT EXISTS students (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Lightweight student portal login (no email — students log in with a short
+-- login_id, e.g. roll number, plus a 4-6 digit PIN). Added via ALTER so the
+-- migration also works against an already-deployed students table.
+ALTER TABLE students ADD COLUMN IF NOT EXISTS login_id VARCHAR(20) UNIQUE;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS pin_hash VARCHAR(255);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS grade VARCHAR(20);
+
 -- ---------- Attendance & escalation (Phase 1) ----------
 CREATE TABLE IF NOT EXISTS attendance (
     id SERIAL PRIMARY KEY,
@@ -119,6 +126,22 @@ CREATE TABLE IF NOT EXISTS performance_snapshots (
     flag_reason TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ---------- AI Home Tutor sessions (web/mobile "Ask for Help" panel) ----------
+-- Separate from student_doubts (which is the WhatsApp single-shot hint flow).
+-- Each row is one homework session with the full back-and-forth so the
+-- tutor keeps context (what step the student is on, what they already tried).
+CREATE TABLE IF NOT EXISTS tutor_sessions (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    subject VARCHAR(100),
+    grade VARCHAR(20),
+    conversation_history JSONB NOT NULL DEFAULT '[]',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tutor_sessions_student ON tutor_sessions(student_id);
 
 -- ---------- Homework & doubt solving (Phase 2) ----------
 CREATE TABLE IF NOT EXISTS student_doubts (

@@ -27,3 +27,12 @@ export function requirePrincipal(req, res, next) {
   }
   next();
 }
+
+// Restricts a route to the student portal (e.g. AI tutor chat) — keeps
+// student tokens out of teacher/principal-only endpoints and vice versa.
+export function requireStudent(req, res, next) {
+  if (!req.user || req.user.role !== 'student') {
+    return res.status(403).json({ error: 'Student login required' });
+  }
+  next();
+}

@@ -17,13 +17,24 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
+  const studentLogin = async (loginId, pin) => {
+    const data = await apiRequest('/api/auth/student-login', {
+      method: 'POST',
+      body: { login_id: loginId, pin },
+    });
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+    setUser(data.user);
+    return data.user;
+  };
+
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);
   };
 
-  return <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, login, studentLogin, logout }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
