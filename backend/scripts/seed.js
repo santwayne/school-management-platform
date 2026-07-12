@@ -39,9 +39,11 @@ async function seed() {
       [schoolId]
     );
 
+    const studentPinHash = await bcrypt.hash('1234', 10);
     await client.query(
-      `INSERT INTO students (school_id, class_id, parent_id, name) VALUES ($1, $2, $3, 'Demo Student')`,
-      [schoolId, classId, parentRes.rows[0].id]
+      `INSERT INTO students (school_id, class_id, parent_id, name, login_id, pin_hash, grade)
+       VALUES ($1, $2, $3, 'Demo Student', 'STU001', $4, 'Class 8')`,
+      [schoolId, classId, parentRes.rows[0].id, studentPinHash]
     );
 
     await client.query('COMMIT');
@@ -49,6 +51,7 @@ async function seed() {
     console.log('Seed complete.');
     console.log('Login as principal: principal@demoschool.test / changeme123');
     console.log('Login as teacher:   teacher@demoschool.test / changeme123');
+    console.log('Login as student:   STU001 / 1234 (Ask AI Tutor demo)');
     console.log(`school_id=${schoolId}, class_id=${classId}, teacher_id=${teacherRes.rows[0].id}, principal_id=${principalRes.rows[0].id}`);
   } catch (err) {
     await client.query('ROLLBACK');
