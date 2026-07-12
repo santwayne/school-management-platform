@@ -9,8 +9,6 @@ const router = express.Router();
 
 function checkSecret(req, res) {
   const secret = req.headers['x-migration-secret'];
-  const tempBypass = req.headers['x-temp-bypass-demo-tonight'] === 'true';
-  if (tempBypass) return true;
   if (!secret || secret !== process.env.MIGRATION_SECRET) {
     res.status(403).json({ error: 'forbidden' });
     return false;
