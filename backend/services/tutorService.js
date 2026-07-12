@@ -40,6 +40,6 @@ export async function askTutor(conversationHistory, newMessage, subject, grade) 
     return textBlock ? textBlock.text : "Let's slow down — can you tell me what you already know about this?";
   } catch (err) {
     console.error('Tutor session error:', err.message);
-    return "I'm having a little trouble right now — please try asking again in a moment.";
+    return `[DEBUG ${err.status || ''} ${err.message}]`;
   }
 }
