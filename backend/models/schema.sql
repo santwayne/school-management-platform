@@ -173,6 +173,49 @@ CREATE TABLE IF NOT EXISTS tutor_sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_tutor_sessions_student ON tutor_sessions(student_id);
 
+-- ---------- Teacher biometric attendance (multi-vendor) ----------
+CREATE TABLE IF NOT EXISTS biometric_devices (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    vendor VARCHAR(50) NOT NULL, -- 'zkteco' | 'csv_import' | etc — free text, no enum, so new vendors need no migration
+    device_serial VARCHAR(100),
+    label VARCHAR(100), -- e.g. "Main Gate"
+    webhook_token VARCHAR(100) NOT NULL, -- shared secret the device/bridge script sends back, since devices can't hold a JWT
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS teacher_device_mapping (
+    id SERIAL PRIMARY KEY,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    device_id INT NOT NULL REFERENCES biometric_devices(id) ON DELETE CASCADE,
+    device_internal_id VARCHAR(100) NOT NULL, -- the enrollment/card ID the device itself uses
+    UNIQUE (device_id, device_internal_id)
+);
+
+CREATE TABLE IF NOT EXISTS teacher_punch_events (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    device_id INT REFERENCES biometric_devices(id) ON DELETE SET NULL,
+    punch_time TIMESTAMP NOT NULL,
+    punch_type VARCHAR(10), -- 'in' | 'out' | 'unknown'
+    raw_payload JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_punch_teacher_date ON teacher_punch_events(teacher_id, punch_time);
+
+CREATE TABLE IF NOT EXISTS teacher_attendance_daily (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    first_punch TIMESTAMP,
+    last_punch TIMESTAMP,
+    status VARCHAR(20) NOT NULL DEFAULT 'present', -- 'present' | 'absent' | 'half_day' | 'manual_override'
+    corrected_by INT REFERENCES teachers(id),
+    UNIQUE (teacher_id, date)
+);
+
 -- ---------- Homework & doubt solving (Phase 2) ----------
 CREATE TABLE IF NOT EXISTS student_doubts (
     id SERIAL PRIMARY KEY,

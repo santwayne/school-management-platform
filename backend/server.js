@@ -13,13 +13,15 @@ import tutorRoutes from './routes/tutor.js';
 import superAdminRoutes from './routes/superAdmin.js';
 import academicsRoutes from './routes/academics.js';
 import syllabusRoutes from './routes/syllabus.js';
+import biometricRoutes from './routes/biometric.js';
+import './workers/teacherAttendanceAggregationWorker.js';
 
 // Starting the workers here means `node server.js` runs API + background
 // processing together — fine for early deploys. Split into a separate
 // `worker.js` process once call/message volume grows (see README).
 import './workers/attendanceWorker.js';
 import './workers/dailyGuidanceWorker.js';
-import { scheduleDailyGuidance } from './workers/scheduler.js';
+import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation } from './workers/scheduler.js';
 import { runBootstrap } from './scripts/autoBootstrap.js';
 
 dotenv.config();
@@ -47,6 +49,7 @@ app.use('/api/tutor', tutorRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/academics', academicsRoutes);
 app.use('/api/syllabus', syllabusRoutes);
+app.use('/api/biometric', biometricRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {
@@ -66,5 +69,10 @@ app.listen(PORT, async () => {
     await scheduleDailyGuidance();
   } catch (err) {
     console.error('Failed to schedule daily guidance job (is Redis running?):', err.message);
+  }
+  try {
+    await scheduleTeacherAttendanceAggregation();
+  } catch (err) {
+    console.error('Failed to schedule teacher attendance aggregation job (is Redis running?):', err.message);
   }
 });
