@@ -17,6 +17,7 @@ import tutorRoutes from './routes/tutor.js';
 import './workers/attendanceWorker.js';
 import './workers/dailyGuidanceWorker.js';
 import { scheduleDailyGuidance } from './workers/scheduler.js';
+import { runBootstrap } from './scripts/autoBootstrap.js';
 
 dotenv.config();
 
@@ -50,6 +51,11 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
   console.log(`Core Backend running on port ${PORT}`);
+  try {
+    await runBootstrap();
+  } catch (err) {
+    console.error('Bootstrap (migration + demo credentials) failed:', err.message);
+  }
   try {
     await scheduleDailyGuidance();
   } catch (err) {
