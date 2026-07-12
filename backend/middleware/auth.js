@@ -15,20 +15,26 @@ export async function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Missing Authorization bearer token' });
   }
 
+  let payload;
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = payload; // { teacher_id / student_id / super_admin_id, school_id, role }
+    payload = jwt.verify(token, process.env.JWT_SECRET);
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
 
+  req.user = payload; // { teacher_id / student_id / super_admin_id, school_id, role }
+
+  try {
     if (req.user.school_id) {
       const schoolRes = await pool.query('SELECT status FROM schools WHERE id = $1', [req.user.school_id]);
       if (schoolRes.rowCount === 0 || schoolRes.rows[0].status === 'suspended') {
         return res.status(403).json({ error: 'This school is currently suspended.' });
       }
     }
-
     next();
   } catch (err) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+    console.error('requireAuth school-status check failed:', err.message);
+    return res.status(500).json({ error: 'Internal server error while verifying access' });
   }
 }
 
