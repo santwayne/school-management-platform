@@ -9,6 +9,10 @@ import FinanceAdmin from './components/FinanceAdmin';
 import AIGradingPrototype from './components/AIGradingPrototype';
 import StudentLogin from './components/StudentLogin';
 import TutorChat from './components/TutorChat';
+import SuperAdminLogin from './components/SuperAdminLogin';
+import SuperAdminDashboard from './components/SuperAdminDashboard';
+import ClassManager from './components/ClassManager';
+import SyllabusManager from './components/SyllabusManager';
 
 function NavBar() {
   const { user, logout } = useAuth();
@@ -36,6 +40,8 @@ function NavBar() {
           <>
             <Link to="/dashboard" className="hover:text-indigo-600">Dashboard</Link>
             <Link to="/finance" className="hover:text-indigo-600">Finance</Link>
+            <Link to="/classes" className="hover:text-indigo-600">Classes</Link>
+            <Link to="/syllabus" className="hover:text-indigo-600">Syllabus</Link>
           </>
         )}
         <Link to="/grading" className="hover:text-indigo-600">AI Grading</Link>
@@ -51,7 +57,9 @@ function NavBar() {
 function HomeRedirect() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  return <Navigate to={user.role === 'student' ? '/tutor' : '/attendance'} replace />;
+  if (user.role === 'student') return <Navigate to="/tutor" replace />;
+  if (user.role === 'super_admin') return <Navigate to="/super-admin" replace />;
+  return <Navigate to="/attendance" replace />;
 }
 
 function AppRoutes() {
@@ -64,8 +72,12 @@ function AppRoutes() {
         <Route path="/attendance" element={<ProtectedRoute><AttendanceForm /></ProtectedRoute>} />
         <Route path="/dashboard" element={<ProtectedRoute principalOnly><PrincipalDashboard /></ProtectedRoute>} />
         <Route path="/finance" element={<ProtectedRoute principalOnly><FinanceAdmin /></ProtectedRoute>} />
+        <Route path="/classes" element={<ProtectedRoute principalOnly><ClassManager /></ProtectedRoute>} />
+        <Route path="/syllabus" element={<ProtectedRoute principalOnly><SyllabusManager /></ProtectedRoute>} />
         <Route path="/grading" element={<ProtectedRoute><AIGradingPrototype /></ProtectedRoute>} />
         <Route path="/tutor" element={<ProtectedRoute studentOnly><TutorChat /></ProtectedRoute>} />
+        <Route path="/super-admin-login" element={<SuperAdminLogin />} />
+        <Route path="/super-admin" element={<ProtectedRoute superAdminOnly><SuperAdminDashboard /></ProtectedRoute>} />
         <Route path="*" element={<HomeRedirect />} />
       </Routes>
     </BrowserRouter>

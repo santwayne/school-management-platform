@@ -16,6 +16,17 @@ export async function runBootstrap() {
   await pool.query(sql);
   console.log('[bootstrap] schema.sql applied.');
 
+  // ---- Ensure a default Super Admin login exists ----
+  const superAdminRes = await pool.query(`SELECT id FROM super_admins WHERE email = 'superadmin@wayneesolutions.com'`);
+  if (superAdminRes.rowCount === 0) {
+    const superAdminPasswordHash = await bcrypt.hash('changeme123', 10);
+    await pool.query(
+      `INSERT INTO super_admins (name, email, password_hash) VALUES ('Wayne E Solutions Admin', 'superadmin@wayneesolutions.com', $1)`,
+      [superAdminPasswordHash]
+    );
+    console.log('[bootstrap] created default super admin login: superadmin@wayneesolutions.com / changeme123 — CHANGE THIS PASSWORD after first login');
+  }
+
   // ---- Ensure one demo school + class exists ----
   let schoolRes = await pool.query(`SELECT id FROM schools ORDER BY id LIMIT 1`);
   let schoolId;

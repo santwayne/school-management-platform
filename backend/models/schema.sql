@@ -10,12 +10,40 @@ CREATE TABLE IF NOT EXISTS schools (
     name VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'active';
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(20);
+
+CREATE TABLE IF NOT EXISTS super_admins (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE TABLE IF NOT EXISTS classes (
     id SERIAL PRIMARY KEY,
     school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
     name VARCHAR(50) NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS subjects (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    UNIQUE (school_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS class_subject_teachers (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    subject_id INT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    UNIQUE (class_id, subject_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cst_teacher ON class_subject_teachers(teacher_id);
 
 CREATE TABLE IF NOT EXISTS teachers (
     id SERIAL PRIMARY KEY,
@@ -96,6 +124,8 @@ CREATE TABLE IF NOT EXISTS syllabus_calendar (
     target_start_date DATE NOT NULL,
     target_end_date DATE NOT NULL
 );
+ALTER TABLE syllabus_calendar ADD COLUMN IF NOT EXISTS teacher_id INT REFERENCES teachers(id);
+ALTER TABLE syllabus_calendar ADD COLUMN IF NOT EXISTS chapter_name VARCHAR(255);
 
 CREATE TABLE IF NOT EXISTS syllabus_progress (
     id SERIAL PRIMARY KEY,

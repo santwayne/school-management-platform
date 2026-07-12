@@ -1,9 +1,13 @@
 import jwt from 'jsonwebtoken';
+import pool from '../config/db.js';
 
 // Verifies the JWT and attaches { teacher_id, school_id, role } to req.user.
 // Every route that touches school data should sit behind this — it is what
 // makes school_id trustworthy instead of taking it from the request body.
-export function requireAuth(req, res, next) {
+//
+// Also blocks access if the token's school has been suspended by a super
+// admin (super-admin tokens carry no school_id, so they skip this check).
+export async function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
 
@@ -13,7 +17,15 @@ export function requireAuth(req, res, next) {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = payload; // { teacher_id, school_id, role }
+    req.user = payload; // { teacher_id / student_id / super_admin_id, school_id, role }
+
+    if (req.user.school_id) {
+      const schoolRes = await pool.query('SELECT status FROM schools WHERE id = $1', [req.user.school_id]);
+      if (schoolRes.rowCount === 0 || schoolRes.rows[0].status === 'suspended') {
+        return res.status(403).json({ error: 'This school is currently suspended.' });
+      }
+    }
+
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired token' });
@@ -33,6 +45,14 @@ export function requirePrincipal(req, res, next) {
 export function requireStudent(req, res, next) {
   if (!req.user || req.user.role !== 'student') {
     return res.status(403).json({ error: 'Student login required' });
+  }
+  next();
+}
+
+// Restricts a route to the super admin (multi-school management) panel.
+export function requireSuperAdmin(req, res, next) {
+  if (!req.user || req.user.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Super admin role required' });
   }
   next();
 }
