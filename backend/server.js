@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 
 import authRoutes from './routes/auth.js';
+import adminRoutes from './routes/admin.js';
 import attendanceRoutes from './routes/attendance.js';
 import analyticsRoutes from './routes/analytics.js';
 import financeRoutes from './routes/finance.js';
@@ -43,6 +44,7 @@ app.use(express.json({ limit: '5mb' }));
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/finance', financeRoutes);

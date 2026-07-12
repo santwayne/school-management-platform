@@ -34,7 +34,7 @@ export async function requireAuth(req, res, next) {
     next();
   } catch (err) {
     console.error('requireAuth school-status check failed:', err.message);
-    return res.status(500).json({ error: 'Internal server error while verifying access', debug: err.message });
+    return res.status(500).json({ error: 'Internal server error while verifying access' });
   }
 }
 
