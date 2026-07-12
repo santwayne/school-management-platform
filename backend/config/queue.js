@@ -22,5 +22,8 @@ export const teacherAttendanceQueue = new Queue('TeacherAttendanceQueue', { conn
 // doesn't block the HTTP request that created the note
 export const classNoteQueue = new Queue('ClassNoteQueue', { connection });
 
+// GPS polling: fetches current location for every pull-based-vendor bus on an interval
+export const gpsPollQueue = new Queue('GpsPollQueue', { connection });
+
 // How long to wait for a parent reply before escalating to a voice call (ms)
 export const ESCALATION_DELAY_MS = Number(process.env.ESCALATION_DELAY_MS || 2 * 60 * 60 * 1000); // default 2 hrs

@@ -198,6 +198,31 @@ CREATE TABLE IF NOT EXISTS class_note_deliveries (
     sent_at TIMESTAMP
 );
 
+-- ---------- School bus GPS tracking (multi-vendor) ----------
+CREATE TABLE IF NOT EXISTS buses (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    route_name VARCHAR(100),
+    vehicle_number VARCHAR(50),
+    driver_name VARCHAR(255),
+    driver_phone VARCHAR(20),
+    gps_vendor VARCHAR(50), -- free text, e.g. 'generic_poll' | 'trackmybus' | 'traxroot'
+    vendor_device_id VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS bus_location_log (
+    id SERIAL PRIMARY KEY,
+    bus_id INT NOT NULL REFERENCES buses(id) ON DELETE CASCADE,
+    latitude NUMERIC(9,6) NOT NULL,
+    longitude NUMERIC(9,6) NOT NULL,
+    speed_kmh NUMERIC(5,1),
+    recorded_at TIMESTAMP NOT NULL,
+    raw_payload JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_bus_location_bus_time ON bus_location_log(bus_id, recorded_at DESC);
+
 -- ---------- Teacher biometric attendance (multi-vendor) ----------
 CREATE TABLE IF NOT EXISTS biometric_devices (
     id SERIAL PRIMARY KEY,

@@ -1,4 +1,4 @@
-import { guidanceQueue, teacherAttendanceQueue } from '../config/queue.js';
+import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue } from '../config/queue.js';
 
 // The worker only reacts to jobs that land on GuidanceQueue — nothing put
 // any there before. This registers a repeatable job so it actually fires
@@ -29,4 +29,18 @@ export async function scheduleTeacherAttendanceAggregation() {
     }
   );
   console.log('Daily teacher attendance aggregation job scheduled.');
+}
+
+// Polls pull-based-vendor buses every 30s for their current location.
+export async function scheduleGpsPolling() {
+  await gpsPollQueue.add(
+    'pollBuses',
+    {},
+    {
+      repeat: { every: 30 * 1000 },
+      removeOnComplete: true,
+      jobId: 'gps-poll-buses',
+    }
+  );
+  console.log('GPS bus polling job scheduled.');
 }

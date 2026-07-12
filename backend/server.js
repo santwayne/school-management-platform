@@ -16,6 +16,8 @@ import syllabusRoutes from './routes/syllabus.js';
 import biometricRoutes from './routes/biometric.js';
 import classNotesRoutes from './routes/classNotes.js';
 import payrollRoutes from './routes/payroll.js';
+import transportRoutes from './routes/transport.js';
+import './workers/gpsPollWorker.js';
 import './workers/teacherAttendanceAggregationWorker.js';
 import './workers/classNoteWorker.js';
 
@@ -24,7 +26,7 @@ import './workers/classNoteWorker.js';
 // `worker.js` process once call/message volume grows (see README).
 import './workers/attendanceWorker.js';
 import './workers/dailyGuidanceWorker.js';
-import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation } from './workers/scheduler.js';
+import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling } from './workers/scheduler.js';
 import { runBootstrap } from './scripts/autoBootstrap.js';
 
 dotenv.config();
@@ -55,6 +57,7 @@ app.use('/api/syllabus', syllabusRoutes);
 app.use('/api/biometric', biometricRoutes);
 app.use('/api', classNotesRoutes);
 app.use('/api/payroll', payrollRoutes);
+app.use('/api/transport', transportRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {
@@ -79,5 +82,10 @@ app.listen(PORT, async () => {
     await scheduleTeacherAttendanceAggregation();
   } catch (err) {
     console.error('Failed to schedule teacher attendance aggregation job (is Redis running?):', err.message);
+  }
+  try {
+    await scheduleGpsPolling();
+  } catch (err) {
+    console.error('Failed to schedule GPS polling job (is Redis running?):', err.message);
   }
 });

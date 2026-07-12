@@ -18,6 +18,7 @@ import TeacherAttendanceDashboard from './components/TeacherAttendanceDashboard'
 import ClassNotesComposer from './components/ClassNotesComposer';
 import StaffBroadcast from './components/StaffBroadcast';
 import PayrollManager from './components/PayrollManager';
+import BusTracker from './components/BusTracker';
 
 function NavBar() {
   const { user, logout } = useAuth();
@@ -55,6 +56,7 @@ function NavBar() {
         <Link to="/class-notes" className="hover:text-indigo-600">Class Notes</Link>
             {user.role === 'principal' && <Link to="/staff-broadcast" className="hover:text-indigo-600">Staff Broadcast</Link>}
             {user.role === 'principal' && <Link to="/payroll" className="hover:text-indigo-600">Payroll</Link>}
+            {user.role === 'principal' && <Link to="/buses" className="hover:text-indigo-600">Buses</Link>}
       </div>
       <div className="flex items-center gap-3 text-sm text-gray-500">
         <span>{user.name} ({user.role})</span>
@@ -89,6 +91,7 @@ function AppRoutes() {
         <Route path="/class-notes" element={<ProtectedRoute teacherOrPrincipalOnly><ClassNotesComposer /></ProtectedRoute>} />
         <Route path="/staff-broadcast" element={<ProtectedRoute principalOnly><StaffBroadcast /></ProtectedRoute>} />
         <Route path="/payroll" element={<ProtectedRoute principalOnly><PayrollManager /></ProtectedRoute>} />
+        <Route path="/buses" element={<ProtectedRoute principalOnly><BusTracker /></ProtectedRoute>} />
         <Route path="/grading" element={<ProtectedRoute><AIGradingPrototype /></ProtectedRoute>} />
         <Route path="/tutor" element={<ProtectedRoute studentOnly><TutorChat /></ProtectedRoute>} />
         <Route path="/super-admin-login" element={<SuperAdminLogin />} />
