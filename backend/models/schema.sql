@@ -22,6 +22,17 @@ CREATE TABLE IF NOT EXISTS super_admins (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS teachers (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'teacher', -- 'teacher' | 'principal'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS classes (
     id SERIAL PRIMARY KEY,
     school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
@@ -44,17 +55,6 @@ CREATE TABLE IF NOT EXISTS class_subject_teachers (
     UNIQUE (class_id, subject_id)
 );
 CREATE INDEX IF NOT EXISTS idx_cst_teacher ON class_subject_teachers(teacher_id);
-
-CREATE TABLE IF NOT EXISTS teachers (
-    id SERIAL PRIMARY KEY,
-    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    phone VARCHAR(20) NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(20) NOT NULL DEFAULT 'teacher', -- 'teacher' | 'principal'
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
 
 CREATE TABLE IF NOT EXISTS parents (
     id SERIAL PRIMARY KEY,
