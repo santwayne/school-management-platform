@@ -7,7 +7,7 @@ const router = express.Router();
 // Record a fee payment (parameterized queries, wrapped in a transaction).
 router.post('/fee/collect', requireAuth, async (req, res) => {
   const school_id = req.user.school_id;
-  const { student_id, amount_paid, payment_mode, remarks } = req.body;
+  const { student_id, amount_paid, payment_mode, remarks, proof_photo } = req.body;
 
   if (!student_id || !amount_paid || !payment_mode) {
     return res.status(400).json({ error: 'student_id, amount_paid and payment_mode are required' });
@@ -17,10 +17,12 @@ router.post('/fee/collect', requireAuth, async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    // proof_photo is optional — small base64 images only for now (this is
+    // stored directly in the DB; move to S3 if this needs to scale up).
     const paymentRes = await client.query(
-      `INSERT INTO student_payment_history (school_id, student_id, amount_paid, payment_mode, remarks)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [school_id, student_id, amount_paid, payment_mode, remarks || null]
+      `INSERT INTO student_payment_history (school_id, student_id, amount_paid, payment_mode, remarks, proof_photo_url, collected_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [school_id, student_id, amount_paid, payment_mode, remarks || null, proof_photo || null, req.user.teacher_id || null]
     );
 
     await client.query(

@@ -173,7 +173,7 @@ CREATE TABLE IF NOT EXISTS tutor_sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_tutor_sessions_student ON tutor_sessions(student_id);
 
--- ---------- Teacher WhatsApp: class notes & staff broadcast ----------
+
 ALTER TABLE teachers ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(20);
 ALTER TABLE teachers ADD COLUMN IF NOT EXISTS whatsapp_opt_in_status VARCHAR(20) NOT NULL DEFAULT 'OPTED_OUT';
 
@@ -273,6 +273,9 @@ CREATE TABLE IF NOT EXISTS student_payment_history (
     remarks TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+-- Cash-counter payment photo proof, for disputes ("I paid but it's not showing")
+ALTER TABLE student_payment_history ADD COLUMN IF NOT EXISTS proof_photo_url TEXT;
+ALTER TABLE student_payment_history ADD COLUMN IF NOT EXISTS collected_by INT REFERENCES teachers(id);
 
 CREATE TABLE IF NOT EXISTS teacher_salary (
     id SERIAL PRIMARY KEY,

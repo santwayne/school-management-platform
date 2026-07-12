@@ -3,6 +3,7 @@ import { apiRequest } from '../api';
 
 export default function FinanceAdmin() {
   const [feeForm, setFeeForm] = useState({ studentId: '', amount: '', mode: 'Cash', remarks: '' });
+  const [proofPhoto, setProofPhoto] = useState(null);
   const [cashRequests, setCashRequests] = useState([
     // Placeholder row for UI preview — replace with a GET /api/finance/petty-cash list endpoint when available.
     { id: 1, requested_by: 'Staff member', amount: 450, purpose: 'Whiteboard Markers', status: 'PENDING' },
@@ -20,11 +21,13 @@ export default function FinanceAdmin() {
           amount_paid: parseFloat(feeForm.amount),
           payment_mode: feeForm.mode,
           remarks: feeForm.remarks,
+          proof_photo: proofPhoto || undefined,
         },
       });
       if (data.success) {
         setMsg('Fee recorded successfully! Parameterized transaction complete.');
         setFeeForm({ studentId: '', amount: '', mode: 'Cash', remarks: '' });
+        setProofPhoto(null);
       }
     } catch (err) {
       setMsg(err.message || 'Error saving fee data.');
@@ -97,6 +100,25 @@ export default function FinanceAdmin() {
               placeholder="Admission fee, Fine, etc."
             />
           </div>
+          {feeForm.mode === 'Cash' && (
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Payment Photo (optional)</label>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => {
+                  const file = e.target.files[0];
+                  if (!file) return setProofPhoto(null);
+                  const reader = new FileReader();
+                  reader.onload = () => setProofPhoto(reader.result);
+                  reader.readAsDataURL(file);
+                }}
+                className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+              />
+              {proofPhoto && <p className="text-xs text-green-600 mt-1">Photo attached ✓</p>}
+            </div>
+          )}
           <button
             type="submit"
             className="w-full bg-indigo-600 text-white font-medium p-2.5 rounded-lg text-sm hover:bg-indigo-700 transition"
