@@ -7,7 +7,6 @@ import TeacherPortal from './components/TeacherPortal';
 import PrincipalDashboard from './components/PrincipalDashboard';
 import FinanceAdmin from './components/FinanceAdmin';
 import AIGradingPrototype from './components/AIGradingPrototype';
-import TutorChat from './components/TutorChat';
 import SuperAdminLogin from './components/SuperAdminLogin';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
 import ClassManager from './components/ClassManager';
@@ -17,30 +16,18 @@ import ClassNotesComposer from './components/ClassNotesComposer';
 import StaffBroadcast from './components/StaffBroadcast';
 import AdminPayroll from './components/AdminPayroll';
 import AdminTransport from './components/AdminTransport';
+import StudentTutor from './components/StudentTutor';
 
 // Pages ported to the new Waynur design bring their own header/nav chrome —
 // stacking the old NavBar on top of them would double up navigation.
-const SELF_CHROME_PREFIXES = ['/teacher'];
+const SELF_CHROME_PREFIXES = ['/teacher', '/tutor'];
 
 function NavBar() {
   const { user, logout } = useAuth();
   const location = useLocation();
   if (!user) return null;
   if (SELF_CHROME_PREFIXES.some((p) => location.pathname.startsWith(p))) return null;
-
-  if (user.role === 'student') {
-    return (
-      <nav className="bg-white border-b px-6 py-3 flex items-center justify-between">
-        <div className="flex gap-6 text-sm font-medium text-gray-700">
-          <Link to="/tutor" className="hover:text-indigo-600">Ask for Help</Link>
-        </div>
-        <div className="flex items-center gap-3 text-sm text-gray-500">
-          <span>{user.name}</span>
-          <button onClick={logout} className="text-indigo-600 font-medium hover:text-indigo-800">Log out</button>
-        </div>
-      </nav>
-    );
-  }
+  if (user.role === 'student') return null;
 
   return (
     <nav className="bg-white border-b px-6 py-3 flex items-center justify-between">
@@ -95,7 +82,7 @@ function AppRoutes() {
         <Route path="/admin/payroll" element={<ProtectedRoute principalOnly><AdminPayroll /></ProtectedRoute>} />
         <Route path="/admin/transport" element={<ProtectedRoute principalOnly><AdminTransport /></ProtectedRoute>} />
         <Route path="/grading" element={<ProtectedRoute><AIGradingPrototype /></ProtectedRoute>} />
-        <Route path="/tutor" element={<ProtectedRoute studentOnly><TutorChat /></ProtectedRoute>} />
+        <Route path="/tutor" element={<ProtectedRoute studentOnly><StudentTutor /></ProtectedRoute>} />
         <Route path="/super-admin-login" element={<SuperAdminLogin />} />
         <Route path="/super-admin" element={<ProtectedRoute superAdminOnly><SuperAdminDashboard /></ProtectedRoute>} />
         <Route path="*" element={<HomeRedirect />} />

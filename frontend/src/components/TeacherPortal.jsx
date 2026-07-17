@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, CalendarCheck2, ClipboardList } from 'lucide-react';
+import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut } from 'lucide-react';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
 
 const STATUS_ORDER = ['present', 'late', 'absent'];
 
 export default function TeacherPortal() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [classes, setClasses] = useState([]);
   const [markedToday, setMarkedToday] = useState({});
   const [loading, setLoading] = useState(true);
@@ -64,6 +64,9 @@ export default function TeacherPortal() {
             <div className="font-display text-lg text-ink truncate">{user?.name}</div>
             <div className="text-xs text-ink-soft truncate">Teacher Portal</div>
           </div>
+          <button onClick={logout} className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition" aria-label="Log out">
+            <LogOut className="w-5 h-5" />
+          </button>
         </div>
       </header>
 
