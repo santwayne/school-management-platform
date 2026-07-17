@@ -9,7 +9,7 @@ import ParentsTab from './manage/ParentsTab';
 const TABS = [
   { key: 'classes', label: 'Classes & Sections' },
   { key: 'syllabus', label: 'Syllabus' },
-  { key: 'teachers', label: 'Teachers' },
+  { key: 'teachers', label: 'Staff' },
   { key: 'students', label: 'Students' },
   { key: 'parents', label: 'Parents' },
   { key: 'collectors', label: 'Fee Collectors' },

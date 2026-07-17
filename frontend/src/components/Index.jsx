@@ -354,25 +354,125 @@ function Footer() {
   );
 }
 
-// Intentionally omitted from the Lovable design: a client-logo "Trusted by"
-// marquee (named specific fake schools), a stats bar claiming specific
-// fabricated numbers (schools onboarded, students, engagement %), a
-// testimonial quote attributed to a fictional named principal, and a
-// "Founders" section with three fabricated team member names/roles. None
-// of that is real yet, and publishing it as if it were would misrepresent
-// the company to prospective schools. Swap in real numbers/quotes/bios
-// when they exist — until then, leaving these out is more honest than a
-// placeholder that reads as a real claim.
+// Placeholder trust signal for investor/demo purposes — swap for real
+// school names once there are real customers to name.
+function Marquee() {
+  const logos = ['School A', 'School B', 'School C', 'School D', 'School E', 'School F'];
+  return (
+    <div className="border-y border-cream-deep bg-cream-deep/60">
+      <div className="mx-auto max-w-7xl px-6 py-6 flex flex-wrap items-center justify-between gap-y-3 gap-x-8 text-sm text-ink-soft">
+        <span className="text-xs uppercase tracking-widest">Built for schools across India</span>
+        {logos.map((l) => <span key={l} className="font-display italic">{l}</span>)}
+      </div>
+    </div>
+  );
+}
+
+// Placeholder traction numbers for investor/demo purposes — these are
+// illustrative, not real figures yet. Update once there's real usage data
+// to show (the Super Admin Overview page already pulls real school/student
+// counts from the database if you'd rather link to something live).
+function Stats() {
+  const stats = [
+    { n: '—', l: 'Schools onboarded' },
+    { n: '—', l: 'Students supported' },
+    { n: '—', l: 'WhatsApp updates sent' },
+    { n: '—', l: 'Parents engaged' },
+  ];
+  return (
+    <section id="stats" className="mx-auto max-w-7xl px-6 py-24">
+      <div className="rounded-[2rem] bg-ink text-cream p-10 md:p-14">
+        <div className="grid md:grid-cols-[1fr_1.2fr] gap-10 items-end">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-amber-warm font-semibold">Impact so far</p>
+            <h2 className="mt-3 font-display text-4xl md:text-5xl font-semibold tracking-tight">
+              Warmth, at the scale of an entire school system.
+            </h2>
+          </div>
+          <p className="text-cream/70 leading-relaxed">
+            We measure success in the quiet moments — a parent smiling at a message, a teacher
+            leaving on time, a principal sleeping better. Real numbers land here as schools come on board.
+          </p>
+        </div>
+        <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-6">
+          {stats.map((s) => (
+            <div key={s.l} className="border-t border-cream/15 pt-6">
+              <div className="font-display text-5xl font-semibold text-amber-warm">{s.n}</div>
+              <div className="mt-2 text-sm text-cream/70">{s.l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// Placeholder quote for investor/demo purposes — swap for a real customer
+// testimonial once there's a school willing to give one.
+function Testimonial() {
+  return (
+    <section className="bg-cream-deep/60 border-y border-cream-deep">
+      <div className="mx-auto max-w-4xl px-6 py-24 text-center">
+        <blockquote className="font-display text-3xl md:text-4xl font-medium leading-snug tracking-tight text-ink">
+          "For the first time, every parent in our school feels seen. Waynur didn't just digitise
+          us — it made us kinder."
+        </blockquote>
+        <div className="mt-6 text-sm text-ink-soft">Illustrative quote — swap for a real one once you have it</div>
+      </div>
+    </section>
+  );
+}
+
+// Real team, generic titles only — no fabricated career claims. Update the
+// role lines with real bios whenever you're ready.
+function Founders() {
+  const team = [
+    { initials: 'PT', name: 'Pankaj', role: 'Founder & Director' },
+    { initials: 'N', name: 'Noor', role: 'Co-founder' },
+    { initials: 'S', name: 'Sant', role: 'Engineering' },
+  ];
+  return (
+    <section className="mx-auto max-w-7xl px-6 py-24">
+      <div className="grid lg:grid-cols-[1fr_1.1fr] gap-14 items-start">
+        <div>
+          <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">The people behind Waynur</p>
+          <h2 className="mt-3 font-display text-4xl md:text-5xl font-semibold tracking-tight text-ink">
+            Built by Wayne E Solutions.
+          </h2>
+          <p className="mt-5 text-ink-soft leading-relaxed">
+            We're building the school system we wish our own children had — warm, WhatsApp-first,
+            and quietly powered by AI.
+          </p>
+        </div>
+        <div className="grid sm:grid-cols-3 gap-4">
+          {team.map((m) => (
+            <div key={m.name} className="rounded-3xl border border-cream-deep bg-white p-6 text-center">
+              <div className="mx-auto h-16 w-16 rounded-full bg-gradient-to-br from-terracotta to-terracotta-deep grid place-items-center text-white font-display text-xl font-semibold">
+                {m.initials}
+              </div>
+              <div className="mt-4 font-display text-lg font-semibold text-ink">{m.name}</div>
+              <div className="mt-1 text-xs text-ink-soft leading-relaxed">{m.role}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
 export default function Index() {
   return (
     <div className="min-h-screen bg-cream text-ink font-sans">
       <Nav />
       <Hero />
+      <Marquee />
       <ProblemSolution />
       <Features />
+      <Stats />
       <Audiences />
+      <Testimonial />
       <Security />
       <Pricing />
+      <Founders />
       <FAQ />
       <FinalCTA />
       <Footer />
