@@ -12,8 +12,7 @@ import SuperAdminLogin from './components/SuperAdminLogin';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
 import ClassManager from './components/ClassManager';
 import SyllabusManager from './components/SyllabusManager';
-import BiometricDeviceManager from './components/BiometricDeviceManager';
-import TeacherAttendanceDashboard from './components/TeacherAttendanceDashboard';
+import AdminAttendance from './components/AdminAttendance';
 import ClassNotesComposer from './components/ClassNotesComposer';
 import StaffBroadcast from './components/StaffBroadcast';
 import PayrollManager from './components/PayrollManager';
@@ -53,8 +52,7 @@ function NavBar() {
             <Link to="/finance" className="hover:text-indigo-600">Finance</Link>
             <Link to="/classes" className="hover:text-indigo-600">Classes</Link>
             <Link to="/syllabus" className="hover:text-indigo-600">Syllabus</Link>
-            <Link to="/teacher-attendance" className="hover:text-indigo-600">Staff Attendance</Link>
-            <Link to="/biometric-devices" className="hover:text-indigo-600">Devices</Link>
+            <Link to="/admin/attendance" className="hover:text-indigo-600">Attendance</Link>
           </>
         )}
         <Link to="/grading" className="hover:text-indigo-600">AI Grading</Link>
@@ -91,8 +89,7 @@ function AppRoutes() {
         <Route path="/finance" element={<ProtectedRoute principalOnly><FinanceAdmin /></ProtectedRoute>} />
         <Route path="/classes" element={<ProtectedRoute principalOnly><ClassManager /></ProtectedRoute>} />
         <Route path="/syllabus" element={<ProtectedRoute principalOnly><SyllabusManager /></ProtectedRoute>} />
-        <Route path="/biometric-devices" element={<ProtectedRoute principalOnly><BiometricDeviceManager /></ProtectedRoute>} />
-        <Route path="/teacher-attendance" element={<ProtectedRoute principalOnly><TeacherAttendanceDashboard /></ProtectedRoute>} />
+        <Route path="/admin/attendance" element={<ProtectedRoute principalOnly><AdminAttendance /></ProtectedRoute>} />
         <Route path="/class-notes" element={<ProtectedRoute teacherOrPrincipalOnly><ClassNotesComposer /></ProtectedRoute>} />
         <Route path="/staff-broadcast" element={<ProtectedRoute principalOnly><StaffBroadcast /></ProtectedRoute>} />
         <Route path="/payroll" element={<ProtectedRoute principalOnly><PayrollManager /></ProtectedRoute>} />

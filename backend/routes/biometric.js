@@ -136,6 +136,29 @@ router.get('/devices', requireAuth, requirePrincipal, async (req, res) => {
   }
 });
 
+// GET /api/biometric/devices/:id/mappings — list a device's existing employee-ID-to-teacher mappings
+router.get('/devices/:id/mappings', requireAuth, requirePrincipal, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const deviceCheck = await pool.query('SELECT id FROM biometric_devices WHERE id = $1 AND school_id = $2', [id, req.user.school_id]);
+    if (deviceCheck.rowCount === 0) {
+      return res.status(404).json({ error: 'Device not found for this school' });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT tdm.device_internal_id, tdm.teacher_id, t.name AS teacher_name
+       FROM teacher_device_mapping tdm
+       JOIN teachers t ON t.id = tdm.teacher_id
+       WHERE tdm.device_id = $1
+       ORDER BY tdm.device_internal_id ASC`,
+      [id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/biometric/devices/:id/map-teacher — map a device's internal enrollment ID to a teacher
 router.post('/devices/:id/map-teacher', requireAuth, requirePrincipal, async (req, res) => {
   const { id } = req.params;
@@ -171,7 +194,7 @@ router.get('/attendance/today', requireAuth, requirePrincipal, async (req, res) 
   try {
     const { rows } = await pool.query(
       `SELECT t.id AS teacher_id, t.name AS teacher_name, ad.id AS attendance_id,
-              ad.first_punch, ad.last_punch, COALESCE(ad.status, 'absent') AS status
+              ad.first_punch, ad.last_punch, COALESCE(ad.status, 'absent') AS status, ad.corrected_by
        FROM teachers t
        LEFT JOIN teacher_attendance_daily ad ON ad.teacher_id = t.id AND ad.date = $1
        WHERE t.school_id = $2 AND t.role != 'principal'
