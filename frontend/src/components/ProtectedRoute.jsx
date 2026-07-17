@@ -2,12 +2,18 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 
+function homeFor(role) {
+  if (role === 'student') return '/tutor';
+  if (role === 'super_admin') return '/super-admin';
+  return '/teacher'; // teacher and principal both land on the Teacher Portal by default
+}
+
 export default function ProtectedRoute({ children, principalOnly = false, studentOnly = false, superAdminOnly = false, teacherOrPrincipalOnly = false }) {
   const { user } = useAuth();
-  if (!user) return <Navigate to={studentOnly ? '/student-login' : superAdminOnly ? '/super-admin-login' : '/login'} replace />;
-  if (principalOnly && user.role !== 'principal') return <Navigate to="/attendance" replace />;
-  if (studentOnly && user.role !== 'student') return <Navigate to="/attendance" replace />;
-  if (superAdminOnly && user.role !== 'super_admin') return <Navigate to="/attendance" replace />;
-  if (teacherOrPrincipalOnly && !['teacher', 'principal'].includes(user.role)) return <Navigate to="/attendance" replace />;
+  if (!user) return <Navigate to={superAdminOnly ? '/super-admin-login' : '/login'} replace />;
+  if (principalOnly && user.role !== 'principal') return <Navigate to={homeFor(user.role)} replace />;
+  if (studentOnly && user.role !== 'student') return <Navigate to={homeFor(user.role)} replace />;
+  if (superAdminOnly && user.role !== 'super_admin') return <Navigate to={homeFor(user.role)} replace />;
+  if (teacherOrPrincipalOnly && !['teacher', 'principal'].includes(user.role)) return <Navigate to={homeFor(user.role)} replace />;
   return children;
 }

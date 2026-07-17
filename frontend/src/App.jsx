@@ -1,13 +1,12 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './components/Login';
-import AttendanceForm from './components/AttendanceForm';
+import TeacherPortal from './components/TeacherPortal';
 import PrincipalDashboard from './components/PrincipalDashboard';
 import FinanceAdmin from './components/FinanceAdmin';
 import AIGradingPrototype from './components/AIGradingPrototype';
-import StudentLogin from './components/StudentLogin';
 import TutorChat from './components/TutorChat';
 import SuperAdminLogin from './components/SuperAdminLogin';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
@@ -20,9 +19,15 @@ import StaffBroadcast from './components/StaffBroadcast';
 import PayrollManager from './components/PayrollManager';
 import BusTracker from './components/BusTracker';
 
+// Pages ported to the new Waynur design bring their own header/nav chrome —
+// stacking the old NavBar on top of them would double up navigation.
+const SELF_CHROME_PREFIXES = ['/teacher'];
+
 function NavBar() {
   const { user, logout } = useAuth();
+  const location = useLocation();
   if (!user) return null;
+  if (SELF_CHROME_PREFIXES.some((p) => location.pathname.startsWith(p))) return null;
 
   if (user.role === 'student') {
     return (
@@ -41,7 +46,7 @@ function NavBar() {
   return (
     <nav className="bg-white border-b px-6 py-3 flex items-center justify-between">
       <div className="flex gap-6 text-sm font-medium text-gray-700">
-        <Link to="/attendance" className="hover:text-indigo-600">Attendance</Link>
+        <Link to="/teacher" className="hover:text-indigo-600">Teacher Portal</Link>
         {user.role === 'principal' && (
           <>
             <Link to="/dashboard" className="hover:text-indigo-600">Dashboard</Link>
@@ -71,7 +76,7 @@ function HomeRedirect() {
   if (!user) return <Navigate to="/login" replace />;
   if (user.role === 'student') return <Navigate to="/tutor" replace />;
   if (user.role === 'super_admin') return <Navigate to="/super-admin" replace />;
-  return <Navigate to="/attendance" replace />;
+  return <Navigate to="/teacher" replace />;
 }
 
 function AppRoutes() {
@@ -80,8 +85,8 @@ function AppRoutes() {
       <NavBar />
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/student-login" element={<StudentLogin />} />
-        <Route path="/attendance" element={<ProtectedRoute><AttendanceForm /></ProtectedRoute>} />
+        <Route path="/student-login" element={<Navigate to="/login" replace />} />
+        <Route path="/teacher" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherPortal /></ProtectedRoute>} />
         <Route path="/dashboard" element={<ProtectedRoute principalOnly><PrincipalDashboard /></ProtectedRoute>} />
         <Route path="/finance" element={<ProtectedRoute principalOnly><FinanceAdmin /></ProtectedRoute>} />
         <Route path="/classes" element={<ProtectedRoute principalOnly><ClassManager /></ProtectedRoute>} />
