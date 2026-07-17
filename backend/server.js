@@ -17,6 +17,11 @@ import biometricRoutes from './routes/biometric.js';
 import classNotesRoutes from './routes/classNotes.js';
 import payrollRoutes from './routes/payroll.js';
 import transportRoutes from './routes/transport.js';
+import settingsRoutes from './routes/settings.js';
+import communicationsRoutes from './routes/communications.js';
+import billingRoutes from './routes/billing.js';
+import reportsRoutes from './routes/reports.js';
+import gradingRoutes from './routes/grading.js';
 import './workers/gpsPollWorker.js';
 import './workers/teacherAttendanceAggregationWorker.js';
 import './workers/classNoteWorker.js';
@@ -59,6 +64,11 @@ app.use('/api/biometric', biometricRoutes);
 app.use('/api', classNotesRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/transport', transportRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/communications', communicationsRoutes);
+app.use('/api/billing', billingRoutes);
+app.use('/api/reports', reportsRoutes);
+app.use('/api/grading', gradingRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {

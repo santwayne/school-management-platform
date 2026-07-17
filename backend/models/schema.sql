@@ -387,3 +387,55 @@ CREATE INDEX IF NOT EXISTS idx_attendance_school_date ON attendance(school_id, d
 CREATE INDEX IF NOT EXISTS idx_notification_log_status ON notification_log(status);
 CREATE INDEX IF NOT EXISTS idx_performance_flagged ON performance_snapshots(school_id, flagged);
 CREATE INDEX IF NOT EXISTS idx_doubts_school ON student_doubts(school_id);
+
+-- ---------- Billing (school-level plan view) ----------
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS plan VARCHAR(20) NOT NULL DEFAULT 'starter'; -- 'starter' | 'growth' | 'district'
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS plan_renews_at DATE;
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS student_limit INT NOT NULL DEFAULT 100;
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS accountant_seat_limit INT NOT NULL DEFAULT 0;
+
+-- ---------- Settings (branding, WhatsApp business number, notification prefs) ----------
+CREATE TABLE IF NOT EXISTS school_settings (
+    school_id INT PRIMARY KEY REFERENCES schools(id) ON DELETE CASCADE,
+    logo_url TEXT,
+    whatsapp_business_number VARCHAR(20),
+    whatsapp_connected BOOLEAN NOT NULL DEFAULT FALSE,
+    notify_attendance BOOLEAN NOT NULL DEFAULT TRUE,
+    notify_homework BOOLEAN NOT NULL DEFAULT TRUE,
+    notify_fees BOOLEAN NOT NULL DEFAULT TRUE,
+    notify_payroll BOOLEAN NOT NULL DEFAULT TRUE,
+    petty_cash_accountant_limit NUMERIC(10,2) NOT NULL DEFAULT 5000,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------- Communications (WhatsApp broadcast log) ----------
+CREATE TABLE IF NOT EXISTS broadcasts (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    audience VARCHAR(50) NOT NULL, -- 'all_parents' | 'all_staff' | 'class:<id>' | 'student:<id>'
+    audience_label VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    sent_by INT REFERENCES teachers(id),
+    recipient_count INT NOT NULL DEFAULT 0,
+    delivered_count INT NOT NULL DEFAULT 0,
+    failed_count INT NOT NULL DEFAULT 0,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_broadcasts_school ON broadcasts(school_id);
+
+-- ---------- Reports (lightweight generation log for audit trail) ----------
+CREATE TABLE IF NOT EXISTS report_generations (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    report_type VARCHAR(50) NOT NULL, -- 'attendance' | 'fees' | 'payroll'
+    generated_by INT REFERENCES teachers(id),
+    date_from DATE,
+    date_to DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------- Grading (extend existing ai_graded_submissions with human review) ----------
+ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS teacher_confirmed BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS final_score NUMERIC(4,1);
+ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS confirmed_by INT REFERENCES teachers(id);
+ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP;
