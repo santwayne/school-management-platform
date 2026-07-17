@@ -439,3 +439,85 @@ ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS teacher_confirmed BOO
 ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS final_score NUMERIC(4,1);
 ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS confirmed_by INT REFERENCES teachers(id);
 ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP;
+
+-- ---------- Student Portal: Homework, Notes, Progress, Rewards ----------
+CREATE TABLE IF NOT EXISTS homework (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    subject_id VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    due_date DATE,
+    created_by INT REFERENCES teachers(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_homework_class ON homework(class_id);
+
+CREATE TABLE IF NOT EXISTS homework_completions (
+    id SERIAL PRIMARY KEY,
+    homework_id INT NOT NULL REFERENCES homework(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (homework_id, student_id)
+);
+
+CREATE TABLE IF NOT EXISTS student_notes (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL DEFAULT 'Untitled note',
+    subject_id VARCHAR(50),
+    content TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_student_notes_student ON student_notes(student_id);
+
+-- ---------- Fee collectors + WhatsApp cash intake ----------
+CREATE TABLE IF NOT EXISTS fee_collectors (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    whatsapp_number VARCHAR(20) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Nothing here is ever auto-marked as a real payment. AI reads the slip photo
+-- and proposes an amount/student match; a human (Accountant/Principal) must
+-- confirm before it becomes a real student_payment_history row.
+CREATE TABLE IF NOT EXISTS whatsapp_cash_intake (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    fee_collector_id INT NOT NULL REFERENCES fee_collectors(id),
+    photo_base64 TEXT NOT NULL,
+    ai_extracted_amount NUMERIC(10,2),
+    ai_extracted_student_hint VARCHAR(255),
+    matched_student_id INT REFERENCES students(id),
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING | CONFIRMED | REJECTED
+    confirmed_amount NUMERIC(10,2),
+    confirmed_by INT REFERENCES teachers(id),
+    confirmed_at TIMESTAMP,
+    payment_history_id INT REFERENCES student_payment_history(id),
+    received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_cash_school ON whatsapp_cash_intake(school_id);
+
+-- ---------- Online fee payment links (Razorpay) ----------
+-- reference_id is what makes "which parent paid" answerable — it's embedded
+-- in the Razorpay link and comes back on the webhook, so payments never need
+-- manual matching even when amounts collide.
+CREATE TABLE IF NOT EXISTS fee_payment_links (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    amount NUMERIC(10,2) NOT NULL,
+    reference_id VARCHAR(100) UNIQUE NOT NULL,
+    razorpay_link_id VARCHAR(100),
+    razorpay_link_url TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'CREATED', -- CREATED | PAID | EXPIRED | CANCELLED
+    payment_history_id INT REFERENCES student_payment_history(id),
+    created_by INT REFERENCES teachers(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    paid_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_fee_links_school ON fee_payment_links(school_id);

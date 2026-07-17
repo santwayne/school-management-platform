@@ -22,6 +22,10 @@ import communicationsRoutes from './routes/communications.js';
 import billingRoutes from './routes/billing.js';
 import reportsRoutes from './routes/reports.js';
 import gradingRoutes from './routes/grading.js';
+import studentPortalRoutes from './routes/studentPortal.js';
+import feeCollectorsRoutes from './routes/feeCollectors.js';
+import feeIntakeRoutes from './routes/feeIntake.js';
+import paymentLinksRoutes from './routes/paymentLinks.js';
 import './workers/gpsPollWorker.js';
 import './workers/teacherAttendanceAggregationWorker.js';
 import './workers/classNoteWorker.js';
@@ -45,7 +49,13 @@ if (missing.length) {
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '5mb' }));
+// verify captures the raw bytes onto req.rawBody before parsing — needed so
+// the Razorpay webhook route can check its HMAC signature against the exact
+// bytes Razorpay sent (by the time middleware chains reach the route, the
+// body has already been parsed to JSON and the original bytes are gone
+// unless captured here). Limit bumped from 5mb to 8mb to fit base64-encoded
+// cash-slip photos from the WhatsApp intake flow alongside the JSON body.
+app.use(express.json({ limit: '8mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
@@ -69,6 +79,10 @@ app.use('/api/communications', communicationsRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/grading', gradingRoutes);
+app.use('/api/student', studentPortalRoutes);
+app.use('/api/fee-collectors', feeCollectorsRoutes);
+app.use('/api/fee-intake', feeIntakeRoutes);
+app.use('/api/payment-links', paymentLinksRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {
