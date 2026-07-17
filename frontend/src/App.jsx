@@ -15,7 +15,7 @@ import SyllabusManager from './components/SyllabusManager';
 import AdminAttendance from './components/AdminAttendance';
 import ClassNotesComposer from './components/ClassNotesComposer';
 import StaffBroadcast from './components/StaffBroadcast';
-import PayrollManager from './components/PayrollManager';
+import AdminPayroll from './components/AdminPayroll';
 import BusTracker from './components/BusTracker';
 
 // Pages ported to the new Waynur design bring their own header/nav chrome —
@@ -58,7 +58,7 @@ function NavBar() {
         <Link to="/grading" className="hover:text-indigo-600">AI Grading</Link>
         <Link to="/class-notes" className="hover:text-indigo-600">Class Notes</Link>
             {user.role === 'principal' && <Link to="/staff-broadcast" className="hover:text-indigo-600">Staff Broadcast</Link>}
-            {user.role === 'principal' && <Link to="/payroll" className="hover:text-indigo-600">Payroll</Link>}
+            {user.role === 'principal' && <Link to="/admin/payroll" className="hover:text-indigo-600">Payroll</Link>}
             {user.role === 'principal' && <Link to="/buses" className="hover:text-indigo-600">Buses</Link>}
       </div>
       <div className="flex items-center gap-3 text-sm text-gray-500">
@@ -92,7 +92,7 @@ function AppRoutes() {
         <Route path="/admin/attendance" element={<ProtectedRoute principalOnly><AdminAttendance /></ProtectedRoute>} />
         <Route path="/class-notes" element={<ProtectedRoute teacherOrPrincipalOnly><ClassNotesComposer /></ProtectedRoute>} />
         <Route path="/staff-broadcast" element={<ProtectedRoute principalOnly><StaffBroadcast /></ProtectedRoute>} />
-        <Route path="/payroll" element={<ProtectedRoute principalOnly><PayrollManager /></ProtectedRoute>} />
+        <Route path="/admin/payroll" element={<ProtectedRoute principalOnly><AdminPayroll /></ProtectedRoute>} />
         <Route path="/buses" element={<ProtectedRoute principalOnly><BusTracker /></ProtectedRoute>} />
         <Route path="/grading" element={<ProtectedRoute><AIGradingPrototype /></ProtectedRoute>} />
         <Route path="/tutor" element={<ProtectedRoute studentOnly><TutorChat /></ProtectedRoute>} />

@@ -4,10 +4,6 @@ import { apiRequest } from '../api';
 export default function FinanceAdmin() {
   const [feeForm, setFeeForm] = useState({ studentId: '', amount: '', mode: 'Cash', remarks: '' });
   const [proofPhoto, setProofPhoto] = useState(null);
-  const [cashRequests, setCashRequests] = useState([
-    // Placeholder row for UI preview — replace with a GET /api/finance/petty-cash list endpoint when available.
-    { id: 1, requested_by: 'Staff member', amount: 450, purpose: 'Whiteboard Markers', status: 'PENDING' },
-  ]);
   const [msg, setMsg] = useState('');
 
   const handleFeeSubmit = async (e) => {
@@ -34,23 +30,8 @@ export default function FinanceAdmin() {
     }
   };
 
-  const handleCashAction = async (id, action) => {
-    try {
-      const data = await apiRequest(`/api/finance/petty-cash/approve/${id}`, {
-        method: 'PATCH',
-        body: { status: action },
-      });
-      if (data.success) {
-        setCashRequests((prev) => prev.map((req) => (req.id === id ? { ...req, status: action } : req)));
-      }
-    } catch (err) {
-      setMsg(err.message || 'Error updating request.');
-    }
-  };
-
   return (
-    <div className="p-6 max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
-      {/* SECTION 1: FEE COLLECTION FORM */}
+    <div className="p-6 max-w-2xl mx-auto">
       <div className="bg-white p-6 rounded-xl border shadow-sm">
         <h2 className="text-xl font-bold text-gray-900 mb-4">Collect Student Fee</h2>
         {msg && <div className="p-3 mb-4 text-xs font-semibold bg-indigo-50 text-indigo-700 rounded-lg">{msg}</div>}
@@ -126,53 +107,6 @@ export default function FinanceAdmin() {
             Record Secure Payment
           </button>
         </form>
-      </div>
-
-      {/* SECTION 2: PETTY CASH APPROVAL WORKFLOW */}
-      <div className="bg-white p-6 rounded-xl border shadow-sm">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Petty Cash Approvals</h2>
-        <div className="space-y-4">
-          {cashRequests.map((req) => (
-            <div key={req.id} className="p-4 border rounded-xl flex justify-between items-center bg-gray-50">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-gray-800">₹{req.amount}</span>
-                  <span
-                    className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                      req.status === 'PENDING'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : req.status === 'APPROVED'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}
-                  >
-                    {req.status}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-600 mt-1">
-                  <span className="font-medium text-gray-700">{req.requested_by}</span>: {req.purpose}
-                </p>
-              </div>
-
-              {req.status === 'PENDING' && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleCashAction(req.id, 'APPROVED')}
-                    className="px-2.5 py-1 text-xs font-bold bg-green-600 text-white rounded hover:bg-green-700 transition"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => handleCashAction(req.id, 'REJECTED')}
-                    className="px-2.5 py-1 text-xs font-bold bg-red-100 text-red-700 rounded hover:bg-red-200 transition"
-                  >
-                    Reject
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );

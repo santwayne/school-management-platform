@@ -44,6 +44,20 @@ router.post('/fee/collect', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/finance/petty-cash — list requests for this school (most recent first)
+router.get('/petty-cash', requireAuth, requirePrincipal, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM petty_cash WHERE school_id = $1 ORDER BY created_at DESC',
+      [req.user.school_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Petty cash list error:', err);
+    res.status(500).json({ error: 'Failed to load requests' });
+  }
+});
+
 router.post('/petty-cash/request', requireAuth, async (req, res) => {
   const school_id = req.user.school_id;
   const { requested_by, amount, purpose } = req.body;
