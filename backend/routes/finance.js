@@ -1,6 +1,6 @@
 import express from 'express';
 import pool from '../config/db.js';
-import { requireAuth, requirePrincipal } from '../middleware/auth.js';
+import { requireAuth, requirePrincipal, requireFinance } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -79,9 +79,11 @@ router.post('/petty-cash/request', requireAuth, async (req, res) => {
   }
 });
 
-// Only a principal can approve/reject petty cash — enforced server-side,
-// not just hidden in the UI.
-router.patch('/petty-cash/approve/:id', requireAuth, requirePrincipal, async (req, res) => {
+// Principal or Accountant can approve/reject petty cash, enforced
+// server-side. An accountant can only approve requests at or under the
+// school's configured limit (school_settings.petty_cash_accountant_limit,
+// default ₹5,000) — anything above that must go to the principal.
+router.patch('/petty-cash/approve/:id', requireAuth, requireFinance, async (req, res) => {
   const school_id = req.user.school_id;
   const { id } = req.params;
   const { status } = req.body; // 'APPROVED' | 'REJECTED'
@@ -91,6 +93,26 @@ router.patch('/petty-cash/approve/:id', requireAuth, requirePrincipal, async (re
   }
 
   try {
+    if (req.user.role === 'accountant' && status === 'APPROVED') {
+      const requestRes = await pool.query(
+        'SELECT amount FROM petty_cash WHERE id = $1 AND school_id = $2',
+        [id, school_id]
+      );
+      if (requestRes.rowCount === 0) {
+        return res.status(404).json({ error: 'Request not found for this school' });
+      }
+      const settingsRes = await pool.query(
+        'SELECT petty_cash_accountant_limit FROM school_settings WHERE school_id = $1',
+        [school_id]
+      );
+      const limit = settingsRes.rowCount > 0 ? parseFloat(settingsRes.rows[0].petty_cash_accountant_limit) : 5000;
+      if (parseFloat(requestRes.rows[0].amount) > limit) {
+        return res.status(403).json({
+          error: `This request is above your approval limit (Rs ${limit}). It needs Principal approval.`,
+        });
+      }
+    }
+
     const result = await pool.query(
       `UPDATE petty_cash
        SET status = $1, approved_by = $2, actioned_at = CURRENT_TIMESTAMP

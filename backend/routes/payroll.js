@@ -1,11 +1,11 @@
 import express from 'express';
 import pool from '../config/db.js';
-import { requireAuth, requirePrincipal } from '../middleware/auth.js';
+import { requireAuth, requireFinance } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // POST /api/payroll/salary — set/update a teacher's monthly salary
-router.post('/salary', requireAuth, requirePrincipal, async (req, res) => {
+router.post('/salary', requireAuth, requireFinance, async (req, res) => {
   const { teacher_id, monthly_amount } = req.body;
   const schoolId = req.user.school_id;
 
@@ -28,7 +28,7 @@ router.post('/salary', requireAuth, requirePrincipal, async (req, res) => {
 });
 
 // GET /api/payroll/salary — list current salary for every teacher
-router.get('/salary', requireAuth, requirePrincipal, async (req, res) => {
+router.get('/salary', requireAuth, requireFinance, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT t.id AS teacher_id, t.name, ts.monthly_amount
@@ -47,7 +47,7 @@ router.get('/salary', requireAuth, requirePrincipal, async (req, res) => {
 // POST /api/payroll/run — body { period: '2026-07' }, generates one PENDING
 // row per active teacher who has a salary set and no row yet for that period.
 // Safe to re-run — skips teachers who already have a row.
-router.post('/run', requireAuth, requirePrincipal, async (req, res) => {
+router.post('/run', requireAuth, requireFinance, async (req, res) => {
   const { period } = req.body;
   const schoolId = req.user.school_id;
 
@@ -74,7 +74,7 @@ router.post('/run', requireAuth, requirePrincipal, async (req, res) => {
 });
 
 // PATCH /api/payroll/:id/mark-paid
-router.patch('/:id/mark-paid', requireAuth, requirePrincipal, async (req, res) => {
+router.patch('/:id/mark-paid', requireAuth, requireFinance, async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query(
@@ -92,7 +92,7 @@ router.patch('/:id/mark-paid', requireAuth, requirePrincipal, async (req, res) =
 });
 
 // GET /api/payroll?period=2026-07 — payroll history for a month
-router.get('/', requireAuth, requirePrincipal, async (req, res) => {
+router.get('/', requireAuth, requireFinance, async (req, res) => {
   const { period } = req.query;
   const schoolId = req.user.school_id;
 

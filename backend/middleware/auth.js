@@ -62,3 +62,20 @@ export function requireSuperAdmin(req, res, next) {
   }
   next();
 }
+
+// Restricts a route to accountants (e.g. petty cash, payroll, fee collection).
+export function requireAccountant(req, res, next) {
+  if (!req.user || req.user.role !== 'accountant') {
+    return res.status(403).json({ error: 'Accountant role required' });
+  }
+  next();
+}
+
+// Restricts a route to principal OR accountant — most finance routes should
+// use this instead of requirePrincipal alone, now that Accountant exists.
+export function requireFinance(req, res, next) {
+  if (!req.user || (req.user.role !== 'principal' && req.user.role !== 'accountant')) {
+    return res.status(403).json({ error: 'Principal or Accountant role required' });
+  }
+  next();
+}
