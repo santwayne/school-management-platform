@@ -15,6 +15,7 @@ import SuperAdminDashboard from './components/SuperAdminDashboard';
 import ClassManager from './components/ClassManager';
 import SyllabusManager from './components/SyllabusManager';
 import ManageSchool from './components/ManageSchool';
+import Onboarding from './components/Onboarding';
 import AdminAttendance from './components/AdminAttendance';
 import ClassNotesComposer from './components/ClassNotesComposer';
 import StaffBroadcast from './components/StaffBroadcast';
@@ -64,6 +65,7 @@ function AppRoutes() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/student-login" element={<Navigate to="/login" replace />} />
 
         <Route path="/teacher" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherPortal /></ProtectedRoute>} />
