@@ -25,34 +25,34 @@ export default function SuperAdminLogin() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-cream-deep/40 px-4">
       <form onSubmit={handleSubmit} className="max-w-md w-full bg-white p-8 rounded-lg shadow-md space-y-6">
-        <h2 className="text-2xl font-bold text-center text-gray-800">Super Admin Portal</h2>
+        <h2 className="text-2xl font-bold text-center text-ink">Super Admin Portal</h2>
         {error && <div className="p-3 bg-red-100 text-red-700 rounded text-sm">{error}</div>}
         <div>
-          <label className="block text-sm font-medium text-gray-700">Admin Email</label>
+          <label className="block text-sm font-medium text-ink-soft">Admin Email</label>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="mt-1 block w-full p-2 border border-gray-300 rounded"
+            className="mt-1 block w-full p-2 border border-cream-deep rounded"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700">Password</label>
+          <label className="block text-sm font-medium text-ink-soft">Password</label>
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            className="mt-1 block w-full p-2 border border-gray-300 rounded"
+            className="mt-1 block w-full p-2 border border-cream-deep rounded"
           />
         </div>
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-2 px-4 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-semibold disabled:opacity-50"
+          className="w-full py-2 px-4 bg-terracotta text-white rounded hover:bg-terracotta-deep font-semibold disabled:opacity-50"
         >
           {loading ? 'Signing in...' : 'Sign In'}
         </button>
