@@ -147,18 +147,18 @@ export default function ClassManager() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-8">
-      <h1 className="text-3xl font-bold text-gray-900">Classes, Subjects & Assignments</h1>
+      <h1 className="font-display text-3xl font-bold text-ink">Classes, Subjects & Assignments</h1>
       {message && <div className="p-3 bg-green-100 text-green-700 text-sm rounded">{message}</div>}
-      {error && <div className="p-3 bg-red-100 text-red-700 text-sm rounded">{error}</div>}
+      {error && <div className="p-3 bg-red-100 text-destructive text-sm rounded">{error}</div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="space-y-6">
           <div className="bg-white p-5 border rounded-lg shadow-sm space-y-3">
-            <h2 className="text-lg font-semibold text-gray-800">Teacher WhatsApp Numbers</h2>
-            <p className="text-xs text-gray-400">Teachers don't log in — set their WhatsApp number here so they get "what to teach today" and student notes automatically.</p>
+            <h2 className="text-lg font-semibold text-ink">Teacher WhatsApp Numbers</h2>
+            <p className="text-xs text-ink-soft">Teachers don't log in — set their WhatsApp number here so they get "what to teach today" and student notes automatically.</p>
             {teachers.map((t) => (
               <div key={t.id} className="flex items-center gap-2">
-                <span className="text-sm text-gray-700 w-32 truncate">{t.name}</span>
+                <span className="text-sm text-ink-soft w-32 truncate">{t.name}</span>
                 <input
                   type="text"
                   placeholder="+91..."
@@ -172,19 +172,19 @@ export default function ClassManager() {
           </div>
 
           <form onSubmit={handleAddClass} className="bg-white p-5 border rounded-lg shadow-sm space-y-3">
-            <h2 className="text-lg font-semibold text-gray-800">Add Class</h2>
+            <h2 className="text-lg font-semibold text-ink">Add Class</h2>
             <input type="text" placeholder="e.g. Class 8A" value={newClass} onChange={(e) => setNewClass(e.target.value)} required className="w-full p-2 border text-sm rounded" />
-            <button type="submit" className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">Create Class</button>
+            <button type="submit" className="w-full py-2 bg-terracotta hover:bg-terracotta-deep text-white rounded text-sm font-medium">Create Class</button>
           </form>
 
           <form onSubmit={handleAddSubject} className="bg-white p-5 border rounded-lg shadow-sm space-y-3">
-            <h2 className="text-lg font-semibold text-gray-800">Add Subject</h2>
+            <h2 className="text-lg font-semibold text-ink">Add Subject</h2>
             <input type="text" placeholder="e.g. Mathematics" value={newSubject} onChange={(e) => setNewSubject(e.target.value)} required className="w-full p-2 border text-sm rounded" />
-            <button type="submit" className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">Create Subject</button>
+            <button type="submit" className="w-full py-2 bg-terracotta hover:bg-terracotta-deep text-white rounded text-sm font-medium">Create Subject</button>
           </form>
 
           <form onSubmit={handleAddStudent} className="bg-white p-5 border rounded-lg shadow-sm space-y-3">
-            <h2 className="text-lg font-semibold text-gray-800">Add Student</h2>
+            <h2 className="text-lg font-semibold text-ink">Add Student</h2>
             <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="w-full p-2 border text-sm rounded bg-white">
               {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
@@ -194,26 +194,26 @@ export default function ClassManager() {
           </form>
 
           <div className="bg-white p-5 border rounded-lg shadow-sm space-y-2">
-            <h2 className="text-lg font-semibold text-gray-800">Bulk CSV Upload</h2>
-            <p className="text-xs text-gray-400">Header row required, format: <code>name,parent_phone</code> — students go into the class selected above.</p>
-            <input type="file" accept=".csv" onChange={handleCSVUpload} className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+            <h2 className="text-lg font-semibold text-ink">Bulk CSV Upload</h2>
+            <p className="text-xs text-ink-soft">Header row required, format: <code>name,parent_phone</code> — students go into the class selected above.</p>
+            <input type="file" accept=".csv" onChange={handleCSVUpload} className="block w-full text-xs text-ink-soft file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-terracotta/5 file:text-terracotta-deep hover:file:bg-terracotta/10" />
           </div>
         </div>
 
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white p-6 border rounded-lg shadow-sm space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-900">Subject → Teacher Assignment</h2>
+              <h2 className="font-display text-xl font-bold text-ink">Subject → Teacher Assignment</h2>
               <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="p-2 border text-sm rounded bg-white font-medium">
                 {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
 
-            {subjects.length === 0 && <p className="text-sm text-gray-400">Add a subject first.</p>}
+            {subjects.length === 0 && <p className="text-sm text-ink-soft">Add a subject first.</p>}
 
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs uppercase text-gray-500 border-b">
+                <tr className="text-left text-xs uppercase text-ink-soft border-b">
                   <th className="py-2">Subject</th>
                   <th className="py-2">Teacher</th>
                 </tr>
@@ -223,7 +223,7 @@ export default function ClassManager() {
                   const existing = roster.assignments.find((a) => a.subject_id === subj.id);
                   return (
                     <tr key={subj.id}>
-                      <td className="py-2 font-medium text-gray-800">{subj.name}</td>
+                      <td className="py-2 font-medium text-ink">{subj.name}</td>
                       <td className="py-2">
                         <select
                           defaultValue={existing?.teacher_id || ''}
@@ -242,10 +242,10 @@ export default function ClassManager() {
           </div>
 
           <div className="bg-white p-6 border rounded-lg shadow-sm">
-            <h2 className="text-xl font-bold text-gray-900 mb-3">Class Roster ({roster.students.length} students)</h2>
+            <h2 className="font-display text-xl font-bold text-ink mb-3">Class Roster ({roster.students.length} students)</h2>
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs uppercase text-gray-500 border-b">
+                <tr className="text-left text-xs uppercase text-ink-soft border-b">
                   <th className="py-2">Name</th>
                   <th className="py-2">Login ID</th>
                 </tr>

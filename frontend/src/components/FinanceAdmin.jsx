@@ -16,17 +16,17 @@ function PaymentHistory({ refreshKey }) {
 
   return (
     <div className="bg-white p-6 rounded-xl border shadow-sm mt-6">
-      <h2 className="text-lg font-bold text-gray-900 mb-3">Recent payments</h2>
-      {error && <div className="p-3 mb-3 text-xs bg-red-50 text-red-700 rounded-lg">{error}</div>}
+      <h2 className="text-lg font-bold text-ink mb-3">Recent payments</h2>
+      {error && <div className="p-3 mb-3 text-xs bg-destructive/10 text-destructive rounded-lg">{error}</div>}
       {loading ? (
-        <p className="text-sm text-gray-400">Loading…</p>
+        <p className="text-sm text-ink-soft">Loading…</p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-gray-400">No payments recorded yet.</p>
+        <p className="text-sm text-ink-soft">No payments recorded yet.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase text-gray-500 border-b">
+              <tr className="text-left text-xs uppercase text-ink-soft border-b">
                 <th className="py-2 pr-4">Student</th>
                 <th className="py-2 pr-4">Amount</th>
                 <th className="py-2 pr-4">Mode</th>
@@ -39,7 +39,7 @@ function PaymentHistory({ refreshKey }) {
                   <td className="py-2 pr-4 font-medium">{r.student_name}</td>
                   <td className="py-2 pr-4">₹{Number(r.amount_paid).toLocaleString('en-IN')}</td>
                   <td className="py-2 pr-4">{r.payment_mode}</td>
-                  <td className="py-2 pr-4 text-gray-500 whitespace-nowrap">
+                  <td className="py-2 pr-4 text-ink-soft whitespace-nowrap">
                     {new Date(r.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                   </td>
                 </tr>
@@ -86,37 +86,37 @@ export default function FinanceAdmin() {
   return (
     <div className="p-6 max-w-2xl mx-auto">
       <div className="bg-white p-6 rounded-xl border shadow-sm">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Collect Student Fee</h2>
-        {msg && <div className="p-3 mb-4 text-xs font-semibold bg-indigo-50 text-indigo-700 rounded-lg">{msg}</div>}
+        <h2 className="font-display text-xl font-bold text-ink mb-4">Collect Student Fee</h2>
+        {msg && <div className="p-3 mb-4 text-xs font-semibold bg-terracotta/5 text-terracotta-deep rounded-lg">{msg}</div>}
 
         <form onSubmit={handleFeeSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Student ID</label>
+            <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Student ID</label>
             <input
               type="text"
               value={feeForm.studentId}
               onChange={(e) => setFeeForm({ ...feeForm, studentId: e.target.value })}
-              className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500"
+              className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-terracotta/40"
               required
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Amount (₹)</label>
+              <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Amount (₹)</label>
               <input
                 type="number"
                 value={feeForm.amount}
                 onChange={(e) => setFeeForm({ ...feeForm, amount: e.target.value })}
-                className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500"
+                className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-terracotta/40"
                 required
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Mode</label>
+              <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Mode</label>
               <select
                 value={feeForm.mode}
                 onChange={(e) => setFeeForm({ ...feeForm, mode: e.target.value })}
-                className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500"
+                className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-terracotta/40"
               >
                 <option>Cash</option>
                 <option>UPI / Online</option>
@@ -125,7 +125,7 @@ export default function FinanceAdmin() {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Remarks</label>
+            <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Remarks</label>
             <input
               type="text"
               value={feeForm.remarks}
@@ -136,7 +136,7 @@ export default function FinanceAdmin() {
           </div>
           {feeForm.mode === 'Cash' && (
             <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Payment Photo (optional)</label>
+              <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Payment Photo (optional)</label>
               <input
                 type="file"
                 accept="image/*"
@@ -148,14 +148,14 @@ export default function FinanceAdmin() {
                   reader.onload = () => setProofPhoto(reader.result);
                   reader.readAsDataURL(file);
                 }}
-                className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                className="block w-full text-xs text-ink-soft file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-terracotta/5 file:text-terracotta-deep hover:file:bg-terracotta/10"
               />
               {proofPhoto && <p className="text-xs text-green-600 mt-1">Photo attached ✓</p>}
             </div>
           )}
           <button
             type="submit"
-            className="w-full bg-indigo-600 text-white font-medium p-2.5 rounded-lg text-sm hover:bg-indigo-700 transition"
+            className="w-full bg-terracotta text-white font-medium p-2.5 rounded-lg text-sm hover:bg-terracotta-deep transition"
           >
             Record Secure Payment
           </button>
