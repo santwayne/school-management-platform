@@ -14,7 +14,9 @@ router.post('/login', async (req, res) => {
 
   try {
     const result = await pool.query(
-      'SELECT id, school_id, name, email, role, password_hash FROM teachers WHERE email = $1',
+      `SELECT t.id, t.school_id, t.name, t.email, t.role, t.password_hash, s.status AS school_status
+       FROM teachers t JOIN schools s ON s.id = t.school_id
+       WHERE t.email = $1`,
       [email]
     );
     const user = result.rows[0];
@@ -23,6 +25,13 @@ router.post('/login', async (req, res) => {
     // wrong, so login can't be used to enumerate registered emails.
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    if (user.school_status === 'pending') {
+      return res.status(403).json({ error: 'Your school signup is awaiting approval. You will be able to log in once a Wayne E Solutions team member activates your account.' });
+    }
+    if (user.school_status === 'suspended') {
+      return res.status(403).json({ error: 'This school account is currently suspended. Contact Wayne E Solutions for help.' });
     }
 
     const token = jwt.sign(

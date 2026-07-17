@@ -26,6 +26,7 @@ import studentPortalRoutes from './routes/studentPortal.js';
 import feeCollectorsRoutes from './routes/feeCollectors.js';
 import feeIntakeRoutes from './routes/feeIntake.js';
 import paymentLinksRoutes from './routes/paymentLinks.js';
+import onboardingRoutes from './routes/onboarding.js';
 import './workers/gpsPollWorker.js';
 import './workers/teacherAttendanceAggregationWorker.js';
 import './workers/classNoteWorker.js';
@@ -83,6 +84,7 @@ app.use('/api/student', studentPortalRoutes);
 app.use('/api/fee-collectors', feeCollectorsRoutes);
 app.use('/api/fee-intake', feeIntakeRoutes);
 app.use('/api/payment-links', paymentLinksRoutes);
+app.use('/api/onboarding', onboardingRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {

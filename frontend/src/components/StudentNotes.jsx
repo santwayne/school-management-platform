@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { apiRequest } from '../api';
-import StudentNav from './StudentNav';
+import StudentShell from './StudentShell';
 
 export default function StudentNotes() {
   const [notes, setNotes] = useState([]);
@@ -77,8 +77,7 @@ export default function StudentNotes() {
   };
 
   return (
-    <div className="min-h-screen bg-cream font-sans">
-      <StudentNav />
+    <StudentShell>
       <div className="max-w-4xl w-full mx-auto px-4 py-6">
         <div className="flex items-end justify-between mb-4">
           <div>
@@ -143,6 +142,6 @@ export default function StudentNotes() {
           </div>
         )}
       </div>
-    </div>
+    </StudentShell>
   );
 }

@@ -69,12 +69,12 @@ export default function SuperAdminDashboard() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-8">
-      <h1 className="text-3xl font-bold text-gray-900">Super Admin — Schools</h1>
-      {error && <div className="p-3 bg-red-100 text-red-700 rounded">{error}</div>}
+      <h1 className="font-display text-3xl font-bold text-ink">Super Admin — Schools</h1>
+      {error && <div className="p-3 bg-red-100 text-destructive rounded">{error}</div>}
 
       {demoCreds && (
         <div className="p-4 bg-yellow-50 border border-yellow-300 rounded text-sm relative">
-          <button onClick={() => setDemoCreds(null)} className="absolute top-2 right-2 text-gray-500 font-bold">
+          <button onClick={() => setDemoCreds(null)} className="absolute top-2 right-2 text-ink-soft font-bold">
             ×
           </button>
           <h3 className="font-bold text-yellow-800 mb-2">Generated Demo Accounts</h3>
@@ -84,24 +84,24 @@ export default function SuperAdminDashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <form onSubmit={handleCreateSchool} className="bg-white p-6 rounded-lg shadow space-y-3 h-fit">
-          <h2 className="text-xl font-semibold">Add School</h2>
+          <h2 className="font-display text-xl font-semibold">Add School</h2>
           <input type="text" placeholder="School Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="w-full p-2 border rounded" />
           <input type="text" placeholder="Address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="w-full p-2 border rounded" />
           <input type="text" placeholder="School Contact Phone" value={form.contact_phone} onChange={(e) => setForm({ ...form, contact_phone: e.target.value })} className="w-full p-2 border rounded" />
           <hr />
-          <h3 className="text-sm font-medium text-gray-500">First Principal Login</h3>
+          <h3 className="text-sm font-medium text-ink-soft">First Principal Login</h3>
           <input type="text" placeholder="Principal Name" value={form.principal_name} onChange={(e) => setForm({ ...form, principal_name: e.target.value })} required className="w-full p-2 border rounded" />
           <input type="email" placeholder="Principal Email" value={form.principal_email} onChange={(e) => setForm({ ...form, principal_email: e.target.value })} required className="w-full p-2 border rounded" />
           <input type="text" placeholder="Principal Phone" value={form.principal_phone} onChange={(e) => setForm({ ...form, principal_phone: e.target.value })} required className="w-full p-2 border rounded" />
           <input type="password" placeholder="Principal Password" value={form.principal_password} onChange={(e) => setForm({ ...form, principal_password: e.target.value })} required className="w-full p-2 border rounded" />
-          <button type="submit" disabled={submitting} className="w-full py-2 bg-indigo-600 text-white rounded font-medium hover:bg-indigo-700 disabled:opacity-50">
+          <button type="submit" disabled={submitting} className="w-full py-2 bg-terracotta text-white rounded font-medium hover:bg-terracotta-deep disabled:opacity-50">
             {submitting ? 'Creating...' : 'Create School'}
           </button>
         </form>
 
         <div className="lg:col-span-2 bg-white rounded-lg shadow overflow-hidden">
-          <table className="w-full border-collapse text-left text-sm text-gray-500">
-            <thead className="bg-gray-50 text-xs font-semibold text-gray-700 uppercase">
+          <table className="w-full border-collapse text-left text-sm text-ink-soft">
+            <thead className="bg-cream text-xs font-semibold text-ink-soft uppercase">
               <tr>
                 <th className="px-6 py-4">School</th>
                 <th className="px-6 py-4">Status</th>
@@ -109,12 +109,12 @@ export default function SuperAdminDashboard() {
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-cream-deep/60">
               {schools.map((s) => (
-                <tr key={s.id} className="hover:bg-gray-50">
+                <tr key={s.id} className="hover:bg-cream">
                   <td className="px-6 py-4">
-                    <div className="font-semibold text-gray-900">{s.name}</div>
-                    <div className="text-xs text-gray-400">{s.address}</div>
+                    <div className="font-semibold text-ink">{s.name}</div>
+                    <div className="text-xs text-ink-soft">{s.address}</div>
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${s.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
@@ -122,8 +122,8 @@ export default function SuperAdminDashboard() {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-xs">
-                    <div>Teachers: <strong className="text-gray-900">{s.teacher_count}</strong></div>
-                    <div>Students: <strong className="text-gray-900">{s.student_count}</strong></div>
+                    <div>Teachers: <strong className="text-ink">{s.teacher_count}</strong></div>
+                    <div>Students: <strong className="text-ink">{s.student_count}</strong></div>
                   </td>
                   <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
                     <button onClick={() => toggleStatus(s.id, s.status)} className={`text-xs px-2 py-1 rounded font-medium ${s.status === 'active' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>

@@ -270,8 +270,11 @@ export default function Login() {
           </div>
         </div>
 
-        <div className="mt-5 text-center">
-          <Link to="/super-admin-login" className="text-xs text-ink-soft hover:text-ink transition">
+        <div className="mt-5 text-center space-y-1.5">
+          <p className="text-xs text-ink-soft">
+            New school? <Link to="/onboarding" className="text-terracotta-deep font-medium hover:text-terracotta">Set up Waynur</Link>
+          </p>
+          <Link to="/super-admin-login" className="text-xs text-ink-soft hover:text-ink transition block">
             Super Admin login
           </Link>
         </div>

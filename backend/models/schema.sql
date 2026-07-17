@@ -175,6 +175,7 @@ CREATE INDEX IF NOT EXISTS idx_tutor_sessions_student ON tutor_sessions(student_
 
 
 ALTER TABLE teachers ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(20);
+ALTER TABLE teachers ALTER COLUMN phone DROP NOT NULL;
 ALTER TABLE teachers ADD COLUMN IF NOT EXISTS whatsapp_opt_in_status VARCHAR(20) NOT NULL DEFAULT 'OPTED_OUT';
 
 CREATE TABLE IF NOT EXISTS class_notes (

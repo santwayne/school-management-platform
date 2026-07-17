@@ -92,8 +92,8 @@ router.patch('/schools/:id/status', requireAuth, requireSuperAdmin, async (req, 
   const { id } = req.params;
   const { status } = req.body;
 
-  if (!['active', 'suspended'].includes(status)) {
-    return res.status(400).json({ error: 'status must be active or suspended' });
+  if (!['active', 'suspended', 'pending'].includes(status)) {
+    return res.status(400).json({ error: 'status must be active, suspended, or pending' });
   }
 
   try {

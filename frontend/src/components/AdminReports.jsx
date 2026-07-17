@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { apiRequest } from '../api';
+import { useAuth } from '../AuthContext';
 
 const INR = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
-const TABS = [
+const ALL_TABS = [
   { key: 'attendance', label: 'Attendance' },
   { key: 'fees', label: 'Fee collection' },
   { key: 'payroll', label: 'Payroll register' },
@@ -24,7 +25,9 @@ function today() {
 }
 
 export default function AdminReports() {
-  const [tab, setTab] = useState('attendance');
+  const { user } = useAuth();
+  const TABS = user?.role === 'accountant' ? ALL_TABS.filter((t) => t.key !== 'attendance') : ALL_TABS;
+  const [tab, setTab] = useState(TABS[0].key);
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4">
       <div>

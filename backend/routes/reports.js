@@ -116,4 +116,101 @@ router.get('/payroll', requireAuth, requireFinance, async (req, res) => {
   }
 });
 
+// Daily attendance % trend, last 30 days — powers the Admin Home chart.
+router.get('/attendance-trend', requireAuth, async (req, res) => {
+  const school_id = req.user.school_id;
+  try {
+    const result = await pool.query(
+      `SELECT a.date,
+              ROUND(100.0 * COUNT(*) FILTER (WHERE a.status = 'present') / NULLIF(COUNT(*), 0), 1) AS pct
+       FROM attendance a
+       JOIN students s ON s.id = a.student_id
+       WHERE s.school_id = $1 AND a.date > CURRENT_DATE - INTERVAL '30 days'
+       GROUP BY a.date ORDER BY a.date`,
+      [school_id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Attendance trend error:', err);
+    res.status(500).json({ error: 'Failed to load attendance trend' });
+  }
+});
+
+// Daily fee collection total, last 30 days — powers the Admin Home chart.
+router.get('/fees-trend', requireAuth, requireFinance, async (req, res) => {
+  const school_id = req.user.school_id;
+  try {
+    const result = await pool.query(
+      `SELECT h.created_at::date AS date, SUM(h.amount_paid) AS total
+       FROM student_payment_history h
+       WHERE h.school_id = $1 AND h.created_at > CURRENT_DATE - INTERVAL '30 days'
+       GROUP BY h.created_at::date ORDER BY date`,
+      [school_id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Fees trend error:', err);
+    res.status(500).json({ error: 'Failed to load fees trend' });
+  }
+});
+
+// Single aggregate call for the Admin Home dashboard — stats strip + a real
+// activity feed assembled from actual events (payments, broadcasts,
+// homework posted). Deliberately does NOT include things with no real
+// backend yet (staff leave requests, granular per-teacher activity) —
+// see the PR notes for why those were left out rather than faked.
+router.get('/overview', requireAuth, async (req, res) => {
+  const school_id = req.user.school_id;
+  try {
+    const todayAttendance = await pool.query(
+      `SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE a.status = 'present') / NULLIF(COUNT(*), 0), 1) AS pct
+       FROM attendance a JOIN students s ON s.id = a.student_id
+       WHERE s.school_id = $1 AND a.date = CURRENT_DATE`,
+      [school_id]
+    );
+    const monthFees = await pool.query(
+      `SELECT COALESCE(SUM(amount_paid), 0) AS total FROM student_payment_history
+       WHERE school_id = $1 AND date_trunc('month', created_at) = date_trunc('month', CURRENT_DATE)`,
+      [school_id]
+    );
+    const broadcastsThisWeek = await pool.query(
+      `SELECT COALESCE(SUM(recipient_count), 0) AS total FROM broadcasts
+       WHERE school_id = $1 AND sent_at > CURRENT_DATE - INTERVAL '7 days'`,
+      [school_id]
+    );
+    const activeBuses = await pool.query('SELECT COUNT(*) FROM buses WHERE school_id = $1', [school_id]);
+    const doubtsThisWeek = await pool.query(
+      `SELECT COUNT(*) FROM student_doubts WHERE school_id = $1 AND created_at > CURRENT_DATE - INTERVAL '7 days'`,
+      [school_id]
+    );
+
+    const recentPayments = await pool.query(
+      `SELECT 'payment' AS type, s.name AS who, h.amount_paid AS amount, h.created_at AS when
+       FROM student_payment_history h JOIN students s ON s.id = h.student_id
+       WHERE h.school_id = $1 ORDER BY h.created_at DESC LIMIT 5`,
+      [school_id]
+    );
+    const recentBroadcasts = await pool.query(
+      `SELECT 'broadcast' AS type, audience_label AS who, recipient_count AS amount, sent_at AS when
+       FROM broadcasts WHERE school_id = $1 ORDER BY sent_at DESC LIMIT 5`,
+      [school_id]
+    );
+    const activity = [...recentPayments.rows, ...recentBroadcasts.rows]
+      .sort((a, b) => new Date(b.when) - new Date(a.when))
+      .slice(0, 8);
+
+    res.json({
+      attendance_today_pct: todayAttendance.rows[0].pct,
+      fees_this_month: monthFees.rows[0].total,
+      broadcasts_this_week: parseInt(broadcastsThisWeek.rows[0].total, 10),
+      active_buses: parseInt(activeBuses.rows[0].count, 10),
+      doubts_this_week: parseInt(doubtsThisWeek.rows[0].count, 10),
+      activity,
+    });
+  } catch (err) {
+    console.error('Overview error:', err);
+    res.status(500).json({ error: 'Failed to load overview' });
+  }
+});
+
 export default router;

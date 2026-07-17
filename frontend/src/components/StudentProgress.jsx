@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../api';
-import StudentNav from './StudentNav';
+import StudentShell from './StudentShell';
 
 export default function StudentProgress() {
   const [data, setData] = useState(null);
@@ -19,8 +19,7 @@ export default function StudentProgress() {
   const overall = totalAll ? Math.round((totalDone / totalAll) * 100) : 0;
 
   return (
-    <div className="min-h-screen bg-cream font-sans">
-      <StudentNav />
+    <StudentShell>
       <div className="max-w-2xl w-full mx-auto px-4 py-6 space-y-5">
         <div>
           <h1 className="font-display text-3xl text-ink">My Progress</h1>
@@ -76,6 +75,6 @@ export default function StudentProgress() {
           </>
         )}
       </div>
-    </div>
+    </StudentShell>
   );
 }

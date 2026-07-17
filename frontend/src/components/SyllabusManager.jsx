@@ -88,15 +88,15 @@ export default function SyllabusManager() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-8">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Academic Syllabus Planner</h1>
-        <button onClick={downloadTemplate} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded border">
+        <h1 className="font-display text-2xl font-bold text-ink">Academic Syllabus Planner</h1>
+        <button onClick={downloadTemplate} className="px-4 py-2 bg-cream-deep/40 hover:bg-cream-deep/60 text-ink-soft text-sm font-medium rounded border">
           Download CSV Template
         </button>
       </div>
 
       {message && <div className="p-3 bg-green-100 text-green-700 rounded text-sm">{message}</div>}
       {errors && (
-        <div className="p-3 bg-red-100 text-red-700 rounded text-sm space-y-1">
+        <div className="p-3 bg-red-100 text-destructive rounded text-sm space-y-1">
           {errors.message && <div>{errors.message}</div>}
           {errors.batchDetails && errors.batchDetails.map((f, i) => (
             <div key={i} className="text-xs font-mono">• Line index {f.index}: {f.error} ({f.row.chapter_name || 'unknown'})</div>
@@ -108,34 +108,34 @@ export default function SyllabusManager() {
         {/* Controls Column */}
         <div className="space-y-6">
           <div className="bg-white p-4 border rounded-lg shadow-sm space-y-3">
-            <h3 className="font-semibold text-gray-800">Bulk Stream Input</h3>
-            <input type="file" accept=".csv" onChange={handleFileUpload} className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+            <h3 className="font-semibold text-ink">Bulk Stream Input</h3>
+            <input type="file" accept=".csv" onChange={handleFileUpload} className="block w-full text-xs text-ink-soft file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-terracotta/5 file:text-terracotta-deep hover:file:bg-terracotta/10" />
           </div>
 
           <form onSubmit={handleManualSubmit} className="bg-white p-4 border rounded-lg shadow-sm space-y-3">
-            <h3 className="font-semibold text-gray-800">Add Entry Form</h3>
+            <h3 className="font-semibold text-ink">Add Entry Form</h3>
             <input type="number" placeholder="Class ID" value={manualForm.class_id} onChange={e => setManualForm({...manualForm, class_id: e.target.value})} required className="w-full p-2 border text-sm rounded" />
             <input type="text" placeholder="Subject ID (e.g. MATH101)" value={manualForm.subject_id} onChange={e => setManualForm({...manualForm, subject_id: e.target.value})} required className="w-full p-2 border text-sm rounded" />
             <input type="text" placeholder="Chapter ID (e.g. CH1)" value={manualForm.chapter_id} onChange={e => setManualForm({...manualForm, chapter_id: e.target.value})} required className="w-full p-2 border text-sm rounded" />
             <input type="text" placeholder="Chapter Structural Name" value={manualForm.chapter_name} onChange={e => setManualForm({...manualForm, chapter_name: e.target.value})} required className="w-full p-2 border text-sm rounded" />
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-xs text-gray-500">Target Start</label>
+                <label className="text-xs text-ink-soft">Target Start</label>
                 <input type="date" value={manualForm.target_start_date} onChange={e => setManualForm({...manualForm, target_start_date: e.target.value})} required className="w-full p-1 border text-sm rounded" />
               </div>
               <div>
-                <label className="text-xs text-gray-500">Target End</label>
+                <label className="text-xs text-ink-soft">Target End</label>
                 <input type="date" value={manualForm.target_end_date} onChange={e => setManualForm({...manualForm, target_end_date: e.target.value})} required className="w-full p-1 border text-sm rounded" />
               </div>
             </div>
-            <button type="submit" className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">Save Row Entry</button>
+            <button type="submit" className="w-full py-2 bg-terracotta hover:bg-terracotta-deep text-white rounded text-sm font-medium">Save Row Entry</button>
           </form>
         </div>
 
         {/* Display List Panel Table */}
         <div className="lg:col-span-2 bg-white border rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full border-collapse text-left text-sm text-gray-500">
-            <thead className="bg-gray-50 text-xs font-semibold text-gray-700 uppercase">
+          <table className="w-full border-collapse text-left text-sm text-ink-soft">
+            <thead className="bg-cream text-xs font-semibold text-ink-soft uppercase">
               <tr>
                 <th className="p-3">Scope Context</th>
                 <th className="p-3">Chapter</th>
@@ -143,21 +143,21 @@ export default function SyllabusManager() {
                 <th className="p-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-cream-deep/60">
               {syllabusList.map(item => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="p-3 font-medium text-gray-900">
-                    Cls {item.class_id} <span className="text-gray-400 font-normal">| {item.subject_id}</span>
+                <tr key={item.id} className="hover:bg-cream">
+                  <td className="p-3 font-medium text-ink">
+                    Cls {item.class_id} <span className="text-ink-soft font-normal">| {item.subject_id}</span>
                   </td>
                   <td className="p-3">
-                    <span className="font-mono text-xs bg-gray-100 px-1 py-0.5 rounded mr-1">{item.chapter_id}</span>
+                    <span className="font-mono text-xs bg-cream-deep/40 px-1 py-0.5 rounded mr-1">{item.chapter_id}</span>
                     {item.chapter_name}
                   </td>
                   <td className="p-3 text-xs">
                     {new Date(item.target_start_date).toLocaleDateString()} - {new Date(item.target_end_date).toLocaleDateString()}
                   </td>
                   <td className="p-3 text-right">
-                    <button onClick={() => handleDelete(item.id)} className="text-xs px-2 py-1 text-red-600 hover:bg-red-50 rounded">Delete</button>
+                    <button onClick={() => handleDelete(item.id)} className="text-xs px-2 py-1 text-destructive hover:bg-destructive/10 rounded">Delete</button>
                   </td>
                 </tr>
               ))}

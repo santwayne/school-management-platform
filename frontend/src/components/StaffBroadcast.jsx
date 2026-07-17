@@ -25,10 +25,10 @@ export default function StaffBroadcast() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Staff Broadcast</h1>
-      <p className="text-sm text-gray-500">Sends a WhatsApp message to every teacher who has opted in — not everyone gets this automatically.</p>
+      <h1 className="font-display text-2xl font-bold text-ink">Staff Broadcast</h1>
+      <p className="text-sm text-ink-soft">Sends a WhatsApp message to every teacher who has opted in — not everyone gets this automatically.</p>
 
-      {error && <div className="p-3 bg-red-100 text-red-700 text-sm rounded">{error}</div>}
+      {error && <div className="p-3 bg-red-100 text-destructive text-sm rounded">{error}</div>}
       {result && (
         <div className="p-3 bg-green-100 text-green-700 text-sm rounded">
           Sent to {result.sent_to} of {result.total_opted_in} opted-in teachers.
@@ -44,7 +44,7 @@ export default function StaffBroadcast() {
           rows={4}
           className="w-full p-2 border text-sm rounded"
         />
-        <button type="submit" disabled={sending} className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium disabled:opacity-50">
+        <button type="submit" disabled={sending} className="w-full py-2 bg-terracotta hover:bg-terracotta-deep text-white rounded text-sm font-medium disabled:opacity-50">
           {sending ? 'Sending...' : 'Send to Opted-In Teachers'}
         </button>
       </form>
