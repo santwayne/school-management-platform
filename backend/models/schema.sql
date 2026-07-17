@@ -387,3 +387,137 @@ CREATE INDEX IF NOT EXISTS idx_attendance_school_date ON attendance(school_id, d
 CREATE INDEX IF NOT EXISTS idx_notification_log_status ON notification_log(status);
 CREATE INDEX IF NOT EXISTS idx_performance_flagged ON performance_snapshots(school_id, flagged);
 CREATE INDEX IF NOT EXISTS idx_doubts_school ON student_doubts(school_id);
+
+-- ---------- Billing (school-level plan view) ----------
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS plan VARCHAR(20) NOT NULL DEFAULT 'starter'; -- 'starter' | 'growth' | 'district'
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS plan_renews_at DATE;
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS student_limit INT NOT NULL DEFAULT 100;
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS accountant_seat_limit INT NOT NULL DEFAULT 0;
+
+-- ---------- Settings (branding, WhatsApp business number, notification prefs) ----------
+CREATE TABLE IF NOT EXISTS school_settings (
+    school_id INT PRIMARY KEY REFERENCES schools(id) ON DELETE CASCADE,
+    logo_url TEXT,
+    whatsapp_business_number VARCHAR(20),
+    whatsapp_connected BOOLEAN NOT NULL DEFAULT FALSE,
+    notify_attendance BOOLEAN NOT NULL DEFAULT TRUE,
+    notify_homework BOOLEAN NOT NULL DEFAULT TRUE,
+    notify_fees BOOLEAN NOT NULL DEFAULT TRUE,
+    notify_payroll BOOLEAN NOT NULL DEFAULT TRUE,
+    petty_cash_accountant_limit NUMERIC(10,2) NOT NULL DEFAULT 5000,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------- Communications (WhatsApp broadcast log) ----------
+CREATE TABLE IF NOT EXISTS broadcasts (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    audience VARCHAR(50) NOT NULL, -- 'all_parents' | 'all_staff' | 'class:<id>' | 'student:<id>'
+    audience_label VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    sent_by INT REFERENCES teachers(id),
+    recipient_count INT NOT NULL DEFAULT 0,
+    delivered_count INT NOT NULL DEFAULT 0,
+    failed_count INT NOT NULL DEFAULT 0,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_broadcasts_school ON broadcasts(school_id);
+
+-- ---------- Reports (lightweight generation log for audit trail) ----------
+CREATE TABLE IF NOT EXISTS report_generations (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    report_type VARCHAR(50) NOT NULL, -- 'attendance' | 'fees' | 'payroll'
+    generated_by INT REFERENCES teachers(id),
+    date_from DATE,
+    date_to DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------- Grading (extend existing ai_graded_submissions with human review) ----------
+ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS teacher_confirmed BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS final_score NUMERIC(4,1);
+ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS confirmed_by INT REFERENCES teachers(id);
+ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP;
+
+-- ---------- Student Portal: Homework, Notes, Progress, Rewards ----------
+CREATE TABLE IF NOT EXISTS homework (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    subject_id VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    due_date DATE,
+    created_by INT REFERENCES teachers(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_homework_class ON homework(class_id);
+
+CREATE TABLE IF NOT EXISTS homework_completions (
+    id SERIAL PRIMARY KEY,
+    homework_id INT NOT NULL REFERENCES homework(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (homework_id, student_id)
+);
+
+CREATE TABLE IF NOT EXISTS student_notes (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL DEFAULT 'Untitled note',
+    subject_id VARCHAR(50),
+    content TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_student_notes_student ON student_notes(student_id);
+
+-- ---------- Fee collectors + WhatsApp cash intake ----------
+CREATE TABLE IF NOT EXISTS fee_collectors (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    whatsapp_number VARCHAR(20) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Nothing here is ever auto-marked as a real payment. AI reads the slip photo
+-- and proposes an amount/student match; a human (Accountant/Principal) must
+-- confirm before it becomes a real student_payment_history row.
+CREATE TABLE IF NOT EXISTS whatsapp_cash_intake (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    fee_collector_id INT NOT NULL REFERENCES fee_collectors(id),
+    photo_base64 TEXT NOT NULL,
+    ai_extracted_amount NUMERIC(10,2),
+    ai_extracted_student_hint VARCHAR(255),
+    matched_student_id INT REFERENCES students(id),
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING | CONFIRMED | REJECTED
+    confirmed_amount NUMERIC(10,2),
+    confirmed_by INT REFERENCES teachers(id),
+    confirmed_at TIMESTAMP,
+    payment_history_id INT REFERENCES student_payment_history(id),
+    received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_cash_school ON whatsapp_cash_intake(school_id);
+
+-- ---------- Online fee payment links (Razorpay) ----------
+-- reference_id is what makes "which parent paid" answerable — it's embedded
+-- in the Razorpay link and comes back on the webhook, so payments never need
+-- manual matching even when amounts collide.
+CREATE TABLE IF NOT EXISTS fee_payment_links (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    amount NUMERIC(10,2) NOT NULL,
+    reference_id VARCHAR(100) UNIQUE NOT NULL,
+    razorpay_link_id VARCHAR(100),
+    razorpay_link_url TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'CREATED', -- CREATED | PAID | EXPIRED | CANCELLED
+    payment_history_id INT REFERENCES student_payment_history(id),
+    created_by INT REFERENCES teachers(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    paid_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_fee_links_school ON fee_payment_links(school_id);

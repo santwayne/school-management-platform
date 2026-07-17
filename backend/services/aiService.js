@@ -32,6 +32,44 @@ export async function generateAIHint(studentQuery) {
   }
 }
 
+// Reads a photographed cash receipt/slip and proposes an amount + student
+// name. This is ONLY ever a proposal — the whatsapp_cash_intake row stays
+// PENDING until a human (Accountant/Principal) confirms it in the review
+// queue. A misread number here is real money, so nothing downstream treats
+// this as final.
+export async function extractCashSlip(base64Image, mimeType) {
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-5',
+      max_tokens: 300,
+      system:
+        'You read photos of handwritten or printed school fee cash receipts. ' +
+        'Extract the rupee amount and, if legible, the student name or roll number. ' +
+        'Respond ONLY as JSON: {"amount": <number or null>, "student_hint": <string or null>, "confidence": "high"|"medium"|"low"}. ' +
+        'If the amount is not clearly legible, set amount to null rather than guessing.',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Image } },
+            { type: 'text', text: 'Extract the fee amount and student name/roll number from this receipt.' },
+          ],
+        },
+      ],
+    });
+    const textBlock = response.content.find((block) => block.type === 'text');
+    if (!textBlock) return { amount: null, student_hint: null, confidence: 'low' };
+    try {
+      return JSON.parse(textBlock.text);
+    } catch {
+      return { amount: null, student_hint: null, confidence: 'low' };
+    }
+  } catch (err) {
+    console.error('Cash slip extraction failed:', err.message);
+    return { amount: null, student_hint: null, confidence: 'low' };
+  }
+}
+
 // Chapter tagging so recurring doubts can be surfaced to the teacher
 // (Section 4 of the spec: same doubt across many students => re-teach signal).
 export async function tagDoubtChapter(studentQuery, syllabusChapters = []) {

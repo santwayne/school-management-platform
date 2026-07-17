@@ -1,62 +1,78 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './components/Login';
-import AttendanceForm from './components/AttendanceForm';
+import TeacherPortal from './components/TeacherPortal';
 import PrincipalDashboard from './components/PrincipalDashboard';
 import FinanceAdmin from './components/FinanceAdmin';
 import AIGradingPrototype from './components/AIGradingPrototype';
-import StudentLogin from './components/StudentLogin';
-import TutorChat from './components/TutorChat';
 import SuperAdminLogin from './components/SuperAdminLogin';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
 import ClassManager from './components/ClassManager';
 import SyllabusManager from './components/SyllabusManager';
-import BiometricDeviceManager from './components/BiometricDeviceManager';
-import TeacherAttendanceDashboard from './components/TeacherAttendanceDashboard';
+import AdminAttendance from './components/AdminAttendance';
 import ClassNotesComposer from './components/ClassNotesComposer';
 import StaffBroadcast from './components/StaffBroadcast';
-import PayrollManager from './components/PayrollManager';
-import BusTracker from './components/BusTracker';
+import AdminPayroll from './components/AdminPayroll';
+import AdminTransport from './components/AdminTransport';
+import StudentTutor from './components/StudentTutor';
+import AdminReports from './components/AdminReports';
+import AdminSettings from './components/AdminSettings';
+import AdminCommunications from './components/AdminCommunications';
+import AdminBilling from './components/AdminBilling';
+import FeeCollectionHub from './components/FeeCollectionHub';
+import StudentHomework from './components/StudentHomework';
+import StudentNotes from './components/StudentNotes';
+import StudentProgress from './components/StudentProgress';
+import StudentRewards from './components/StudentRewards';
+
+// Pages ported to the new Waynur design bring their own header/nav chrome —
+// stacking the old NavBar on top of them would double up navigation.
+const SELF_CHROME_PREFIXES = ['/teacher', '/tutor', '/homework', '/notes', '/progress', '/rewards'];
+
+function homeFor(role) {
+  if (role === 'student') return '/tutor';
+  if (role === 'super_admin') return '/super-admin';
+  if (role === 'accountant') return '/accountant/fee-collection';
+  return '/teacher';
+}
 
 function NavBar() {
   const { user, logout } = useAuth();
+  const location = useLocation();
   if (!user) return null;
-
-  if (user.role === 'student') {
-    return (
-      <nav className="bg-white border-b px-6 py-3 flex items-center justify-between">
-        <div className="flex gap-6 text-sm font-medium text-gray-700">
-          <Link to="/tutor" className="hover:text-indigo-600">Ask for Help</Link>
-        </div>
-        <div className="flex items-center gap-3 text-sm text-gray-500">
-          <span>{user.name}</span>
-          <button onClick={logout} className="text-indigo-600 font-medium hover:text-indigo-800">Log out</button>
-        </div>
-      </nav>
-    );
-  }
+  if (SELF_CHROME_PREFIXES.some((p) => location.pathname.startsWith(p))) return null;
+  if (user.role === 'student') return null;
 
   return (
-    <nav className="bg-white border-b px-6 py-3 flex items-center justify-between">
-      <div className="flex gap-6 text-sm font-medium text-gray-700">
-        <Link to="/attendance" className="hover:text-indigo-600">Attendance</Link>
+    <nav className="bg-white border-b px-6 py-3 flex items-center justify-between flex-wrap gap-y-2">
+      <div className="flex gap-5 text-sm font-medium text-gray-700 flex-wrap">
+        {user.role !== 'accountant' && <Link to="/teacher" className="hover:text-indigo-600">Teacher Portal</Link>}
         {user.role === 'principal' && (
           <>
             <Link to="/dashboard" className="hover:text-indigo-600">Dashboard</Link>
             <Link to="/finance" className="hover:text-indigo-600">Finance</Link>
             <Link to="/classes" className="hover:text-indigo-600">Classes</Link>
             <Link to="/syllabus" className="hover:text-indigo-600">Syllabus</Link>
-            <Link to="/teacher-attendance" className="hover:text-indigo-600">Staff Attendance</Link>
-            <Link to="/biometric-devices" className="hover:text-indigo-600">Devices</Link>
+            <Link to="/admin/attendance" className="hover:text-indigo-600">Attendance</Link>
           </>
         )}
-        <Link to="/grading" className="hover:text-indigo-600">AI Grading</Link>
-        <Link to="/class-notes" className="hover:text-indigo-600">Class Notes</Link>
-            {user.role === 'principal' && <Link to="/staff-broadcast" className="hover:text-indigo-600">Staff Broadcast</Link>}
-            {user.role === 'principal' && <Link to="/payroll" className="hover:text-indigo-600">Payroll</Link>}
-            {user.role === 'principal' && <Link to="/buses" className="hover:text-indigo-600">Buses</Link>}
+        {user.role !== 'accountant' && <Link to="/grading" className="hover:text-indigo-600">AI Grading</Link>}
+        {user.role !== 'accountant' && <Link to="/class-notes" className="hover:text-indigo-600">Class Notes</Link>}
+        {user.role === 'principal' && <Link to="/staff-broadcast" className="hover:text-indigo-600">Staff Broadcast</Link>}
+        {user.role === 'principal' && <Link to="/admin/payroll" className="hover:text-indigo-600">Payroll</Link>}
+        {user.role === 'principal' && <Link to="/admin/transport" className="hover:text-indigo-600">Transport</Link>}
+        {(user.role === 'principal' || user.role === 'accountant') && <Link to="/admin/reports" className="hover:text-indigo-600">Reports</Link>}
+        {user.role === 'principal' && <Link to="/admin/communications" className="hover:text-indigo-600">Communications</Link>}
+        {user.role === 'principal' && <Link to="/admin/billing" className="hover:text-indigo-600">Billing</Link>}
+        {user.role === 'principal' && <Link to="/admin/settings" className="hover:text-indigo-600">Settings</Link>}
+        {user.role === 'accountant' && (
+          <>
+            <Link to="/accountant/fee-collection" className="hover:text-indigo-600">Fee Collection</Link>
+            <Link to="/accountant/payroll" className="hover:text-indigo-600">Petty Cash &amp; Payroll</Link>
+          </>
+        )}
       </div>
       <div className="flex items-center gap-3 text-sm text-gray-500">
         <span>{user.name} ({user.role})</span>
@@ -69,9 +85,7 @@ function NavBar() {
 function HomeRedirect() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === 'student') return <Navigate to="/tutor" replace />;
-  if (user.role === 'super_admin') return <Navigate to="/super-admin" replace />;
-  return <Navigate to="/attendance" replace />;
+  return <Navigate to={homeFor(user.role)} replace />;
 }
 
 function AppRoutes() {
@@ -80,20 +94,29 @@ function AppRoutes() {
       <NavBar />
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/student-login" element={<StudentLogin />} />
-        <Route path="/attendance" element={<ProtectedRoute><AttendanceForm /></ProtectedRoute>} />
+        <Route path="/student-login" element={<Navigate to="/login" replace />} />
+        <Route path="/teacher" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherPortal /></ProtectedRoute>} />
         <Route path="/dashboard" element={<ProtectedRoute principalOnly><PrincipalDashboard /></ProtectedRoute>} />
         <Route path="/finance" element={<ProtectedRoute principalOnly><FinanceAdmin /></ProtectedRoute>} />
         <Route path="/classes" element={<ProtectedRoute principalOnly><ClassManager /></ProtectedRoute>} />
         <Route path="/syllabus" element={<ProtectedRoute principalOnly><SyllabusManager /></ProtectedRoute>} />
-        <Route path="/biometric-devices" element={<ProtectedRoute principalOnly><BiometricDeviceManager /></ProtectedRoute>} />
-        <Route path="/teacher-attendance" element={<ProtectedRoute principalOnly><TeacherAttendanceDashboard /></ProtectedRoute>} />
+        <Route path="/admin/attendance" element={<ProtectedRoute principalOnly><AdminAttendance /></ProtectedRoute>} />
         <Route path="/class-notes" element={<ProtectedRoute teacherOrPrincipalOnly><ClassNotesComposer /></ProtectedRoute>} />
         <Route path="/staff-broadcast" element={<ProtectedRoute principalOnly><StaffBroadcast /></ProtectedRoute>} />
-        <Route path="/payroll" element={<ProtectedRoute principalOnly><PayrollManager /></ProtectedRoute>} />
-        <Route path="/buses" element={<ProtectedRoute principalOnly><BusTracker /></ProtectedRoute>} />
+        <Route path="/admin/payroll" element={<ProtectedRoute principalOnly><AdminPayroll /></ProtectedRoute>} />
+        <Route path="/admin/transport" element={<ProtectedRoute principalOnly><AdminTransport /></ProtectedRoute>} />
+        <Route path="/admin/reports" element={<ProtectedRoute financeOnly><AdminReports /></ProtectedRoute>} />
+        <Route path="/admin/settings" element={<ProtectedRoute principalOnly><AdminSettings /></ProtectedRoute>} />
+        <Route path="/admin/communications" element={<ProtectedRoute principalOnly><AdminCommunications /></ProtectedRoute>} />
+        <Route path="/admin/billing" element={<ProtectedRoute principalOnly><AdminBilling /></ProtectedRoute>} />
+        <Route path="/accountant/fee-collection" element={<ProtectedRoute accountantOnly><FeeCollectionHub /></ProtectedRoute>} />
+        <Route path="/accountant/payroll" element={<ProtectedRoute accountantOnly><AdminPayroll /></ProtectedRoute>} />
         <Route path="/grading" element={<ProtectedRoute><AIGradingPrototype /></ProtectedRoute>} />
-        <Route path="/tutor" element={<ProtectedRoute studentOnly><TutorChat /></ProtectedRoute>} />
+        <Route path="/tutor" element={<ProtectedRoute studentOnly><StudentTutor /></ProtectedRoute>} />
+        <Route path="/homework" element={<ProtectedRoute studentOnly><StudentHomework /></ProtectedRoute>} />
+        <Route path="/notes" element={<ProtectedRoute studentOnly><StudentNotes /></ProtectedRoute>} />
+        <Route path="/progress" element={<ProtectedRoute studentOnly><StudentProgress /></ProtectedRoute>} />
+        <Route path="/rewards" element={<ProtectedRoute studentOnly><StudentRewards /></ProtectedRoute>} />
         <Route path="/super-admin-login" element={<SuperAdminLogin />} />
         <Route path="/super-admin" element={<ProtectedRoute superAdminOnly><SuperAdminDashboard /></ProtectedRoute>} />
         <Route path="*" element={<HomeRedirect />} />
