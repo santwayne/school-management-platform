@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './components/Login';
@@ -17,6 +17,7 @@ import StaffBroadcast from './components/StaffBroadcast';
 import AdminPayroll from './components/AdminPayroll';
 import AdminTransport from './components/AdminTransport';
 import StudentTutor from './components/StudentTutor';
+import StudentHome from './components/StudentHome';
 import AdminReports from './components/AdminReports';
 import AdminSettings from './components/AdminSettings';
 import AdminCommunications from './components/AdminCommunications';
@@ -26,60 +27,26 @@ import StudentHomework from './components/StudentHomework';
 import StudentNotes from './components/StudentNotes';
 import StudentProgress from './components/StudentProgress';
 import StudentRewards from './components/StudentRewards';
+import AdminShell from './components/AdminShell';
+import AccountantShell from './components/AccountantShell';
+import SuperAdminShell from './components/SuperAdminShell';
 
-// Pages ported to the new Waynur design bring their own header/nav chrome —
-// stacking the old NavBar on top of them would double up navigation.
-const SELF_CHROME_PREFIXES = ['/teacher', '/tutor', '/homework', '/notes', '/progress', '/rewards'];
+// Every role now has its own sidebar shell (matches the approved Lovable
+// designs) — Admin/Accountant/Student/Super Admin pages render inside their
+// shell, wrapped once here so individual page components stay shell-agnostic.
+// Teacher Portal intentionally has no shell — it's the deliberately minimal
+// WhatsApp-first surface, not meant to carry the full sidebar chrome.
+const inShell = (Shell, Page) => (
+  <Shell>
+    <Page />
+  </Shell>
+);
 
 function homeFor(role) {
-  if (role === 'student') return '/tutor';
+  if (role === 'student') return '/student';
   if (role === 'super_admin') return '/super-admin';
   if (role === 'accountant') return '/accountant/fee-collection';
   return '/teacher';
-}
-
-function NavBar() {
-  const { user, logout } = useAuth();
-  const location = useLocation();
-  if (!user) return null;
-  if (SELF_CHROME_PREFIXES.some((p) => location.pathname.startsWith(p))) return null;
-  if (user.role === 'student') return null;
-
-  return (
-    <nav className="bg-white border-b px-6 py-3 flex items-center justify-between flex-wrap gap-y-2">
-      <div className="flex gap-5 text-sm font-medium text-gray-700 flex-wrap">
-        {user.role !== 'accountant' && <Link to="/teacher" className="hover:text-indigo-600">Teacher Portal</Link>}
-        {user.role === 'principal' && (
-          <>
-            <Link to="/dashboard" className="hover:text-indigo-600">Dashboard</Link>
-            <Link to="/finance" className="hover:text-indigo-600">Finance</Link>
-            <Link to="/classes" className="hover:text-indigo-600">Classes</Link>
-            <Link to="/syllabus" className="hover:text-indigo-600">Syllabus</Link>
-            <Link to="/admin/attendance" className="hover:text-indigo-600">Attendance</Link>
-          </>
-        )}
-        {user.role !== 'accountant' && <Link to="/grading" className="hover:text-indigo-600">AI Grading</Link>}
-        {user.role !== 'accountant' && <Link to="/class-notes" className="hover:text-indigo-600">Class Notes</Link>}
-        {user.role === 'principal' && <Link to="/staff-broadcast" className="hover:text-indigo-600">Staff Broadcast</Link>}
-        {user.role === 'principal' && <Link to="/admin/payroll" className="hover:text-indigo-600">Payroll</Link>}
-        {user.role === 'principal' && <Link to="/admin/transport" className="hover:text-indigo-600">Transport</Link>}
-        {(user.role === 'principal' || user.role === 'accountant') && <Link to="/admin/reports" className="hover:text-indigo-600">Reports</Link>}
-        {user.role === 'principal' && <Link to="/admin/communications" className="hover:text-indigo-600">Communications</Link>}
-        {user.role === 'principal' && <Link to="/admin/billing" className="hover:text-indigo-600">Billing</Link>}
-        {user.role === 'principal' && <Link to="/admin/settings" className="hover:text-indigo-600">Settings</Link>}
-        {user.role === 'accountant' && (
-          <>
-            <Link to="/accountant/fee-collection" className="hover:text-indigo-600">Fee Collection</Link>
-            <Link to="/accountant/payroll" className="hover:text-indigo-600">Petty Cash &amp; Payroll</Link>
-          </>
-        )}
-      </div>
-      <div className="flex items-center gap-3 text-sm text-gray-500">
-        <span>{user.name} ({user.role})</span>
-        <button onClick={logout} className="text-indigo-600 font-medium hover:text-indigo-800">Log out</button>
-      </div>
-    </nav>
-  );
 }
 
 function HomeRedirect() {
@@ -91,34 +58,40 @@ function HomeRedirect() {
 function AppRoutes() {
   return (
     <BrowserRouter>
-      <NavBar />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/student-login" element={<Navigate to="/login" replace />} />
+
         <Route path="/teacher" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherPortal /></ProtectedRoute>} />
-        <Route path="/dashboard" element={<ProtectedRoute principalOnly><PrincipalDashboard /></ProtectedRoute>} />
-        <Route path="/finance" element={<ProtectedRoute principalOnly><FinanceAdmin /></ProtectedRoute>} />
-        <Route path="/classes" element={<ProtectedRoute principalOnly><ClassManager /></ProtectedRoute>} />
-        <Route path="/syllabus" element={<ProtectedRoute principalOnly><SyllabusManager /></ProtectedRoute>} />
-        <Route path="/admin/attendance" element={<ProtectedRoute principalOnly><AdminAttendance /></ProtectedRoute>} />
-        <Route path="/class-notes" element={<ProtectedRoute teacherOrPrincipalOnly><ClassNotesComposer /></ProtectedRoute>} />
-        <Route path="/staff-broadcast" element={<ProtectedRoute principalOnly><StaffBroadcast /></ProtectedRoute>} />
-        <Route path="/admin/payroll" element={<ProtectedRoute principalOnly><AdminPayroll /></ProtectedRoute>} />
-        <Route path="/admin/transport" element={<ProtectedRoute principalOnly><AdminTransport /></ProtectedRoute>} />
-        <Route path="/admin/reports" element={<ProtectedRoute financeOnly><AdminReports /></ProtectedRoute>} />
-        <Route path="/admin/settings" element={<ProtectedRoute principalOnly><AdminSettings /></ProtectedRoute>} />
-        <Route path="/admin/communications" element={<ProtectedRoute principalOnly><AdminCommunications /></ProtectedRoute>} />
-        <Route path="/admin/billing" element={<ProtectedRoute principalOnly><AdminBilling /></ProtectedRoute>} />
-        <Route path="/accountant/fee-collection" element={<ProtectedRoute accountantOnly><FeeCollectionHub /></ProtectedRoute>} />
-        <Route path="/accountant/payroll" element={<ProtectedRoute accountantOnly><AdminPayroll /></ProtectedRoute>} />
-        <Route path="/grading" element={<ProtectedRoute><AIGradingPrototype /></ProtectedRoute>} />
+
+        <Route path="/dashboard" element={<ProtectedRoute principalOnly>{inShell(AdminShell, PrincipalDashboard)}</ProtectedRoute>} />
+        <Route path="/finance" element={<ProtectedRoute principalOnly>{inShell(AdminShell, FinanceAdmin)}</ProtectedRoute>} />
+        <Route path="/classes" element={<ProtectedRoute principalOnly>{inShell(AdminShell, ClassManager)}</ProtectedRoute>} />
+        <Route path="/syllabus" element={<ProtectedRoute principalOnly>{inShell(AdminShell, SyllabusManager)}</ProtectedRoute>} />
+        <Route path="/admin/attendance" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminAttendance)}</ProtectedRoute>} />
+        <Route path="/staff-broadcast" element={<ProtectedRoute principalOnly>{inShell(AdminShell, StaffBroadcast)}</ProtectedRoute>} />
+        <Route path="/admin/payroll" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminPayroll)}</ProtectedRoute>} />
+        <Route path="/admin/transport" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminTransport)}</ProtectedRoute>} />
+        <Route path="/admin/settings" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminSettings)}</ProtectedRoute>} />
+        <Route path="/admin/communications" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminCommunications)}</ProtectedRoute>} />
+        <Route path="/admin/billing" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminBilling)}</ProtectedRoute>} />
+        <Route path="/admin/reports" element={<ProtectedRoute financeOnly>{inShell(AdminShell, AdminReports)}</ProtectedRoute>} />
+        <Route path="/grading" element={<ProtectedRoute>{inShell(AdminShell, AIGradingPrototype)}</ProtectedRoute>} />
+        <Route path="/class-notes" element={<ProtectedRoute teacherOrPrincipalOnly>{inShell(AdminShell, ClassNotesComposer)}</ProtectedRoute>} />
+
+        <Route path="/accountant/fee-collection" element={<ProtectedRoute accountantOnly>{inShell(AccountantShell, FeeCollectionHub)}</ProtectedRoute>} />
+        <Route path="/accountant/payroll" element={<ProtectedRoute accountantOnly>{inShell(AccountantShell, AdminPayroll)}</ProtectedRoute>} />
+
+        <Route path="/student" element={<ProtectedRoute studentOnly><StudentHome /></ProtectedRoute>} />
         <Route path="/tutor" element={<ProtectedRoute studentOnly><StudentTutor /></ProtectedRoute>} />
         <Route path="/homework" element={<ProtectedRoute studentOnly><StudentHomework /></ProtectedRoute>} />
         <Route path="/notes" element={<ProtectedRoute studentOnly><StudentNotes /></ProtectedRoute>} />
         <Route path="/progress" element={<ProtectedRoute studentOnly><StudentProgress /></ProtectedRoute>} />
         <Route path="/rewards" element={<ProtectedRoute studentOnly><StudentRewards /></ProtectedRoute>} />
+
         <Route path="/super-admin-login" element={<SuperAdminLogin />} />
-        <Route path="/super-admin" element={<ProtectedRoute superAdminOnly><SuperAdminDashboard /></ProtectedRoute>} />
+        <Route path="/super-admin" element={<ProtectedRoute superAdminOnly>{inShell(SuperAdminShell, SuperAdminDashboard)}</ProtectedRoute>} />
+
         <Route path="*" element={<HomeRedirect />} />
       </Routes>
     </BrowserRouter>
@@ -128,7 +101,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-cream">
         <AppRoutes />
       </div>
     </AuthProvider>

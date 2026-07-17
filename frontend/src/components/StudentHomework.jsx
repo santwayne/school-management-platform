@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../api';
-import StudentNav from './StudentNav';
+import StudentShell from './StudentShell';
 
 export default function StudentHomework() {
   const [items, setItems] = useState([]);
@@ -39,8 +39,7 @@ export default function StudentHomework() {
   const doneCount = items.filter((h) => h.done).length;
 
   return (
-    <div className="min-h-screen bg-cream font-sans">
-      <StudentNav />
+    <StudentShell>
       <div className="max-w-2xl w-full mx-auto px-4 py-6 space-y-4">
         <div className="flex items-end justify-between flex-wrap gap-3">
           <div>
@@ -91,6 +90,6 @@ export default function StudentHomework() {
           </div>
         )}
       </div>
-    </div>
+    </StudentShell>
   );
 }

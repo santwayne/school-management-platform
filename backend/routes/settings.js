@@ -16,7 +16,8 @@ router.get('/', requireAuth, async (req, res) => {
         [school_id]
       );
     }
-    res.json(result.rows[0]);
+    const schoolRes = await pool.query('SELECT name FROM schools WHERE id = $1', [school_id]);
+    res.json({ ...result.rows[0], school_name: schoolRes.rows[0]?.name || null });
   } catch (err) {
     console.error('Settings fetch error:', err);
     res.status(500).json({ error: 'Failed to fetch settings' });

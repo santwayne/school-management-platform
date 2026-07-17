@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Send, Mic, Keyboard, Sparkles, RotateCcw, LogOut } from 'lucide-react';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
-import StudentNav from './StudentNav';
+import StudentShell from './StudentShell';
 
 const SUBJECTS = [
   { key: 'math', name: 'Math', emoji: '🧮' },
@@ -72,9 +72,8 @@ export default function StudentTutor() {
   }
 
   return (
-    <div className="min-h-screen bg-cream font-sans flex flex-col">
-      <StudentNav />
-      <div className="max-w-2xl w-full mx-auto flex flex-col h-screen px-4">
+    <StudentShell>
+      <div className="max-w-2xl w-full mx-auto flex flex-col h-[75vh] px-0">
         <div className="flex flex-wrap items-center gap-3 pt-4 pb-4 border-b border-cream-deep/60">
           <div>
             <h1 className="font-display text-2xl text-ink">Ask AI Tutor</h1>
@@ -209,6 +208,6 @@ export default function StudentTutor() {
           )}
         </div>
       </div>
-    </div>
+    </StudentShell>
   );
 }

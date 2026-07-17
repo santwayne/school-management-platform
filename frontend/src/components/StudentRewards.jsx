@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../api';
-import StudentNav from './StudentNav';
+import StudentShell from './StudentShell';
 
 const BADGE_EMOJI = { streak_5: '🔥', streak_10: '🏆', perfect_week: '🎯', quiz_master: '💯' };
 
@@ -17,8 +17,7 @@ export default function StudentRewards() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-cream font-sans">
-      <StudentNav />
+    <StudentShell>
       <div className="max-w-2xl w-full mx-auto px-4 py-6 space-y-5">
         <div>
           <h1 className="font-display text-3xl text-ink">Rewards</h1>
@@ -79,6 +78,6 @@ export default function StudentRewards() {
           </>
         )}
       </div>
-    </div>
+    </StudentShell>
   );
 }
