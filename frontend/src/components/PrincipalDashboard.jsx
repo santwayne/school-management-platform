@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api';
 
 export default function PrincipalDashboard() {
+  const navigate = useNavigate();
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -65,7 +67,7 @@ export default function PrincipalDashboard() {
               </div>
 
               <div className="mt-4 pt-3 border-t border-cream-deep/60 flex justify-end">
-                <button className="text-sm font-semibold text-terracotta-deep hover:text-terracotta transition">
+                <button onClick={() => navigate('/syllabus')} className="text-sm font-semibold text-terracotta-deep hover:text-terracotta transition">
                   Review Syllabus Adjustments &rarr;
                 </button>
               </div>
