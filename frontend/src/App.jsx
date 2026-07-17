@@ -21,10 +21,15 @@ import AdminReports from './components/AdminReports';
 import AdminSettings from './components/AdminSettings';
 import AdminCommunications from './components/AdminCommunications';
 import AdminBilling from './components/AdminBilling';
+import FeeCollectionHub from './components/FeeCollectionHub';
+import StudentHomework from './components/StudentHomework';
+import StudentNotes from './components/StudentNotes';
+import StudentProgress from './components/StudentProgress';
+import StudentRewards from './components/StudentRewards';
 
 // Pages ported to the new Waynur design bring their own header/nav chrome —
 // stacking the old NavBar on top of them would double up navigation.
-const SELF_CHROME_PREFIXES = ['/teacher', '/tutor'];
+const SELF_CHROME_PREFIXES = ['/teacher', '/tutor', '/homework', '/notes', '/progress', '/rewards'];
 
 function homeFor(role) {
   if (role === 'student') return '/tutor';
@@ -104,10 +109,14 @@ function AppRoutes() {
         <Route path="/admin/settings" element={<ProtectedRoute principalOnly><AdminSettings /></ProtectedRoute>} />
         <Route path="/admin/communications" element={<ProtectedRoute principalOnly><AdminCommunications /></ProtectedRoute>} />
         <Route path="/admin/billing" element={<ProtectedRoute principalOnly><AdminBilling /></ProtectedRoute>} />
-        <Route path="/accountant/fee-collection" element={<ProtectedRoute accountantOnly><FinanceAdmin /></ProtectedRoute>} />
+        <Route path="/accountant/fee-collection" element={<ProtectedRoute accountantOnly><FeeCollectionHub /></ProtectedRoute>} />
         <Route path="/accountant/payroll" element={<ProtectedRoute accountantOnly><AdminPayroll /></ProtectedRoute>} />
         <Route path="/grading" element={<ProtectedRoute><AIGradingPrototype /></ProtectedRoute>} />
         <Route path="/tutor" element={<ProtectedRoute studentOnly><StudentTutor /></ProtectedRoute>} />
+        <Route path="/homework" element={<ProtectedRoute studentOnly><StudentHomework /></ProtectedRoute>} />
+        <Route path="/notes" element={<ProtectedRoute studentOnly><StudentNotes /></ProtectedRoute>} />
+        <Route path="/progress" element={<ProtectedRoute studentOnly><StudentProgress /></ProtectedRoute>} />
+        <Route path="/rewards" element={<ProtectedRoute studentOnly><StudentRewards /></ProtectedRoute>} />
         <Route path="/super-admin-login" element={<SuperAdminLogin />} />
         <Route path="/super-admin" element={<ProtectedRoute superAdminOnly><SuperAdminDashboard /></ProtectedRoute>} />
         <Route path="*" element={<HomeRedirect />} />

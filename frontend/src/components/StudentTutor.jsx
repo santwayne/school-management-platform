@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Send, Mic, Keyboard, Sparkles, RotateCcw, LogOut } from 'lucide-react';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
+import StudentNav from './StudentNav';
 
 const SUBJECTS = [
   { key: 'math', name: 'Math', emoji: '🧮' },
@@ -72,6 +73,7 @@ export default function StudentTutor() {
 
   return (
     <div className="min-h-screen bg-cream font-sans flex flex-col">
+      <StudentNav />
       <div className="max-w-2xl w-full mx-auto flex flex-col h-screen px-4">
         <div className="flex flex-wrap items-center gap-3 pt-4 pb-4 border-b border-cream-deep/60">
           <div>
