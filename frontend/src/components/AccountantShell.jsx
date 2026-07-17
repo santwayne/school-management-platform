@@ -1,8 +1,72 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Wallet, Receipt, Users, FileBarChart, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, Wallet, Receipt, Users, FileBarChart, Settings, Bell, LogOut } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
+
+function NotificationBell() {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState(null);
+  const [error, setError] = useState('');
+
+  const load = async () => {
+    try {
+      const [pettyCash, waQueue] = await Promise.all([
+        apiRequest('/api/finance/petty-cash').catch(() => []),
+        apiRequest('/api/fee-intake/pending').catch(() => []),
+      ]);
+      const pending = [
+        ...pettyCash.filter((p) => p.status === 'PENDING').map((p) => ({
+          text: `Petty cash request pending: ₹${Number(p.amount).toLocaleString('en-IN')}`,
+          to: '/accountant/payroll',
+        })),
+        ...waQueue.map((w) => ({
+          text: `WhatsApp cash slip needs confirming — ${w.collector_name}`,
+          to: '/accountant/fee-collection',
+        })),
+      ];
+      setItems(pending);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const count = items?.length || 0;
+
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen((o) => !o)} className="relative p-2 rounded-lg hover:bg-cream-deep/60 transition">
+        <Bell className="w-5 h-5 text-ink-soft" />
+        {count > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-terracotta text-white text-[10px] font-semibold flex items-center justify-center">
+            {count > 9 ? '9+' : count}
+          </span>
+        )}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-cream-deep/70 shadow-xl z-20 max-h-96 overflow-y-auto">
+            <div className="px-4 py-3 border-b border-cream-deep/60 font-display text-sm text-ink">Needs your attention</div>
+            {error && <div className="px-4 py-3 text-xs text-destructive">{error}</div>}
+            {items && items.length === 0 && <div className="px-4 py-6 text-sm text-ink-soft text-center">Nothing pending — you're all caught up.</div>}
+            {items?.map((n, i) => (
+              <Link key={i} to={n.to} onClick={() => setOpen(false)} className="block px-4 py-3 text-sm text-ink hover:bg-cream-deep/30 border-b border-cream-deep/40 last:border-0">
+                {n.text}
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 const NAV = [
   { label: 'Dashboard', icon: LayoutDashboard, to: '/accountant' },
@@ -65,6 +129,7 @@ export default function AccountantShell({ children }) {
             <span>{today}</span>
           </div>
           <div className="ml-auto flex items-center gap-3">
+            <NotificationBell />
 <button onClick={logout} className="p-2 rounded-lg hover:bg-cream-deep/60 transition text-ink-soft hover:text-terracotta-deep" aria-label="Log out">
               <LogOut className="w-5 h-5" />
             </button>
