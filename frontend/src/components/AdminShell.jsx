@@ -16,7 +16,7 @@ const NAV = [
   { label: 'Communications', icon: MessageSquare, to: '/admin/communications' },
   { label: 'Reports', icon: FileBarChart, to: '/admin/reports' },
   { label: 'Billing', icon: CreditCard, to: '/admin/billing' },
-  { label: 'Manage School', icon: Building2, to: '/classes' },
+  { label: 'Manage School', icon: Building2, to: '/admin/manage' },
   { label: 'Settings', icon: Settings, to: '/admin/settings' },
 ];
 

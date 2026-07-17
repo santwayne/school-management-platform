@@ -14,6 +14,7 @@ import SuperAdminLogin from './components/SuperAdminLogin';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
 import ClassManager from './components/ClassManager';
 import SyllabusManager from './components/SyllabusManager';
+import ManageSchool from './components/ManageSchool';
 import AdminAttendance from './components/AdminAttendance';
 import ClassNotesComposer from './components/ClassNotesComposer';
 import StaffBroadcast from './components/StaffBroadcast';
@@ -72,6 +73,7 @@ function AppRoutes() {
         <Route path="/finance" element={<ProtectedRoute principalOnly>{inShell(AdminShell, FinanceAdmin)}</ProtectedRoute>} />
         <Route path="/classes" element={<ProtectedRoute principalOnly>{inShell(AdminShell, ClassManager)}</ProtectedRoute>} />
         <Route path="/syllabus" element={<ProtectedRoute principalOnly>{inShell(AdminShell, SyllabusManager)}</ProtectedRoute>} />
+        <Route path="/admin/manage" element={<ProtectedRoute principalOnly>{inShell(AdminShell, ManageSchool)}</ProtectedRoute>} />
         <Route path="/admin/attendance" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminAttendance)}</ProtectedRoute>} />
         <Route path="/staff-broadcast" element={<ProtectedRoute principalOnly>{inShell(AdminShell, StaffBroadcast)}</ProtectedRoute>} />
         <Route path="/admin/payroll" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminPayroll)}</ProtectedRoute>} />

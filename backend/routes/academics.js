@@ -219,4 +219,202 @@ router.get('/my-classes', requireAuth, async (req, res) => {
   }
 });
 
+// ============================================================
+// Manage School CRUD — classes edit/delete, and full teacher/student/
+// parent management. These didn't exist before; only create-class and
+// bulk-student-import did. Added to support the Manage School page.
+// ============================================================
+
+router.patch('/classes/:id', requireAuth, requirePrincipal, async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  try {
+    const result = await pool.query(
+      'UPDATE classes SET name = $1 WHERE id = $2 AND school_id = $3 RETURNING *',
+      [name, req.params.id, req.user.school_id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Class not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/classes/:id', requireAuth, requirePrincipal, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM classes WHERE id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Teachers — create with a real login (email + password), edit, delete.
+// Deliberately does not allow creating role='principal' through this
+// endpoint — that's a higher-trust action than adding regular staff.
+router.post('/teachers', requireAuth, requirePrincipal, async (req, res) => {
+  const { name, email, phone, password } = req.body;
+  if (!name || !email || !phone || !password) {
+    return res.status(400).json({ error: 'name, email, phone and password are all required' });
+  }
+  try {
+    const password_hash = await bcrypt.hash(password, 10);
+    const result = await pool.query(
+      `INSERT INTO teachers (school_id, name, email, phone, password_hash, role)
+       VALUES ($1, $2, $3, $4, $5, 'teacher') RETURNING id, name, email, phone, role, created_at`,
+      [req.user.school_id, name, email, phone, password_hash]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'A teacher with this email already exists' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/teachers/:id', requireAuth, requirePrincipal, async (req, res) => {
+  const { name, phone } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE teachers SET name = COALESCE($1, name), phone = COALESCE($2, phone)
+       WHERE id = $3 AND school_id = $4 AND role = 'teacher' RETURNING id, name, email, phone, role`,
+      [name, phone, req.params.id, req.user.school_id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Teacher not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/teachers/:id', requireAuth, requirePrincipal, async (req, res) => {
+  try {
+    // role='teacher' guard so this can never be used to delete the Principal's own account
+    const result = await pool.query(
+      `DELETE FROM teachers WHERE id = $1 AND school_id = $2 AND role = 'teacher' RETURNING id`,
+      [req.params.id, req.user.school_id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Teacher not found' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Students — flat searchable list (the existing endpoint only returns a
+// per-class roster), plus edit/delete. Creation stays on the bulk-import
+// endpoint above — a single-student add is just a bulk call with one row.
+router.get('/students', requireAuth, requirePrincipal, async (req, res) => {
+  const { search } = req.query;
+  try {
+    const params = [req.user.school_id];
+    let searchFilter = '';
+    if (search) {
+      params.push(`%${search}%`);
+      searchFilter = `AND s.name ILIKE $${params.length}`;
+    }
+    const result = await pool.query(
+      `SELECT s.id, s.name, s.login_id, s.grade, c.id AS class_id, c.name AS class_name,
+              p.id AS parent_id, p.name AS parent_name, p.phone AS parent_phone
+       FROM students s
+       LEFT JOIN classes c ON c.id = s.class_id
+       LEFT JOIN parents p ON p.id = s.parent_id
+       WHERE s.school_id = $1 ${searchFilter}
+       ORDER BY s.name`,
+      params
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/students/:id', requireAuth, requirePrincipal, async (req, res) => {
+  const { name, class_id, parent_id } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE students SET
+         name = COALESCE($1, name), class_id = COALESCE($2, class_id), parent_id = COALESCE($3, parent_id)
+       WHERE id = $4 AND school_id = $5 RETURNING id, name, class_id, parent_id`,
+      [name, class_id, parent_id, req.params.id, req.user.school_id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Student not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/students/:id', requireAuth, requirePrincipal, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM students WHERE id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Parents — full CRUD. opt_in_status stays server-controlled at
+// 'OPTED_OUT' by default (the actual opt-in only happens through the real
+// WhatsApp consent flow, never just by being added here).
+router.get('/parents', requireAuth, requirePrincipal, async (req, res) => {
+  const { search } = req.query;
+  try {
+    const params = [req.user.school_id];
+    let searchFilter = '';
+    if (search) {
+      params.push(`%${search}%`);
+      searchFilter = `AND (p.name ILIKE $${params.length} OR p.phone ILIKE $${params.length})`;
+    }
+    const result = await pool.query(
+      `SELECT p.*, COUNT(s.id) AS child_count
+       FROM parents p LEFT JOIN students s ON s.parent_id = p.id
+       WHERE p.school_id = $1 ${searchFilter}
+       GROUP BY p.id ORDER BY p.name`,
+      params
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/parents', requireAuth, requirePrincipal, async (req, res) => {
+  const { name, phone, preferred_language } = req.body;
+  if (!name || !phone) return res.status(400).json({ error: 'name and phone are required' });
+  try {
+    const result = await pool.query(
+      `INSERT INTO parents (school_id, name, phone, preferred_language) VALUES ($1, $2, $3, $4) RETURNING *`,
+      [req.user.school_id, name, phone, preferred_language || 'hi']
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/parents/:id', requireAuth, requirePrincipal, async (req, res) => {
+  const { name, phone, preferred_language } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE parents SET
+         name = COALESCE($1, name), phone = COALESCE($2, phone), preferred_language = COALESCE($3, preferred_language)
+       WHERE id = $4 AND school_id = $5 RETURNING *`,
+      [name, phone, preferred_language, req.params.id, req.user.school_id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Parent not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/parents/:id', requireAuth, requirePrincipal, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM parents WHERE id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
