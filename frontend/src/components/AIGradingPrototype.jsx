@@ -1,5 +1,93 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { apiRequest } from '../api';
+
+function PendingReviewQueue() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [overrides, setOverrides] = useState({});
+
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      setRows(await apiRequest('/api/grading/pending'));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const confirm = async (id) => {
+    setError('');
+    try {
+      const override = overrides[id];
+      await apiRequest(`/api/grading/${id}/confirm`, {
+        method: 'PATCH',
+        body: { final_score: override !== undefined && override !== '' ? Number(override) : undefined },
+      });
+      load();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  return (
+    <div className="mt-10 pt-8 border-t">
+      <div className="mb-4">
+        <span className="text-xs font-bold uppercase tracking-widest bg-amber-100 text-amber-800 px-3 py-1 rounded-full">
+          Teacher review required before any grade is final
+        </span>
+        <h2 className="text-xl font-black text-slate-900 mt-2">Pending grading review</h2>
+        <p className="text-sm text-slate-500">Nothing here counts as a real grade until a teacher confirms or overrides it.</p>
+      </div>
+
+      {error && <div className="p-3 mb-4 text-xs bg-red-50 text-red-700 rounded-lg border border-red-200">{error}</div>}
+
+      {loading ? (
+        <p className="text-sm text-slate-400">Loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-slate-400 italic">Nothing waiting on review right now.</p>
+      ) : (
+        <div className="space-y-3">
+          {rows.map((r) => (
+            <div key={r.id} className="bg-white border rounded-xl p-4 flex flex-col md:flex-row md:items-center gap-3 justify-between">
+              <div className="flex-1">
+                <div className="text-sm font-semibold text-slate-800">{r.student_name} — Test #{r.test_id}, Q{r.question_num}</div>
+                <p className="text-xs text-slate-500 mt-1 italic">"{r.extracted_text}"</p>
+                <p className="text-xs text-purple-700 mt-1">AI justification: {r.justification}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-right">
+                  <div className="text-xs text-slate-400">AI score</div>
+                  <div className="text-lg font-bold text-purple-700">{r.ai_score}</div>
+                </div>
+                <input
+                  type="number"
+                  placeholder="Override"
+                  value={overrides[r.id] ?? ''}
+                  onChange={(e) => setOverrides({ ...overrides, [r.id]: e.target.value })}
+                  className="w-24 p-2 border rounded-lg text-sm"
+                />
+                <button
+                  onClick={() => confirm(r.id)}
+                  className="px-3 py-2 rounded-lg bg-purple-700 text-white text-sm font-medium hover:bg-purple-800 transition"
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function AIGradingPrototype() {
   const [ocrText, setOcrText] = useState('Energy cannot be created but can be destroyed when it changes forms.');
@@ -110,6 +198,8 @@ export default function AIGradingPrototype() {
           </div>
         </div>
       </div>
+
+      <PendingReviewQueue />
     </div>
   );
 }

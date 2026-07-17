@@ -45,7 +45,7 @@ router.post('/fee/collect', requireAuth, async (req, res) => {
 });
 
 // GET /api/finance/petty-cash — list requests for this school (most recent first)
-router.get('/petty-cash', requireAuth, requirePrincipal, async (req, res) => {
+router.get('/petty-cash', requireAuth, requireFinance, async (req, res) => {
   try {
     const { rows } = await pool.query(
       'SELECT * FROM petty_cash WHERE school_id = $1 ORDER BY created_at DESC',
@@ -55,6 +55,27 @@ router.get('/petty-cash', requireAuth, requirePrincipal, async (req, res) => {
   } catch (err) {
     console.error('Petty cash list error:', err);
     res.status(500).json({ error: 'Failed to load requests' });
+  }
+});
+
+// GET /api/finance/fee/history — recent fee payments for this school, for
+// the Accountant / Principal fee collection screen.
+router.get('/fee/history', requireAuth, requireFinance, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT h.id, h.student_id, s.name AS student_name, h.amount_paid, h.payment_mode,
+              h.remarks, h.created_at
+       FROM student_payment_history h
+       JOIN students s ON s.id = h.student_id
+       WHERE h.school_id = $1
+       ORDER BY h.created_at DESC
+       LIMIT 50`,
+      [req.user.school_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Fee history error:', err);
+    res.status(500).json({ error: 'Failed to load fee history' });
   }
 });
 

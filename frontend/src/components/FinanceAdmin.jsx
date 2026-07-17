@@ -1,10 +1,62 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { apiRequest } from '../api';
+
+function PaymentHistory({ refreshKey }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setLoading(true);
+    apiRequest('/api/finance/fee/history')
+      .then(setRows)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [refreshKey]);
+
+  return (
+    <div className="bg-white p-6 rounded-xl border shadow-sm mt-6">
+      <h2 className="text-lg font-bold text-gray-900 mb-3">Recent payments</h2>
+      {error && <div className="p-3 mb-3 text-xs bg-red-50 text-red-700 rounded-lg">{error}</div>}
+      {loading ? (
+        <p className="text-sm text-gray-400">Loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-gray-400">No payments recorded yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase text-gray-500 border-b">
+                <th className="py-2 pr-4">Student</th>
+                <th className="py-2 pr-4">Amount</th>
+                <th className="py-2 pr-4">Mode</th>
+                <th className="py-2 pr-4">Date</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  <td className="py-2 pr-4 font-medium">{r.student_name}</td>
+                  <td className="py-2 pr-4">₹{Number(r.amount_paid).toLocaleString('en-IN')}</td>
+                  <td className="py-2 pr-4">{r.payment_mode}</td>
+                  <td className="py-2 pr-4 text-gray-500 whitespace-nowrap">
+                    {new Date(r.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function FinanceAdmin() {
   const [feeForm, setFeeForm] = useState({ studentId: '', amount: '', mode: 'Cash', remarks: '' });
   const [proofPhoto, setProofPhoto] = useState(null);
   const [msg, setMsg] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const handleFeeSubmit = async (e) => {
     e.preventDefault();
@@ -24,6 +76,7 @@ export default function FinanceAdmin() {
         setMsg('Fee recorded successfully! Parameterized transaction complete.');
         setFeeForm({ studentId: '', amount: '', mode: 'Cash', remarks: '' });
         setProofPhoto(null);
+        setRefreshKey((k) => k + 1);
       }
     } catch (err) {
       setMsg(err.message || 'Error saving fee data.');
@@ -108,6 +161,7 @@ export default function FinanceAdmin() {
           </button>
         </form>
       </div>
+      <PaymentHistory refreshKey={refreshKey} />
     </div>
   );
 }
