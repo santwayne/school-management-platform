@@ -5,9 +5,11 @@ import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
 
 const NAV = [
+  { label: 'Dashboard', icon: LayoutDashboard, to: '/accountant' },
   { label: 'Fee Collection', icon: Wallet, to: '/accountant/fee-collection' },
-  { label: 'Petty Cash & Payroll', icon: Receipt, to: '/accountant/payroll' },
-  { label: 'Reports', icon: FileBarChart, to: '/admin/reports' },
+  { label: 'Petty Cash Approvals', icon: Receipt, to: '/accountant/payroll' },
+  { label: 'Payroll', icon: Users, to: '/accountant/payroll' },
+  { label: 'Reports', icon: FileBarChart, to: '/accountant/reports' },
 ];
 
 function initials(name) {

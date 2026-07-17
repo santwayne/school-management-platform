@@ -4,7 +4,8 @@ import { LayoutDashboard, Building2, Receipt, ShieldCheck, LogOut } from 'lucide
 import { useAuth } from '../AuthContext';
 
 const NAV = [
-  { label: 'Schools', icon: Building2, to: '/super-admin' },
+  { label: 'Overview', icon: LayoutDashboard, to: '/super-admin' },
+  { label: 'Schools', icon: Building2, to: '/super-admin/schools' },
 ];
 
 export default function SuperAdminShell({ children }) {
