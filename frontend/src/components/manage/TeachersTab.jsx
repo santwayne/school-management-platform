@@ -8,7 +8,7 @@ export default function TeachersTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [modal, setModal] = useState(null); // null | 'add' | teacher object being edited
-  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '' });
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', role: 'teacher' });
 
   const load = async () => {
     setLoading(true);
@@ -26,11 +26,11 @@ export default function TeachersTab() {
   }, []);
 
   const openAdd = () => {
-    setForm({ name: '', email: '', phone: '', password: '' });
+    setForm({ name: '', email: '', phone: '', password: '', role: 'teacher' });
     setModal('add');
   };
   const openEdit = (t) => {
-    setForm({ name: t.name, email: t.email, phone: t.phone, password: '' });
+    setForm({ name: t.name, email: t.email, phone: t.phone, password: '', role: t.role });
     setModal(t);
   };
 
@@ -69,12 +69,12 @@ export default function TeachersTab() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search teachers…"
+            placeholder="Search staff…"
             className="w-full pl-9 pr-3 py-2 text-sm rounded-lg bg-white border border-cream-deep focus:outline-none focus:ring-2 focus:ring-terracotta/40"
           />
         </div>
         <button onClick={openAdd} className="ml-auto inline-flex items-center gap-1.5 text-sm font-medium px-3.5 py-2 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep transition">
-          <Plus className="w-4 h-4" /> Add teacher
+          <Plus className="w-4 h-4" /> Add staff
         </button>
       </div>
 
@@ -88,20 +88,22 @@ export default function TeachersTab() {
                 <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-3 bg-cream-deep/40">Name</th>
                 <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-3 bg-cream-deep/40">Email</th>
                 <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-3 bg-cream-deep/40">Phone</th>
+                <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-3 bg-cream-deep/40">Role</th>
                 <th className="px-4 py-3 bg-cream-deep/40" />
               </tr>
             </thead>
             <tbody className="divide-y divide-cream-deep/60">
               {loading ? (
-                <tr><td className="px-4 py-4 text-ink-soft" colSpan={4}>Loading…</td></tr>
+                <tr><td className="px-4 py-4 text-ink-soft" colSpan={5}>Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td className="px-4 py-4 text-ink-soft" colSpan={4}>No teachers found.</td></tr>
+                <tr><td className="px-4 py-4 text-ink-soft" colSpan={5}>No teachers found.</td></tr>
               ) : (
                 filtered.map((t) => (
                   <tr key={t.id} className="hover:bg-cream-deep/20">
                     <td className="px-4 py-3 font-medium">{t.name}</td>
                     <td className="px-4 py-3 text-ink-soft">{t.email}</td>
                     <td className="px-4 py-3 text-ink-soft">{t.phone}</td>
+                    <td className="px-4 py-3 text-ink-soft capitalize">{t.role}</td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <button onClick={() => openEdit(t)} className="p-1.5 text-ink-soft hover:text-terracotta-deep"><Pencil className="w-3.5 h-3.5" /></button>
                       {t.role !== 'principal' && (
@@ -120,11 +122,17 @@ export default function TeachersTab() {
         <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4" onClick={() => setModal(null)}>
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-display text-lg text-ink">{modal === 'add' ? 'Add teacher' : 'Edit teacher'}</h3>
+              <h3 className="font-display text-lg text-ink">{modal === 'add' ? 'Add staff' : 'Edit staff'}</h3>
               <button onClick={() => setModal(null)}><X className="w-4 h-4 text-ink-soft" /></button>
             </div>
             <div className="space-y-3">
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Name" className="w-full px-3 py-2 rounded-lg border border-cream-deep text-sm" />
+              {modal === 'add' && (
+                <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-cream-deep text-sm">
+                  <option value="teacher">Teacher</option>
+                  <option value="accountant">Accountant</option>
+                </select>
+              )}
               {modal === 'add' && (
                 <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Email" className="w-full px-3 py-2 rounded-lg border border-cream-deep text-sm" />
               )}
@@ -133,7 +141,7 @@ export default function TeachersTab() {
                 <input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} type="password" placeholder="Set a login password" className="w-full px-3 py-2 rounded-lg border border-cream-deep text-sm" />
               )}
               <button onClick={save} className="w-full py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
-                {modal === 'add' ? 'Add teacher' : 'Save changes'}
+                {modal === 'add' ? 'Add staff' : 'Save changes'}
               </button>
             </div>
           </div>

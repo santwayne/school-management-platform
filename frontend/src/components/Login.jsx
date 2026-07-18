@@ -32,11 +32,13 @@ function SubmitButton({ disabled, children }) {
   );
 }
 
-// Both Admin and Teacher tabs hit the same real endpoint (teachers table,
-// distinguished by role) — where we navigate after success depends on the
-// role the server returns, not which tab was clicked.
+// Admin, Accountant, and Teacher tabs all hit the same real endpoint
+// (teachers table, distinguished by role) — where we navigate after
+// success depends on the role the server returns, not which tab was
+// clicked.
 function goToRoleHome(navigate, role) {
   if (role === 'principal') navigate('/dashboard');
+  else if (role === 'accountant') navigate('/accountant');
   else navigate('/teacher');
 }
 
@@ -220,11 +222,12 @@ function StudentForm() {
 function RoleTabs({ value, onChange }) {
   const tabs = [
     { key: 'admin', label: 'Admin' },
+    { key: 'accountant', label: 'Accountant' },
     { key: 'teacher', label: 'Teacher' },
     { key: 'student', label: 'Student' },
   ];
   return (
-    <div className="grid grid-cols-3 p-1 bg-cream-deep/50 rounded-xl">
+    <div className="grid grid-cols-4 p-1 bg-cream-deep/50 rounded-xl">
       {tabs.map((t) => {
         const active = value === t.key;
         return (
@@ -232,7 +235,7 @@ function RoleTabs({ value, onChange }) {
             key={t.key}
             type="button"
             onClick={() => onChange(t.key)}
-            className={`py-2 text-sm rounded-lg transition ${
+            className={`py-2 text-xs sm:text-sm rounded-lg transition ${
               active ? 'bg-white text-ink shadow-sm font-medium' : 'text-ink-soft hover:text-ink'
             }`}
           >
@@ -265,6 +268,7 @@ export default function Login() {
 
           <div className="mt-6">
             {role === 'admin' && <AdminForm />}
+            {role === 'accountant' && <AdminForm />}
             {role === 'teacher' && <TeacherForm />}
             {role === 'student' && <StudentForm />}
           </div>

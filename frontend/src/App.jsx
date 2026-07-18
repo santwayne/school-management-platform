@@ -16,6 +16,9 @@ import ClassManager from './components/ClassManager';
 import SyllabusManager from './components/SyllabusManager';
 import ManageSchool from './components/ManageSchool';
 import Onboarding from './components/Onboarding';
+import Index from './components/Index';
+import TeacherWhatsAppDemo from './components/TeacherWhatsAppDemo';
+import SuperAdminBilling from './components/SuperAdminBilling';
 import AdminAttendance from './components/AdminAttendance';
 import ClassNotesComposer from './components/ClassNotesComposer';
 import StaffBroadcast from './components/StaffBroadcast';
@@ -64,6 +67,8 @@ function AppRoutes() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/" element={<Index />} />
+        <Route path="/demo/teacher-whatsapp" element={<TeacherWhatsAppDemo />} />
         <Route path="/login" element={<Login />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/student-login" element={<Navigate to="/login" replace />} />
@@ -102,6 +107,7 @@ function AppRoutes() {
         <Route path="/super-admin-login" element={<SuperAdminLogin />} />
         <Route path="/super-admin" element={<ProtectedRoute superAdminOnly>{inShell(SuperAdminShell, SuperAdminHome)}</ProtectedRoute>} />
         <Route path="/super-admin/schools" element={<ProtectedRoute superAdminOnly>{inShell(SuperAdminShell, SuperAdminDashboard)}</ProtectedRoute>} />
+        <Route path="/super-admin/billing" element={<ProtectedRoute superAdminOnly>{inShell(SuperAdminShell, SuperAdminBilling)}</ProtectedRoute>} />
 
         <Route path="*" element={<HomeRedirect />} />
       </Routes>

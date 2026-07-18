@@ -6,6 +6,7 @@ import { useAuth } from '../AuthContext';
 const NAV = [
   { label: 'Overview', icon: LayoutDashboard, to: '/super-admin' },
   { label: 'Schools', icon: Building2, to: '/super-admin/schools' },
+  { label: 'Subscriptions & Billing', icon: Receipt, to: '/super-admin/billing' },
 ];
 
 export default function SuperAdminShell({ children }) {

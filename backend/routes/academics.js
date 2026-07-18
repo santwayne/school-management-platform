@@ -41,7 +41,7 @@ router.get('/teachers', requireAuth, async (req, res) => {
   const schoolId = req.user.school_id;
   try {
     const { rows } = await pool.query(
-      `SELECT id, name, role, whatsapp_number, whatsapp_opt_in_status FROM teachers WHERE school_id = $1 ORDER BY name ASC`,
+      `SELECT id, name, email, phone, role, whatsapp_number, whatsapp_opt_in_status FROM teachers WHERE school_id = $1 ORDER BY name ASC`,
       [schoolId]
     );
     res.json(rows);
@@ -249,24 +249,27 @@ router.delete('/classes/:id', requireAuth, requirePrincipal, async (req, res) =>
   }
 });
 
-// Teachers — create with a real login (email + password), edit, delete.
-// Deliberately does not allow creating role='principal' through this
-// endpoint — that's a higher-trust action than adding regular staff.
+// Teachers/Accountants — create with a real login (email + password), edit,
+// delete. role defaults to 'teacher'; 'accountant' is also allowed since
+// this is the only place staff accounts get created. Deliberately does NOT
+// allow creating role='principal' through this endpoint — that's a higher-
+// trust action than adding regular staff.
 router.post('/teachers', requireAuth, requirePrincipal, async (req, res) => {
-  const { name, email, phone, password } = req.body;
+  const { name, email, phone, password, role } = req.body;
   if (!name || !email || !phone || !password) {
     return res.status(400).json({ error: 'name, email, phone and password are all required' });
   }
+  const finalRole = role === 'accountant' ? 'accountant' : 'teacher';
   try {
     const password_hash = await bcrypt.hash(password, 10);
     const result = await pool.query(
       `INSERT INTO teachers (school_id, name, email, phone, password_hash, role)
-       VALUES ($1, $2, $3, $4, $5, 'teacher') RETURNING id, name, email, phone, role, created_at`,
-      [req.user.school_id, name, email, phone, password_hash]
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, email, phone, role, created_at`,
+      [req.user.school_id, name, email, phone, password_hash, finalRole]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ error: 'A teacher with this email already exists' });
+    if (err.code === '23505') return res.status(409).json({ error: 'A staff member with this email already exists' });
     res.status(500).json({ error: err.message });
   }
 });
