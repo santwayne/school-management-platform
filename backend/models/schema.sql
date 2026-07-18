@@ -211,6 +211,23 @@ CREATE TABLE IF NOT EXISTS buses (
     vendor_device_id VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+-- ---------- Transport GPS — production connection details ----------
+-- webhook_token is real per-bus auth for push vendors (previously the
+-- webhook route reused vendor_device_id as the "token", which meant anyone
+-- who knew a bus's device id could post fake locations — this closes that).
+-- The vendor_api_* / vendor_field_* columns back a generic REST-polling
+-- adapter that works with most vendors' "get current location" endpoints
+-- without needing bespoke code per vendor.
+ALTER TABLE buses ADD COLUMN IF NOT EXISTS webhook_token VARCHAR(64);
+ALTER TABLE buses ADD COLUMN IF NOT EXISTS vendor_api_base_url TEXT;
+ALTER TABLE buses ADD COLUMN IF NOT EXISTS vendor_api_key TEXT;
+ALTER TABLE buses ADD COLUMN IF NOT EXISTS vendor_lat_path VARCHAR(100) DEFAULT 'lat';
+ALTER TABLE buses ADD COLUMN IF NOT EXISTS vendor_lng_path VARCHAR(100) DEFAULT 'lng';
+ALTER TABLE buses ADD COLUMN IF NOT EXISTS vendor_speed_path VARCHAR(100);
+ALTER TABLE buses ADD COLUMN IF NOT EXISTS vendor_timestamp_path VARCHAR(100);
+ALTER TABLE buses ADD COLUMN IF NOT EXISTS last_poll_status VARCHAR(20); -- 'ok' | 'error'
+ALTER TABLE buses ADD COLUMN IF NOT EXISTS last_poll_error TEXT;
+ALTER TABLE buses ADD COLUMN IF NOT EXISTS last_poll_at TIMESTAMP;
 
 CREATE TABLE IF NOT EXISTS bus_location_log (
     id SERIAL PRIMARY KEY,
@@ -441,6 +458,22 @@ ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS final_score NUMERIC(4
 ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS confirmed_by INT REFERENCES teachers(id);
 ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP;
 
+-- ---------- AI Grading — production hardening ----------
+-- Rubrics now carry their own marks-out-of so scoring isn't hardcoded to /10.
+ALTER TABLE test_rubrics ADD COLUMN IF NOT EXISTS max_marks NUMERIC(4,1) NOT NULL DEFAULT 10;
+-- Tests need a title + class scoping to be manageable from a real UI list
+-- (subject_id/chapter_id alone aren't enough to tell tests apart at a glance).
+ALTER TABLE generated_tests ADD COLUMN IF NOT EXISTS title VARCHAR(255);
+ALTER TABLE generated_tests ADD COLUMN IF NOT EXISTS class_id INT REFERENCES classes(id) ON DELETE SET NULL;
+ALTER TABLE generated_tests ADD COLUMN IF NOT EXISTS created_by INT REFERENCES teachers(id);
+-- Submissions store the actual answer-sheet image (base64) alongside the
+-- OCR text so a teacher reviewing an AI score can see the original writing,
+-- not just trust the extraction blind.
+ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS answer_image_base64 TEXT;
+ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS max_marks NUMERIC(4,1) NOT NULL DEFAULT 10;
+ALTER TABLE ai_graded_submissions ADD COLUMN IF NOT EXISTS ocr_confidence VARCHAR(10); -- 'high' | 'medium' | 'low'
+CREATE INDEX IF NOT EXISTS idx_graded_submissions_test ON ai_graded_submissions(test_id);
+
 -- ---------- Student Portal: Homework, Notes, Progress, Rewards ----------
 CREATE TABLE IF NOT EXISTS homework (
     id SERIAL PRIMARY KEY,
@@ -522,3 +555,132 @@ CREATE TABLE IF NOT EXISTS fee_payment_links (
     paid_at TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_fee_links_school ON fee_payment_links(school_id);
+
+-- ---------- Staff leave management ----------
+-- Balances are tracked per-teacher-per-year so a new academic year just
+-- inserts a fresh row rather than needing a reset migration each time.
+CREATE TABLE IF NOT EXISTS staff_leave_balances (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    year INT NOT NULL,
+    leave_type VARCHAR(20) NOT NULL, -- 'casual' | 'sick' | 'earned'
+    total_days NUMERIC(4,1) NOT NULL DEFAULT 0,
+    used_days NUMERIC(4,1) NOT NULL DEFAULT 0,
+    UNIQUE (teacher_id, year, leave_type)
+);
+
+CREATE TABLE IF NOT EXISTS staff_leave_requests (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    leave_type VARCHAR(20) NOT NULL, -- 'casual' | 'sick' | 'earned'
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    days_count NUMERIC(4,1) NOT NULL,
+    reason TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING | APPROVED | REJECTED | CANCELLED
+    reviewed_by INT REFERENCES teachers(id),
+    reviewed_at TIMESTAMP,
+    review_note TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_school ON staff_leave_requests(school_id);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_teacher ON staff_leave_requests(teacher_id);
+
+-- ---------- Class timetable ----------
+-- One row per (class, day, period). teacher_id/subject_id nullable so a
+-- principal can lay out the grid (say, "Period 3") before assigning who
+-- teaches it — matches how schools actually build a timetable in practice.
+CREATE TABLE IF NOT EXISTS timetable_slots (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    day_of_week SMALLINT NOT NULL, -- 1=Monday .. 6=Saturday
+    period_number SMALLINT NOT NULL,
+    start_time TIME,
+    end_time TIME,
+    subject_id INT REFERENCES subjects(id) ON DELETE SET NULL,
+    teacher_id INT REFERENCES teachers(id) ON DELETE SET NULL,
+    room VARCHAR(50),
+    UNIQUE (class_id, day_of_week, period_number)
+);
+CREATE INDEX IF NOT EXISTS idx_timetable_school ON timetable_slots(school_id);
+CREATE INDEX IF NOT EXISTS idx_timetable_teacher ON timetable_slots(teacher_id);
+
+-- ---------- School event calendar ----------
+CREATE TABLE IF NOT EXISTS school_events (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    event_date DATE NOT NULL,
+    end_date DATE, -- null for single-day events
+    event_type VARCHAR(30) NOT NULL DEFAULT 'general', -- 'holiday' | 'exam' | 'ptm' | 'general' | 'sports' | 'other'
+    audience VARCHAR(20) NOT NULL DEFAULT 'all', -- 'all' | 'staff' | 'students' | 'parents'
+    created_by INT REFERENCES teachers(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_events_school_date ON school_events(school_id, event_date);
+
+-- ---------- Library management ----------
+CREATE TABLE IF NOT EXISTS library_books (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    author VARCHAR(255),
+    isbn VARCHAR(30),
+    category VARCHAR(100),
+    total_copies INT NOT NULL DEFAULT 1,
+    available_copies INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_library_books_school ON library_books(school_id);
+
+CREATE TABLE IF NOT EXISTS library_issues (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    book_id INT NOT NULL REFERENCES library_books(id) ON DELETE CASCADE,
+    student_id INT REFERENCES students(id) ON DELETE CASCADE,
+    teacher_id INT REFERENCES teachers(id) ON DELETE CASCADE,
+    issued_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    due_date DATE NOT NULL,
+    returned_date DATE,
+    fine_amount NUMERIC(8,2) DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'ISSUED', -- ISSUED | RETURNED | OVERDUE | LOST
+    CHECK (student_id IS NOT NULL OR teacher_id IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS idx_library_issues_school ON library_issues(school_id);
+CREATE INDEX IF NOT EXISTS idx_library_issues_book ON library_issues(book_id);
+
+-- ---------- AI Tutor — Voice (Vapi) ----------
+-- Single global row: super admin wires up the Vapi account once here, then
+-- flips voice_tutor_enabled per school below as a plan feature — mirrors how
+-- WayneRing's assistant config works, reused rather than rebuilt per-product.
+CREATE TABLE IF NOT EXISTS ai_voice_tutor_config (
+    id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1), -- singleton row
+    vapi_api_key TEXT,
+    vapi_phone_number_id VARCHAR(100),
+    assistant_id_english VARCHAR(100),
+    assistant_id_hindi VARCHAR(100),
+    assistant_id_punjabi VARCHAR(100),
+    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS ai_voice_tutor_call_log (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT REFERENCES students(id) ON DELETE SET NULL,
+    phone VARCHAR(20) NOT NULL,
+    subject VARCHAR(100),
+    language VARCHAR(10) NOT NULL DEFAULT 'en',
+    vapi_call_id VARCHAR(100),
+    status VARCHAR(20) NOT NULL DEFAULT 'INITIATED', -- INITIATED | FAILED
+    error TEXT,
+    initiated_by INT REFERENCES teachers(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_voice_tutor_log_school ON ai_voice_tutor_call_log(school_id);
+
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS voice_tutor_enabled BOOLEAN NOT NULL DEFAULT FALSE;
