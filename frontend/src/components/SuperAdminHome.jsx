@@ -4,7 +4,7 @@ import { Building2 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { apiRequest } from '../api';
 
-const PLAN_COLORS = { starter: 'oklch(0.88 0.05 76)', growth: 'oklch(0.82 0.15 78)', district: 'oklch(0.60 0.19 38)' };
+const PLAN_COLORS = { starter: '#e8c383', growth: '#e0a23f', district: '#b3441f' };
 
 export default function SuperAdminHome() {
   const [schools, setSchools] = useState([]);

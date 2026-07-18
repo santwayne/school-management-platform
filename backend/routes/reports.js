@@ -21,10 +21,10 @@ router.get('/attendance', requireAuth, async (req, res) => {
 
     const result = await pool.query(
       `SELECT s.id AS student_id, s.name AS student_name, c.name AS class_name,
-              COUNT(*) FILTER (WHERE a.status = 'present') AS days_present,
-              COUNT(*) FILTER (WHERE a.status = 'absent') AS days_absent,
-              COUNT(*) FILTER (WHERE a.status = 'late') AS days_late,
-              COUNT(*) AS days_recorded
+              COUNT(*) FILTER (WHERE a.status = 'present') AS present_days,
+              COUNT(*) FILTER (WHERE a.status = 'absent') AS absent_days,
+              COUNT(*) FILTER (WHERE a.status = 'late') AS late_days,
+              COUNT(*) AS total_marked
        FROM students s
        LEFT JOIN classes c ON c.id = s.class_id
        LEFT JOIN attendance a ON a.student_id = s.id AND a.date BETWEEN $2 AND $3
@@ -40,7 +40,10 @@ router.get('/attendance', requireAuth, async (req, res) => {
       [school_id, req.user.teacher_id || null, from, to]
     );
 
-    res.json(result.rows);
+    // Frontend (AdminReports.jsx) reads `rows.rows` — a bare array here
+    // makes rows.rows undefined and crashes the table/export with
+    // "Cannot read properties of undefined (reading 'map')".
+    res.json({ rows: result.rows });
   } catch (err) {
     console.error('Attendance report error:', err);
     res.status(500).json({ error: 'Failed to generate attendance report' });
@@ -64,15 +67,18 @@ router.get('/fees', requireAuth, requireFinance, async (req, res) => {
       [school_id, from, to]
     );
 
-    const totals = result.rows.reduce(
-      (acc, row) => {
-        acc.total += parseFloat(row.amount_paid);
-        if (row.payment_mode === 'cash') acc.cash += parseFloat(row.amount_paid);
-        else acc.online += parseFloat(row.amount_paid);
-        return acc;
-      },
-      { total: 0, cash: 0, online: 0 }
-    );
+    // Frontend (AdminReports.jsx) reads `data.summary` (per payment-mode
+    // totals) and `data.transactions` (the raw rows) — not `rows`/`totals`,
+    // which left data.summary.map crashing with undefined.
+    const byMode = new Map();
+    for (const row of result.rows) {
+      const mode = row.payment_mode || 'Unknown';
+      const amt = parseFloat(row.amount_paid);
+      const entry = byMode.get(mode) || { payment_mode: mode, total_collected: 0, transaction_count: 0 };
+      entry.total_collected += amt;
+      entry.transaction_count += 1;
+      byMode.set(mode, entry);
+    }
 
     await pool.query(
       `INSERT INTO report_generations (school_id, report_type, generated_by, date_from, date_to)
@@ -80,7 +86,7 @@ router.get('/fees', requireAuth, requireFinance, async (req, res) => {
       [school_id, req.user.teacher_id || null, from, to]
     );
 
-    res.json({ rows: result.rows, totals });
+    res.json({ summary: Array.from(byMode.values()), transactions: result.rows });
   } catch (err) {
     console.error('Fees report error:', err);
     res.status(500).json({ error: 'Failed to generate fees report' });
@@ -109,7 +115,20 @@ router.get('/payroll', requireAuth, requireFinance, async (req, res) => {
       [school_id, req.user.teacher_id || null]
     );
 
-    res.json(result.rows);
+    // Frontend (AdminReports.jsx) reads `rows.rows` with
+    // gross_amount/deductions/net_amount/paid_at — there's no separate
+    // deductions concept in this schema yet, so gross === net === amount_paid
+    // and deductions is 0 until a real deductions model exists.
+    const rows = result.rows.map((r) => ({
+      teacher_name: r.teacher_name,
+      gross_amount: r.amount_paid,
+      deductions: 0,
+      net_amount: r.amount_paid,
+      status: r.status,
+      paid_at: r.paid_on,
+    }));
+
+    res.json({ rows });
   } catch (err) {
     console.error('Payroll report error:', err);
     res.status(500).json({ error: 'Failed to generate payroll report' });

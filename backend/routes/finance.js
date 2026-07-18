@@ -58,6 +58,32 @@ router.get('/petty-cash', requireAuth, requireFinance, async (req, res) => {
   }
 });
 
+// GET /api/finance/students/search?q= — lets Accountant/Principal resolve a
+// student to their internal numeric id by typing a name or the student's
+// visible login ID (e.g. STD-2-KKSY). Accountants can't call
+// GET /api/academics/students (principal-only), which was the underlying
+// cause of the "student_id always null" fee-collection bug: with no way to
+// look up the id, staff typed the login_id string into a numeric-id field,
+// parseInt() on it returned NaN, and JSON serialized that as null.
+router.get('/students/search', requireAuth, requireFinance, async (req, res) => {
+  const { q } = req.query;
+  if (!q || q.trim().length < 1) return res.json([]);
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.id, s.name, s.login_id, c.name AS class_name
+       FROM students s
+       LEFT JOIN classes c ON c.id = s.class_id
+       WHERE s.school_id = $1 AND (s.name ILIKE $2 OR s.login_id ILIKE $2)
+       ORDER BY s.name LIMIT 10`,
+      [req.user.school_id, `%${q}%`]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Student search error:', err);
+    res.status(500).json({ error: 'Failed to search students' });
+  }
+});
+
 // GET /api/finance/fee/history — recent fee payments for this school, for
 // the Accountant / Principal fee collection screen.
 router.get('/fee/history', requireAuth, requireFinance, async (req, res) => {

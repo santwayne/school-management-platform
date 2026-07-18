@@ -58,11 +58,11 @@ router.post('/run', requireAuth, requireFinance, async (req, res) => {
   try {
     const result = await pool.query(
       `INSERT INTO teacher_salary_history (school_id, teacher_id, period, amount_paid, status)
-       SELECT ts.school_id, ts.teacher_id, $1, ts.monthly_amount, 'PENDING'
+       SELECT ts.school_id, ts.teacher_id, $1::varchar, ts.monthly_amount, 'PENDING'
        FROM teacher_salary ts
        WHERE ts.school_id = $2
          AND NOT EXISTS (
-           SELECT 1 FROM teacher_salary_history h WHERE h.teacher_id = ts.teacher_id AND h.period = $1
+           SELECT 1 FROM teacher_salary_history h WHERE h.teacher_id = ts.teacher_id AND h.period = $1::varchar
          )
        RETURNING *`,
       [period, schoolId]
