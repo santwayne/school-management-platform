@@ -321,6 +321,11 @@ CREATE TABLE IF NOT EXISTS teacher_salary_history (
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING | PAID
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+-- The /payroll/run route's own NOT EXISTS check is a TOCTOU race — two
+-- requests close together (e.g. an impatient double-click) could both pass
+-- it before either commits, creating duplicate salary rows for the same
+-- teacher+period. A real unique index closes that at the DB level.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_salary_history_teacher_period ON teacher_salary_history(teacher_id, period);
 
 CREATE TABLE IF NOT EXISTS petty_cash (
     id SERIAL PRIMARY KEY,
@@ -408,6 +413,12 @@ CREATE TABLE IF NOT EXISTS school_settings (
     petty_cash_accountant_limit NUMERIC(10,2) NOT NULL DEFAULT 5000,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+-- whatsapp_connected now only flips TRUE once a code sent to the entered
+-- number is confirmed back (OTP-style), rather than the moment someone
+-- types a number into the settings form.
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_code VARCHAR(10);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_expires_at TIMESTAMP;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_pending_number VARCHAR(20);
 
 -- ---------- Communications (WhatsApp broadcast log) ----------
 CREATE TABLE IF NOT EXISTS broadcasts (

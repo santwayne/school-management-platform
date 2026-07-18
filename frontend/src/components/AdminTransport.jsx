@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { Plus, X, Bus, Gauge, Clock } from 'lucide-react';
 import { apiRequest } from '../api';
 
-const DEFAULT_CENTER = [43.6532, -79.3832]; // matches the reference GPS adapter's simulated area
+const DEFAULT_CENTER = [30.9010, 75.8573]; // Ludhiana, Punjab — matches the reference GPS adapter's simulated area
 const STALE_MS = 5 * 60 * 1000; // no ping in 5 min = considered idle, not "reporting"
 
 const GPS_VENDORS = [

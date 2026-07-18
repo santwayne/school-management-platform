@@ -1,4 +1,5 @@
 import express from 'express';
+import { loginLimiter } from '../middleware/rateLimit.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
@@ -7,7 +8,7 @@ import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 const router = express.Router();
 
 // Public: Super Admin Login
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   try {
     const { rows } = await pool.query('SELECT * FROM super_admins WHERE email = $1', [email]);
@@ -113,14 +114,21 @@ router.post('/schools/:id/test-users', requireAuth, requireSuperAdmin, async (re
   const client = await pool.connect();
   const randStr = Math.random().toString(36).substring(2, 6).toUpperCase();
 
+  // Randomized per generation rather than the same fixed password every
+  // time — these get returned in the response below so whoever's running
+  // the demo still has them right in front of them, they're just no longer
+  // guessable/reusable across every demo school ever created.
+  const randomPassword = () => Math.random().toString(36).slice(-6) + Math.floor(10 + Math.random() * 89);
+  const randomPin = () => String(Math.floor(1000 + Math.random() * 9000));
+
   const pEmail = `principal.${randStr}@demo.edu`;
-  const pPass = 'Principal123!';
+  const pPass = randomPassword();
   const pPhone = `+91900000${Math.floor(1000 + Math.random() * 8999)}`;
   const tEmail = `teacher.${randStr}@demo.edu`;
-  const tPass = 'Teacher123!';
+  const tPass = randomPassword();
   const tPhone = `+91900001${Math.floor(1000 + Math.random() * 8999)}`;
   const sLoginId = `STD-${randStr}`;
-  const sPin = '1234';
+  const sPin = randomPin();
 
   try {
     const schoolCheck = await client.query('SELECT id FROM schools WHERE id = $1', [schoolId]);
