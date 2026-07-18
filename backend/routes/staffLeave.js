@@ -44,6 +44,15 @@ router.put('/balances', requireAuth, requirePrincipal, async (req, res) => {
   }
 
   try {
+    // teacher_id was never checked against the caller's own school. Since
+    // the conflict target is (teacher_id, year, leave_type) with no
+    // school_id in it, an unscoped call could overwrite a DIFFERENT
+    // school's teacher's leave balance outright.
+    const teacherCheck = await pool.query('SELECT id FROM teachers WHERE id = $1 AND school_id = $2', [teacher_id, req.user.school_id]);
+    if (teacherCheck.rowCount === 0) {
+      return res.status(404).json({ error: 'Teacher not found for this school' });
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO staff_leave_balances (school_id, teacher_id, year, leave_type, total_days)
        VALUES ($1, $2, $3, $4, $5)
