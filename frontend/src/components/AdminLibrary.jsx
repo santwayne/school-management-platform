@@ -34,7 +34,7 @@ function AddBookForm({ onClose, onSaved }) {
           <div className="font-display text-base text-ink">Add book</div>
           <button onClick={onClose}><X className="w-4 h-4 text-ink-soft" /></button>
         </div>
-        {error && <div className="rounded-lg bg-rose-50 text-rose-700 text-xs px-3 py-2">{error}</div>}
+        {error && <div className="rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs px-3 py-2">{error}</div>}
         <input placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full rounded-lg border border-cream-deep/70 px-3 py-2 text-ink" />
         <input placeholder="Author" value={form.author} onChange={(e) => setForm({ ...form, author: e.target.value })} className="w-full rounded-lg border border-cream-deep/70 px-3 py-2 text-ink" />
         <div className="grid grid-cols-2 gap-3">
@@ -99,7 +99,7 @@ function IssueForm({ book, onClose, onSaved }) {
           <div className="font-display text-base text-ink">Issue "{book.title}"</div>
           <button onClick={onClose}><X className="w-4 h-4 text-ink-soft" /></button>
         </div>
-        {error && <div className="rounded-lg bg-rose-50 text-rose-700 text-xs px-3 py-2">{error}</div>}
+        {error && <div className="rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs px-3 py-2">{error}</div>}
         <div className="flex gap-2">
           {['student', 'staff'].map((t) => (
             <button key={t} onClick={() => { setHolderType(t); setHolderId(''); }} className={`px-3 py-1.5 rounded-lg text-sm border ${holderType === t ? 'bg-terracotta text-white border-terracotta' : 'border-cream-deep/70 text-ink-soft'}`}>
@@ -159,7 +159,7 @@ function CatalogTab() {
         </button>
       </div>
 
-      {error && <div className="rounded-xl bg-rose-50 text-rose-700 text-sm px-4 py-3">{error}</div>}
+      {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
 
       <div className="rounded-2xl border border-cream-deep/70 bg-white divide-y divide-cream-deep/60 overflow-hidden">
         {books === null ? (
@@ -219,7 +219,7 @@ function IssuesTab() {
 
   return (
     <div className="space-y-3">
-      {error && <div className="rounded-xl bg-rose-50 text-rose-700 text-sm px-4 py-3">{error}</div>}
+      {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
       <div className="rounded-2xl border border-cream-deep/70 bg-white divide-y divide-cream-deep/60 overflow-hidden">
         {issues === null ? (
           <div className="text-sm text-ink-soft p-6 text-center">Loading…</div>
@@ -231,7 +231,7 @@ function IssuesTab() {
               <div className="font-medium text-ink">{i.book_title}</div>
               <div className="text-xs text-ink-soft">
                 {i.student_name || i.teacher_name} · due {new Date(i.due_date).toLocaleDateString('en-IN')}
-                {i.is_overdue && <span className="text-rose-600 font-medium"> · overdue</span>}
+                {i.is_overdue && <span className="text-terracotta-deep font-medium"> · overdue</span>}
               </div>
             </div>
             <button onClick={() => returnBook(i.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-cream-deep text-ink text-sm font-medium hover:bg-cream-deep/40 shrink-0">

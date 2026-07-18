@@ -3,10 +3,10 @@ import { CalendarDays, Plus, X, Trash2, ChevronLeft, ChevronRight } from 'lucide
 import { apiRequest } from '../api';
 
 const TYPE_STYLES = {
-  holiday: 'bg-emerald-100 text-emerald-800',
-  exam: 'bg-rose-100 text-rose-800',
-  ptm: 'bg-sky-100 text-sky-800',
-  sports: 'bg-amber-100 text-amber-800',
+  holiday: 'bg-emerald-500/10 text-emerald-700',
+  exam: 'bg-terracotta/15 text-terracotta-deep',
+  ptm: 'bg-sky-500/10 text-sky-700',
+  sports: 'bg-amber-500/15 text-amber-700',
   general: 'bg-cream-deep text-ink-soft',
   other: 'bg-cream-deep text-ink-soft',
 };
@@ -45,7 +45,7 @@ function EventForm({ defaultDate, onClose, onSaved }) {
           <div className="font-display text-base text-ink">New event</div>
           <button onClick={onClose}><X className="w-4 h-4 text-ink-soft" /></button>
         </div>
-        {error && <div className="rounded-lg bg-rose-50 text-rose-700 text-xs px-3 py-2">{error}</div>}
+        {error && <div className="rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs px-3 py-2">{error}</div>}
         <input
           placeholder="Title"
           value={form.title}
@@ -168,7 +168,7 @@ export default function AdminEventCalendar() {
         </div>
       </div>
 
-      {error && <div className="rounded-xl bg-rose-50 text-rose-700 text-sm px-4 py-3">{error}</div>}
+      {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
 
       <div className="rounded-2xl border border-cream-deep/70 bg-white overflow-hidden">
         <div className="grid grid-cols-7 bg-cream-deep/40 text-xs uppercase tracking-wider text-ink-soft">

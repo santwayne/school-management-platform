@@ -309,7 +309,7 @@ function ConnectGpsSection({ bus, onUpdated }) {
       </div>
 
       {bus.last_poll_status && (
-        <div className={`mb-3 text-xs rounded-lg px-3 py-2 flex items-center gap-1.5 ${bus.last_poll_status === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+        <div className={`mb-3 text-xs rounded-lg px-3 py-2 flex items-center gap-1.5 ${bus.last_poll_status === 'ok' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-destructive/10 border border-destructive/20 text-destructive'}`}>
           {bus.last_poll_status === 'ok' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
           {bus.last_poll_status === 'ok' ? `Last connected ${timeAgo(bus.last_poll_at)}` : `Last error: ${bus.last_poll_error || 'unknown'}`}
         </div>
@@ -333,7 +333,7 @@ function ConnectGpsSection({ bus, onUpdated }) {
 
       {!isDemo && !isPush && (
         <div className="space-y-3">
-          {error && <div className="rounded-lg bg-rose-50 text-rose-700 text-xs px-3 py-2">{error}</div>}
+          {error && <div className="rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs px-3 py-2">{error}</div>}
           <Field label="Vendor API URL (use {device_id} as a placeholder)">
             <Input value={baseUrl} onChange={setBaseUrl} placeholder="https://api.vendor.com/v1/devices/{device_id}/location" />
           </Field>
@@ -355,7 +355,7 @@ function ConnectGpsSection({ bus, onUpdated }) {
             </button>
           </div>
           {testResult && (
-            <div className={`text-xs rounded-lg px-3 py-2 ${testResult.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+            <div className={`text-xs rounded-lg px-3 py-2 ${testResult.ok ? 'bg-emerald-500/10 text-emerald-700' : 'bg-destructive/10 border border-destructive/20 text-destructive'}`}>
               {testResult.ok
                 ? `Connected — got lat ${testResult.location.latitude}, lng ${testResult.location.longitude}`
                 : `Failed: ${testResult.message}`}

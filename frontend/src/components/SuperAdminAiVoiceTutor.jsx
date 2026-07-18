@@ -96,12 +96,12 @@ export default function SuperAdminAiVoiceTutor() {
         <p className="text-sm text-ink-soft mt-1">Connect the Vapi voice assistant once here, then switch it on per school.</p>
       </div>
 
-      {error && <div className="rounded-xl bg-rose-50 text-rose-700 text-sm px-4 py-3">{error}</div>}
+      {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
 
       <div className="rounded-2xl bg-white border border-cream-deep/70 p-5 space-y-4">
         <div className="flex items-center justify-between">
           <div className="font-display text-base text-ink">Vapi connection</div>
-          <span className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${config?.connected ? 'bg-emerald-100 text-emerald-800' : 'bg-cream-deep text-ink-soft'}`}>
+          <span className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${config?.connected ? 'bg-emerald-500/10 text-emerald-700' : 'bg-cream-deep text-ink-soft'}`}>
             {config?.connected ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
             {config?.connected ? 'Connected' : 'Not connected'}
           </span>
@@ -169,7 +169,7 @@ export default function SuperAdminAiVoiceTutor() {
           </button>
         </div>
         {testResult && (
-          <div className={`text-sm rounded-lg px-3 py-2 ${testResult.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+          <div className={`text-sm rounded-lg px-3 py-2 ${testResult.ok ? 'bg-emerald-500/10 text-emerald-700' : 'bg-destructive/10 border border-destructive/20 text-destructive'}`}>
             {testResult.ok ? `Call started — Vapi call ID ${testResult.callId}` : `Failed: ${testResult.message}`}
           </div>
         )}

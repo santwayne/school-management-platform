@@ -7,9 +7,9 @@ const LEAVE_LABELS = { casual: 'Casual', sick: 'Sick', earned: 'Earned' };
 
 function StatusBadge({ status }) {
   const cls = {
-    PENDING: 'bg-amber-100 text-amber-800',
-    APPROVED: 'bg-emerald-100 text-emerald-800',
-    REJECTED: 'bg-rose-100 text-rose-800',
+    PENDING: 'bg-amber-500/15 text-amber-700',
+    APPROVED: 'bg-emerald-500/10 text-emerald-700',
+    REJECTED: 'bg-terracotta/15 text-terracotta-deep',
   }[status] || 'bg-cream-deep text-ink-soft';
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{status}</span>;
 }
@@ -86,7 +86,7 @@ export default function TeacherLeave() {
 
         <form onSubmit={submit} className="rounded-2xl bg-white border border-cream-deep/70 p-5 space-y-3">
           <div className="font-display text-base text-ink">Apply for leave</div>
-          {error && <div className="rounded-lg bg-rose-50 text-rose-700 text-sm px-3 py-2">{error}</div>}
+          {error && <div className="rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm px-3 py-2">{error}</div>}
           <div className="grid grid-cols-2 gap-3">
             <label className="text-sm text-ink-soft space-y-1 col-span-2">
               Type

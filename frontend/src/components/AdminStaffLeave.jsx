@@ -12,9 +12,9 @@ const LEAVE_LABELS = { casual: 'Casual', sick: 'Sick', earned: 'Earned' };
 
 function StatusBadge({ status }) {
   const cls = {
-    PENDING: 'bg-amber-100 text-amber-800',
-    APPROVED: 'bg-emerald-100 text-emerald-800',
-    REJECTED: 'bg-rose-100 text-rose-800',
+    PENDING: 'bg-amber-500/15 text-amber-700',
+    APPROVED: 'bg-emerald-500/10 text-emerald-700',
+    REJECTED: 'bg-terracotta/15 text-terracotta-deep',
   }[status] || 'bg-cream-deep text-ink-soft';
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{status}</span>;
 }
@@ -76,7 +76,7 @@ export default function AdminStaffLeave() {
         ))}
       </div>
 
-      {error && <div className="rounded-xl bg-rose-50 text-rose-700 text-sm px-4 py-3">{error}</div>}
+      {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
 
       {requests === null ? (
         <div className="text-sm text-ink-soft py-8 text-center">Loading…</div>

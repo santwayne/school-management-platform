@@ -3,9 +3,9 @@ import { GraduationCap, Plus, X, Upload, CheckCircle2, AlertTriangle, ClipboardC
 import { apiRequest } from '../api';
 
 const CONFIDENCE_STYLE = {
-  high: 'bg-emerald-100 text-emerald-800',
-  medium: 'bg-amber-100 text-amber-800',
-  low: 'bg-rose-100 text-rose-800',
+  high: 'bg-emerald-500/10 text-emerald-700',
+  medium: 'bg-amber-500/15 text-amber-700',
+  low: 'bg-terracotta/15 text-terracotta-deep',
 };
 
 function fileToBase64(file) {
@@ -47,7 +47,7 @@ function GenerateTestModal({ classes, onClose, onCreated }) {
           <div className="font-display text-base text-ink">Generate a test</div>
           <button onClick={onClose}><X className="w-4 h-4 text-ink-soft" /></button>
         </div>
-        {error && <div className="rounded-lg bg-rose-50 text-rose-700 text-xs px-3 py-2">{error}</div>}
+        {error && <div className="rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs px-3 py-2">{error}</div>}
         <input placeholder="Title (optional)" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full rounded-lg border border-cream-deep/70 px-3 py-2 text-ink" />
         <div className="grid grid-cols-2 gap-3">
           <input placeholder="Subject" value={form.subject_id} onChange={(e) => setForm({ ...form, subject_id: e.target.value })} className="w-full rounded-lg border border-cream-deep/70 px-3 py-2 text-ink" />
@@ -127,7 +127,7 @@ function SubmitAnswerPanel({ test, onClose, onSubmitted }) {
           <div className="font-display text-base text-ink">Grade an answer — {test.title}</div>
           <button onClick={onClose}><X className="w-4 h-4 text-ink-soft" /></button>
         </div>
-        {error && <div className="rounded-lg bg-rose-50 text-rose-700 text-xs px-3 py-2">{error}</div>}
+        {error && <div className="rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs px-3 py-2">{error}</div>}
 
         <div className="grid grid-cols-2 gap-3">
           <label className="text-sm text-ink-soft space-y-1">
@@ -215,7 +215,7 @@ function PendingReviewQueue() {
         <ClipboardCheck className="w-5 h-5 text-terracotta" /> Pending teacher review
       </div>
       <p className="text-sm text-ink-soft -mt-2">Nothing counts as a final grade until confirmed here.</p>
-      {error && <div className="rounded-xl bg-rose-50 text-rose-700 text-sm px-4 py-3">{error}</div>}
+      {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
       {rows === null ? (
         <div className="text-sm text-ink-soft py-6 text-center">Loading…</div>
       ) : rows.length === 0 ? (
@@ -306,7 +306,7 @@ export default function AIGrading() {
         </button>
       </div>
 
-      {error && <div className="rounded-xl bg-rose-50 text-rose-700 text-sm px-4 py-3">{error}</div>}
+      {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
 
       <div className="space-y-2">
         <div className="font-display text-lg text-ink">Tests</div>

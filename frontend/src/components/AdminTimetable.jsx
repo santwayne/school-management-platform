@@ -61,7 +61,7 @@ function CellEditor({ classId, dayOfWeek, period, slot, subjects, teachers, onCl
           <div className="font-display text-base text-ink">{DAYS[dayOfWeek - 1]} · Period {period}</div>
           <button onClick={onClose}><X className="w-4 h-4 text-ink-soft" /></button>
         </div>
-        {error && <div className="rounded-lg bg-rose-50 text-rose-700 text-xs px-3 py-2">{error}</div>}
+        {error && <div className="rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs px-3 py-2">{error}</div>}
         <label className="text-sm text-ink-soft space-y-1 block">
           Subject
           <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} className="w-full rounded-lg border border-cream-deep/70 px-3 py-2 text-ink">
@@ -158,7 +158,7 @@ export default function AdminTimetable() {
         </select>
       </div>
 
-      {error && <div className="rounded-xl bg-rose-50 text-rose-700 text-sm px-4 py-3">{error}</div>}
+      {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
 
       <div className="overflow-x-auto rounded-2xl border border-cream-deep/70 bg-white">
         <table className="w-full text-sm border-collapse min-w-[720px]">
