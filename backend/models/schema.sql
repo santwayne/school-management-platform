@@ -522,3 +522,100 @@ CREATE TABLE IF NOT EXISTS fee_payment_links (
     paid_at TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_fee_links_school ON fee_payment_links(school_id);
+
+-- ---------- Staff leave management ----------
+-- Balances are tracked per-teacher-per-year so a new academic year just
+-- inserts a fresh row rather than needing a reset migration each time.
+CREATE TABLE IF NOT EXISTS staff_leave_balances (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    year INT NOT NULL,
+    leave_type VARCHAR(20) NOT NULL, -- 'casual' | 'sick' | 'earned'
+    total_days NUMERIC(4,1) NOT NULL DEFAULT 0,
+    used_days NUMERIC(4,1) NOT NULL DEFAULT 0,
+    UNIQUE (teacher_id, year, leave_type)
+);
+
+CREATE TABLE IF NOT EXISTS staff_leave_requests (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    leave_type VARCHAR(20) NOT NULL, -- 'casual' | 'sick' | 'earned'
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    days_count NUMERIC(4,1) NOT NULL,
+    reason TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING | APPROVED | REJECTED | CANCELLED
+    reviewed_by INT REFERENCES teachers(id),
+    reviewed_at TIMESTAMP,
+    review_note TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_school ON staff_leave_requests(school_id);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_teacher ON staff_leave_requests(teacher_id);
+
+-- ---------- Class timetable ----------
+-- One row per (class, day, period). teacher_id/subject_id nullable so a
+-- principal can lay out the grid (say, "Period 3") before assigning who
+-- teaches it — matches how schools actually build a timetable in practice.
+CREATE TABLE IF NOT EXISTS timetable_slots (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    day_of_week SMALLINT NOT NULL, -- 1=Monday .. 6=Saturday
+    period_number SMALLINT NOT NULL,
+    start_time TIME,
+    end_time TIME,
+    subject_id INT REFERENCES subjects(id) ON DELETE SET NULL,
+    teacher_id INT REFERENCES teachers(id) ON DELETE SET NULL,
+    room VARCHAR(50),
+    UNIQUE (class_id, day_of_week, period_number)
+);
+CREATE INDEX IF NOT EXISTS idx_timetable_school ON timetable_slots(school_id);
+CREATE INDEX IF NOT EXISTS idx_timetable_teacher ON timetable_slots(teacher_id);
+
+-- ---------- School event calendar ----------
+CREATE TABLE IF NOT EXISTS school_events (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    event_date DATE NOT NULL,
+    end_date DATE, -- null for single-day events
+    event_type VARCHAR(30) NOT NULL DEFAULT 'general', -- 'holiday' | 'exam' | 'ptm' | 'general' | 'sports' | 'other'
+    audience VARCHAR(20) NOT NULL DEFAULT 'all', -- 'all' | 'staff' | 'students' | 'parents'
+    created_by INT REFERENCES teachers(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_events_school_date ON school_events(school_id, event_date);
+
+-- ---------- Library management ----------
+CREATE TABLE IF NOT EXISTS library_books (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    author VARCHAR(255),
+    isbn VARCHAR(30),
+    category VARCHAR(100),
+    total_copies INT NOT NULL DEFAULT 1,
+    available_copies INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_library_books_school ON library_books(school_id);
+
+CREATE TABLE IF NOT EXISTS library_issues (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    book_id INT NOT NULL REFERENCES library_books(id) ON DELETE CASCADE,
+    student_id INT REFERENCES students(id) ON DELETE CASCADE,
+    teacher_id INT REFERENCES teachers(id) ON DELETE CASCADE,
+    issued_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    due_date DATE NOT NULL,
+    returned_date DATE,
+    fine_amount NUMERIC(8,2) DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'ISSUED', -- ISSUED | RETURNED | OVERDUE | LOST
+    CHECK (student_id IS NOT NULL OR teacher_id IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS idx_library_issues_school ON library_issues(school_id);
+CREATE INDEX IF NOT EXISTS idx_library_issues_book ON library_issues(book_id);

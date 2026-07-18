@@ -27,6 +27,10 @@ import feeCollectorsRoutes from './routes/feeCollectors.js';
 import feeIntakeRoutes from './routes/feeIntake.js';
 import paymentLinksRoutes from './routes/paymentLinks.js';
 import onboardingRoutes from './routes/onboarding.js';
+import staffLeaveRoutes from './routes/staffLeave.js';
+import timetableRoutes from './routes/timetable.js';
+import eventsRoutes from './routes/events.js';
+import libraryRoutes from './routes/library.js';
 import './workers/gpsPollWorker.js';
 import './workers/teacherAttendanceAggregationWorker.js';
 import './workers/classNoteWorker.js';
@@ -85,6 +89,10 @@ app.use('/api/fee-collectors', feeCollectorsRoutes);
 app.use('/api/fee-intake', feeIntakeRoutes);
 app.use('/api/payment-links', paymentLinksRoutes);
 app.use('/api/onboarding', onboardingRoutes);
+app.use('/api/staff-leave', staffLeaveRoutes);
+app.use('/api/timetable', timetableRoutes);
+app.use('/api/events', eventsRoutes);
+app.use('/api/library', libraryRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {
