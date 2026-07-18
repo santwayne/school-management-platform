@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
+import LandingLayout from './LandingLayout';
 
 const inputClass =
   'w-full px-3 py-2.5 text-sm rounded-lg bg-white border border-cream-deep focus:outline-none focus:ring-2 focus:ring-terracotta/40 focus:border-terracotta/60 placeholder:text-ink-soft/60';
@@ -251,38 +252,40 @@ export default function Login() {
   const [role, setRole] = useState('admin');
 
   return (
-    <div className="min-h-screen bg-cream text-ink font-sans flex flex-col items-center justify-center px-4 py-10">
-      <main className="w-full max-w-[420px]">
-        <div className="bg-white rounded-3xl border border-cream-deep shadow-sm px-6 sm:px-8 py-8 sm:py-10">
-          <div className="flex flex-col items-center text-center">
-            <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-terracotta/15 to-amber-warm/20 border border-cream-deep flex items-center justify-center">
-              <span className="font-display text-2xl text-terracotta-deep tracking-wide">W</span>
+    <LandingLayout>
+      <div className="flex flex-col items-center justify-center px-4 py-16">
+        <div className="w-full max-w-[420px]">
+          <div className="bg-white rounded-3xl border border-cream-deep shadow-sm px-6 sm:px-8 py-8 sm:py-10">
+            <div className="flex flex-col items-center text-center">
+              <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-terracotta/15 to-amber-warm/20 border border-cream-deep flex items-center justify-center">
+                <span className="font-display text-2xl text-terracotta-deep tracking-wide">W</span>
+              </div>
+              <h1 className="font-display text-2xl sm:text-[26px] leading-tight text-ink mt-4">Waynur</h1>
+              <div className="text-xs text-ink-soft mt-1">Sign in to your school</div>
             </div>
-            <h1 className="font-display text-2xl sm:text-[26px] leading-tight text-ink mt-4">Waynur</h1>
-            <div className="text-xs text-ink-soft mt-1">Sign in to your school</div>
+
+            <div className="mt-8">
+              <RoleTabs value={role} onChange={setRole} />
+            </div>
+
+            <div className="mt-6">
+              {role === 'admin' && <AdminForm />}
+              {role === 'accountant' && <AdminForm />}
+              {role === 'teacher' && <TeacherForm />}
+              {role === 'student' && <StudentForm />}
+            </div>
           </div>
 
-          <div className="mt-8">
-            <RoleTabs value={role} onChange={setRole} />
-          </div>
-
-          <div className="mt-6">
-            {role === 'admin' && <AdminForm />}
-            {role === 'accountant' && <AdminForm />}
-            {role === 'teacher' && <TeacherForm />}
-            {role === 'student' && <StudentForm />}
+          <div className="mt-5 text-center space-y-1.5">
+            <p className="text-xs text-ink-soft">
+              New school? <Link to="/onboarding" className="text-terracotta-deep font-medium hover:text-terracotta">Set up Waynur</Link>
+            </p>
+            <Link to="/super-admin-login" className="text-xs text-ink-soft hover:text-ink transition block">
+              Super Admin login
+            </Link>
           </div>
         </div>
-
-        <div className="mt-5 text-center space-y-1.5">
-          <p className="text-xs text-ink-soft">
-            New school? <Link to="/onboarding" className="text-terracotta-deep font-medium hover:text-terracotta">Set up Waynur</Link>
-          </p>
-          <Link to="/super-admin-login" className="text-xs text-ink-soft hover:text-ink transition block">
-            Super Admin login
-          </Link>
-        </div>
-      </main>
-    </div>
+      </div>
+    </LandingLayout>
   );
 }

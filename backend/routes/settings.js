@@ -1,8 +1,28 @@
 import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
 
 const router = express.Router();
+
+const s3 = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) return cb(new Error('Only image files are allowed'));
+    cb(null, true);
+  },
+});
 
 // Get this school's settings — creates a default row on first read so the
 // frontend never has to handle a missing-settings case.
@@ -122,6 +142,46 @@ router.patch('/petty-cash-limit', requireAuth, requirePrincipal, async (req, res
   } catch (err) {
     console.error('Petty cash limit update error:', err);
     res.status(500).json({ error: 'Failed to update petty cash limit' });
+  }
+});
+
+// Upload school logo to S3, save URL to DB, return updated settings.
+router.post('/logo', requireAuth, requirePrincipal, (req, res, next) => {
+  upload.single('logo')(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'File must be under 2 MB' });
+      return res.status(400).json({ error: err.message });
+    }
+    if (err) return res.status(400).json({ error: err.message });
+    next();
+  });
+}, async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+  const ext = path.extname(req.file.originalname).toLowerCase() || '.jpg';
+  const key = `logos/${req.user.school_id}/${Date.now()}${ext}`;
+
+  try {
+    await s3.send(new PutObjectCommand({
+      Bucket: process.env.AWS_S3_BUCKET,
+      Key: key,
+      Body: req.file.buffer,
+      ContentType: req.file.mimetype,
+    }));
+
+    const logo_url = `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+
+    const result = await pool.query(
+      `INSERT INTO school_settings (school_id, logo_url) VALUES ($1, $2)
+       ON CONFLICT (school_id) DO UPDATE SET logo_url = EXCLUDED.logo_url, updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [req.user.school_id, logo_url]
+    );
+
+    res.json({ logo_url, settings: result.rows[0] });
+  } catch (err) {
+    console.error('S3 logo upload error:', err);
+    res.status(500).json({ error: 'Upload failed — check S3 credentials and bucket policy' });
   }
 });
 

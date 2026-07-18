@@ -26,4 +26,15 @@ export async function apiRequest(path, { method = 'GET', body } = {}) {
   return data;
 }
 
+export async function apiUpload(path, formData) {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    headers: { ...authHeaders() }, // no Content-Type — browser sets multipart boundary
+    body: formData,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
+  return data;
+}
+
 export { API_URL };

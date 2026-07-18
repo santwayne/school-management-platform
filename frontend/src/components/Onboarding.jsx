@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Check, ChevronLeft, ChevronRight, Fingerprint, Upload, Plus, Trash2 } from 'lucide-react';
 import { apiRequest } from '../api';
+import LandingLayout from './LandingLayout';
 
 const STEPS = ['School', 'Branding', 'Attendance', 'Classes', 'Admin', 'Review'];
 
@@ -107,30 +108,29 @@ export default function Onboarding() {
 
   if (launched) {
     return (
-      <div className="min-h-screen bg-cream flex items-center justify-center p-6">
-        <div className="max-w-md w-full text-center">
-          <div className="mx-auto w-16 h-16 rounded-3xl bg-terracotta flex items-center justify-center text-white text-3xl mb-5">✓</div>
-          <h1 className="font-display text-2xl text-ink">Submitted for approval</h1>
-          <p className="text-sm text-ink-soft mt-2">
-            Thanks — {f.schoolName} has been submitted. A Wayne E Solutions team member will review and activate your
-            account, then you can log in with {f.adminEmail}.
-          </p>
-          <Link to="/login" className="inline-block mt-6 px-5 py-2.5 rounded-xl bg-terracotta text-white font-medium hover:bg-terracotta-deep transition">
-            Back to login
-          </Link>
+      <LandingLayout>
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-md w-full text-center">
+            <div className="mx-auto w-16 h-16 rounded-3xl bg-terracotta flex items-center justify-center text-white text-3xl mb-5">✓</div>
+            <h1 className="font-display text-2xl text-ink">Submitted for approval</h1>
+            <p className="text-sm text-ink-soft mt-2">
+              Thanks — {f.schoolName} has been submitted. A Wayne E Solutions team member will review and activate your
+              account, then you can log in with {f.adminEmail}.
+            </p>
+            <Link to="/login" className="inline-block mt-6 px-5 py-2.5 rounded-xl bg-terracotta text-white font-medium hover:bg-terracotta-deep transition">
+              Back to login
+            </Link>
+          </div>
         </div>
-      </div>
+      </LandingLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-cream py-10 px-4">
+    <LandingLayout>
+      <div className="py-10 px-4">
       <div className="max-w-2xl mx-auto">
-        <div className="flex items-center justify-between mb-2">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-terracotta flex items-center justify-center text-white font-display">W</div>
-            <span className="font-display text-lg text-ink">Waynur</span>
-          </Link>
+        <div className="flex items-center justify-end mb-2">
           <div className="text-xs text-ink-soft">Step {step + 1} of {STEPS.length}</div>
         </div>
         <StepIndicator step={step} />
@@ -285,6 +285,7 @@ export default function Onboarding() {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </LandingLayout>
   );
 }

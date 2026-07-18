@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { apiRequest } from '../api';
+import React, { useEffect, useRef, useState } from 'react';
+import { apiRequest, apiUpload } from '../api';
 import FeeCollectorsCard from './FeeCollectorsCard';
 
 function Toggle({ label, checked, onChange }) {
@@ -29,11 +29,15 @@ function Card({ title, children }) {
 export default function AdminSettings() {
   const [settings, setSettings] = useState(null);
   const [schoolName, setSchoolName] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
+  const [logoPreview, setLogoPreview] = useState('');
+  const [uploading, setUploading] = useState(false);
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [limit, setLimit] = useState('5000');
   const [error, setError] = useState('');
   const [savedMsg, setSavedMsg] = useState('');
   const [loading, setLoading] = useState(true);
+  const fileInputRef = useRef(null);
 
   const load = async () => {
     setLoading(true);
@@ -42,6 +46,8 @@ export default function AdminSettings() {
       setSettings(s);
       setWhatsappNumber(s.whatsapp_business_number || '');
       setLimit(String(s.petty_cash_accountant_limit ?? 5000));
+      setLogoUrl(s.logo_url || '');
+      setLogoPreview(s.logo_url || '');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -58,10 +64,52 @@ export default function AdminSettings() {
     setTimeout(() => setSavedMsg(''), 2500);
   };
 
+  const handleLogoFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please select an image file (PNG, JPG, SVG, etc.).');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setError('Logo must be under 2 MB.');
+      return;
+    }
+
+    // Show local preview immediately while uploading
+    const objectUrl = URL.createObjectURL(file);
+    setLogoPreview(objectUrl);
+    setError('');
+    setUploading(true);
+
+    try {
+      const fd = new FormData();
+      fd.append('logo', file);
+      const { logo_url } = await apiUpload('/api/settings/logo', fd);
+      setLogoUrl(logo_url);
+      setLogoPreview(logo_url);
+      URL.revokeObjectURL(objectUrl);
+      flash('Logo uploaded.');
+    } catch (err) {
+      setError('Upload failed: ' + err.message);
+      setLogoPreview(logoUrl); // revert preview
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const saveBranding = async () => {
     setError('');
     try {
-      const s = await apiRequest('/api/settings/branding', { method: 'PATCH', body: { school_name: schoolName || undefined } });
+      const s = await apiRequest('/api/settings/branding', {
+        method: 'PATCH',
+        body: {
+          school_name: schoolName || undefined,
+          logo_url: logoUrl || undefined,
+        },
+      });
       setSettings(s);
       flash('Branding saved.');
     } catch (err) {
@@ -116,19 +164,61 @@ export default function AdminSettings() {
       {savedMsg && <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-3 text-sm text-emerald-700">{savedMsg}</div>}
 
       <Card title="Branding">
-        <label className="block mb-3">
+        {/* Logo */}
+        <div className="mb-4">
+          <span className="block text-xs font-medium text-ink-soft mb-2">School logo</span>
+          <div className="flex items-center gap-4">
+            {/* Preview box */}
+            <div className="w-16 h-16 rounded-xl border border-cream-deep bg-cream-deep/40 flex items-center justify-center overflow-hidden flex-shrink-0">
+              {logoPreview ? (
+                <img src={logoPreview} alt="Logo preview" className="w-full h-full object-contain" />
+              ) : (
+                <svg className="w-6 h-6 text-ink-soft/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                  <rect x="3" y="3" width="18" height="18" rx="3" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21 15 16 10 5 21" />
+                </svg>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleLogoFile}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="px-3 py-1.5 rounded-lg border border-cream-deep bg-white text-xs font-medium text-ink hover:bg-cream-deep/40 transition disabled:opacity-50"
+              >
+                {uploading ? 'Uploading…' : logoPreview ? 'Change logo' : 'Upload logo'}
+              </button>
+              <p className="text-xs text-ink-soft">PNG, JPG or SVG · max 2 MB</p>
+            </div>
+          </div>
+        </div>
+
+        {/* School name */}
+        <label className="block mb-4">
           <span className="text-xs font-medium text-ink-soft">School name</span>
           <input
             type="text"
-            defaultValue=""
             placeholder="Type a new name to update it"
             value={schoolName}
             onChange={(e) => setSchoolName(e.target.value)}
             className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
           />
         </label>
-        <p className="text-xs text-ink-soft mb-3">Logo upload isn't wired to file storage yet — this field only accepts a hosted image URL for now.</p>
-        <button onClick={saveBranding} className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
+
+        <button
+          onClick={saveBranding}
+          disabled={uploading}
+          className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition disabled:opacity-50"
+        >
           Save branding
         </button>
       </Card>
