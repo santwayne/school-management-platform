@@ -166,16 +166,7 @@ export default function StudentTutor() {
 
         <div className="border-t border-cream-deep/60 pt-3 pb-4">
           {mode === 'voice' ? (
-            <div className="flex flex-col items-center py-4 gap-3">
-              <button
-                disabled
-                className="w-16 h-16 rounded-full bg-cream-deep/60 text-ink-soft flex items-center justify-center cursor-not-allowed"
-                title="Voice input isn't available yet"
-              >
-                <Mic className="w-7 h-7" />
-              </button>
-              <p className="text-xs text-ink-soft">Voice mode is coming soon — switch to Text for now.</p>
-            </div>
+            <VoiceTutorPanel subject={currentSubject.name} subjectKey={subject} studentId={user?.id} />
           ) : (
             <form
               onSubmit={(e) => {
@@ -209,5 +200,86 @@ export default function StudentTutor() {
         </div>
       </div>
     </StudentShell>
+  );
+}
+
+function VoiceTutorPanel({ subject, studentId }) {
+  const [schoolEnabled, setSchoolEnabled] = useState(null);
+  const [phone, setPhone] = useState('');
+  const [language, setLanguage] = useState('en');
+  const [requesting, setRequesting] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiRequest('/api/super-admin/ai-voice-tutor/school-status')
+      .then((r) => setSchoolEnabled(r.enabled))
+      .catch(() => setSchoolEnabled(false));
+  }, []);
+
+  const requestCall = async () => {
+    if (!phone) return setError('Enter a phone number to receive the call.');
+    setRequesting(true);
+    setError('');
+    setResult(null);
+    try {
+      await apiRequest('/api/super-admin/ai-voice-tutor/start', {
+        method: 'POST',
+        body: { student_id: studentId, phone, subject, language },
+      });
+      setResult('ok');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  if (schoolEnabled === null) {
+    return <div className="text-sm text-ink-soft text-center py-6">Checking availability…</div>;
+  }
+
+  if (!schoolEnabled) {
+    return (
+      <div className="flex flex-col items-center py-4 gap-3">
+        <div className="w-16 h-16 rounded-full bg-cream-deep/60 text-ink-soft flex items-center justify-center">
+          <Mic className="w-7 h-7" />
+        </div>
+        <p className="text-xs text-ink-soft text-center max-w-xs">
+          Voice tutoring isn't turned on for your school yet — ask your principal to enable it.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center py-4 gap-3">
+      <div className="w-16 h-16 rounded-full bg-terracotta/10 text-terracotta-deep flex items-center justify-center">
+        <Mic className="w-7 h-7" />
+      </div>
+      <p className="text-xs text-ink-soft text-center">Get a call from your AI voice tutor for {subject}.</p>
+      <div className="flex gap-2 w-full max-w-xs">
+        <input
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="+9198XXXXXXXX"
+          className="flex-1 px-3 py-2 rounded-lg border border-cream-deep/70 text-sm"
+        />
+        <select value={language} onChange={(e) => setLanguage(e.target.value)} className="px-2 py-2 rounded-lg border border-cream-deep/70 text-sm">
+          <option value="en">English</option>
+          <option value="hi">Hindi</option>
+          <option value="pa">Punjabi</option>
+        </select>
+      </div>
+      <button
+        disabled={requesting}
+        onClick={requestCall}
+        className="px-4 py-2 rounded-lg bg-terracotta text-white text-sm font-medium hover:bg-terracotta-deep disabled:opacity-50"
+      >
+        {requesting ? 'Calling…' : 'Call me now'}
+      </button>
+      {error && <div className="text-xs text-destructive">{error}</div>}
+      {result === 'ok' && <div className="text-xs text-emerald-700">Call started — answer your phone!</div>}
+    </div>
   );
 }

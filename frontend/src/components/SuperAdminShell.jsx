@@ -1,11 +1,12 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Building2, Receipt, ShieldCheck, LogOut } from 'lucide-react';
+import { LayoutDashboard, Building2, Receipt, ShieldCheck, LogOut, Mic } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 
 const NAV = [
   { label: 'Overview', icon: LayoutDashboard, to: '/super-admin' },
   { label: 'Schools', icon: Building2, to: '/super-admin/schools' },
+  { label: 'AI Voice Tutor', icon: Mic, to: '/super-admin/ai-voice-tutor' },
   { label: 'Subscriptions & Billing', icon: Receipt, to: '/super-admin/billing' },
 ];
 

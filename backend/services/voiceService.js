@@ -28,3 +28,28 @@ export async function triggerEscalationCall(parentPhone, { studentName, language
 
   return data; // includes Vapi call id, used later to reconcile call_outcomes
 }
+
+// Generic Vapi call trigger used by the AI Voice Tutor — takes its
+// credentials and assistant id as explicit params (from ai_voice_tutor_config
+// in the DB, set by a super admin) rather than from env vars, since this is
+// a platform-level integration a super admin wires up at runtime instead of
+// a per-deploy secret like the escalation caller above.
+export async function triggerVapiCall({ apiKey, phoneNumberId, assistantId, toPhone, variableValues = {} }) {
+  const { data } = await axios.post(
+    'https://api.vapi.ai/call/phone',
+    {
+      assistantId,
+      phoneNumberId,
+      customer: { number: toPhone },
+      assistantOverrides: { variableValues },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 10000,
+    }
+  );
+  return data;
+}
