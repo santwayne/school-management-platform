@@ -77,7 +77,8 @@ router.get('/schools', requireAuth, requireSuperAdmin, async (req, res) => {
     const { rows } = await pool.query(`
       SELECT s.*,
         (SELECT COUNT(*) FROM students WHERE school_id = s.id) AS student_count,
-        (SELECT COUNT(*) FROM teachers WHERE school_id = s.id) AS teacher_count
+        (SELECT COUNT(*) FROM teachers WHERE school_id = s.id) AS teacher_count,
+        COALESCE((SELECT voice_tutor_enabled FROM school_settings WHERE school_id = s.id), FALSE) AS voice_tutor_enabled
       FROM schools s
       ORDER BY s.created_at DESC
     `);
