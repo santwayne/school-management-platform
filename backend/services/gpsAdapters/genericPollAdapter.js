@@ -1,9 +1,10 @@
-// Reference implementation simulating a slowly moving vehicle around Toronto.
+// Reference implementation simulating a slowly moving vehicle around Ludhiana,
+// Punjab — matches the actual client base rather than an arbitrary city.
 // Proves the pipeline (worker -> DB -> map) works end-to-end before any real
 // vendor integration exists.
 export async function pollLocations(bus) {
-  const baseLat = 43.6532;
-  const baseLng = -79.3832;
+  const baseLat = 30.9010;
+  const baseLng = 75.8573;
   const timeFactor = (Date.now() / 100000) % 0.05;
 
   return {

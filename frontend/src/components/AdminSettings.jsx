@@ -30,6 +30,8 @@ export default function AdminSettings() {
   const [settings, setSettings] = useState(null);
   const [schoolName, setSchoolName] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [verifyCode, setVerifyCode] = useState('');
+  const [awaitingCode, setAwaitingCode] = useState(false);
   const [limit, setLimit] = useState('5000');
   const [error, setError] = useState('');
   const [savedMsg, setSavedMsg] = useState('');
@@ -72,9 +74,23 @@ export default function AdminSettings() {
   const saveWhatsapp = async () => {
     setError('');
     try {
-      const s = await apiRequest('/api/settings/whatsapp', { method: 'PATCH', body: { whatsapp_business_number: whatsappNumber } });
+      const res = await apiRequest('/api/settings/whatsapp', { method: 'PATCH', body: { whatsapp_business_number: whatsappNumber } });
+      setAwaitingCode(true);
+      flash(res.message || 'Verification code sent.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const verifyWhatsapp = async () => {
+    setError('');
+    if (!verifyCode) return setError('Enter the code sent to your WhatsApp.');
+    try {
+      const s = await apiRequest('/api/settings/whatsapp/verify', { method: 'POST', body: { code: verifyCode } });
       setSettings(s);
-      flash('WhatsApp number saved.');
+      setAwaitingCode(false);
+      setVerifyCode('');
+      flash('WhatsApp number verified and connected.');
     } catch (err) {
       setError(err.message);
     }
@@ -149,10 +165,24 @@ export default function AdminSettings() {
             className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
           />
         </label>
-        <p className="text-xs text-ink-soft mb-3">Saving this marks the number as connected — it doesn't yet verify against the real WhatsApp Business API, so confirm delivery works before relying on it.</p>
+        <p className="text-xs text-ink-soft mb-3">We send a 6-digit code to this number over WhatsApp — it only shows as connected once that code is confirmed.</p>
         <button onClick={saveWhatsapp} className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
-          Save number
+          {awaitingCode ? 'Resend code' : 'Send verification code'}
         </button>
+        {awaitingCode && (
+          <div className="flex items-center gap-2 mt-3">
+            <input
+              type="text"
+              value={verifyCode}
+              onChange={(e) => setVerifyCode(e.target.value)}
+              placeholder="6-digit code"
+              className="w-32 px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
+            />
+            <button onClick={verifyWhatsapp} className="px-4 py-2 rounded-lg bg-white border border-cream-deep text-ink text-sm font-medium hover:bg-cream-deep/40 transition">
+              Verify
+            </button>
+          </div>
+        )}
       </Card>
 
       <Card title="Notifications">

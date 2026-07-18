@@ -1,4 +1,5 @@
 import express from 'express';
+import { loginLimiter } from '../middleware/rateLimit.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
@@ -6,7 +7,7 @@ import pool from '../config/db.js';
 const router = express.Router();
 
 // Login for teachers and principals (same table, distinguished by `role`)
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'email and password are required' });

@@ -137,7 +137,15 @@ router.patch('/:id/confirm', requireAuth, async (req, res) => {
   const teacher_id = req.user.teacher_id;
 
   try {
-    const existing = await pool.query('SELECT score, max_marks FROM ai_graded_submissions WHERE id = $1', [id]);
+    // Join through generated_tests to scope this to the caller's own school —
+    // without this, a teacher could confirm/override any school's grades by
+    // guessing/incrementing a submission id.
+    const existing = await pool.query(
+      `SELECT g.score, g.max_marks FROM ai_graded_submissions g
+       JOIN generated_tests t ON t.id = g.test_id
+       WHERE g.id = $1 AND t.school_id = $2`,
+      [id, req.user.school_id]
+    );
     if (existing.rowCount === 0) return res.status(404).json({ error: 'Submission not found' });
 
     if (final_score != null && (final_score < 0 || final_score > existing.rows[0].max_marks)) {
@@ -146,11 +154,12 @@ router.patch('/:id/confirm', requireAuth, async (req, res) => {
     const scoreToUse = final_score !== undefined && final_score !== null ? final_score : existing.rows[0].score;
 
     const result = await pool.query(
-      `UPDATE ai_graded_submissions
+      `UPDATE ai_graded_submissions g
        SET teacher_confirmed = TRUE, final_score = $1, confirmed_by = $2, confirmed_at = CURRENT_TIMESTAMP
-       WHERE id = $3
-       RETURNING *`,
-      [scoreToUse, teacher_id, id]
+       FROM generated_tests t
+       WHERE g.id = $3 AND g.test_id = t.id AND t.school_id = $4
+       RETURNING g.*`,
+      [scoreToUse, teacher_id, id, req.user.school_id]
     );
     res.json(result.rows[0]);
   } catch (err) {

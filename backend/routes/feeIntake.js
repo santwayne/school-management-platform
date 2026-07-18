@@ -70,6 +70,15 @@ router.patch('/:id/confirm', requireAuth, requireFinance, async (req, res) => {
     }
     const entry = entryRes.rows[0];
 
+    // student_id comes from the reviewer's edit of the AI's guess — it must
+    // still be re-verified against this school, otherwise a mistyped or
+    // malicious id could record a payment against another school's student.
+    const studentCheck = await client.query('SELECT id FROM students WHERE id = $1 AND school_id = $2', [student_id, school_id]);
+    if (studentCheck.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'That student does not belong to this school' });
+    }
+
     const paymentRes = await client.query(
       `INSERT INTO student_payment_history (school_id, student_id, amount_paid, payment_mode, remarks, proof_photo_url, collected_by)
        VALUES ($1, $2, $3, 'Cash (WhatsApp)', $4, $5, $6) RETURNING id`,

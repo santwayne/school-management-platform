@@ -338,6 +338,13 @@ CREATE TABLE IF NOT EXISTS teacher_salary_history (
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING | PAID
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+-- The route's own NOT EXISTS check is a TOCTOU race — two /payroll/run
+-- requests close together (e.g. an impatient double-click) could both pass
+-- it before either commits, creating duplicate salary rows for the same
+-- teacher+period. A real unique index closes that at the DB level;
+-- CREATE UNIQUE INDEX IF NOT EXISTS also retrofits it onto an existing
+-- table that was created before this constraint existed.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_salary_history_teacher_period ON teacher_salary_history(teacher_id, period);
 
 CREATE TABLE IF NOT EXISTS petty_cash (
     id SERIAL PRIMARY KEY,
@@ -684,3 +691,11 @@ CREATE TABLE IF NOT EXISTS ai_voice_tutor_call_log (
 CREATE INDEX IF NOT EXISTS idx_voice_tutor_log_school ON ai_voice_tutor_call_log(school_id);
 
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS voice_tutor_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- ---------- WhatsApp connection — real verification instead of a checkbox ----------
+-- whatsapp_connected now only flips TRUE once the entered number has proven
+-- it can receive a message from our own WhatsApp Business number (OTP-style),
+-- rather than the moment someone types a number into the settings form.
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_code VARCHAR(10);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_expires_at TIMESTAMP;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_pending_number VARCHAR(20);

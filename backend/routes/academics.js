@@ -173,7 +173,10 @@ router.post('/students/bulk', requireAuth, requirePrincipal, async (req, res) =>
 
       const randHex = Math.random().toString(36).substring(2, 6).toUpperCase();
       const loginId = `STD-${schoolId}-${randHex}`;
-      const defaultPin = '1234';
+      // Every student previously got the identical PIN 1234 — trivially
+      // guessable against any known login_id. Randomized per student instead;
+      // still returned below so the teacher can hand it to the family.
+      const defaultPin = String(Math.floor(1000 + Math.random() * 9000));
       const pinHash = await bcrypt.hash(defaultPin, 10);
 
       const studentRes = await client.query(
