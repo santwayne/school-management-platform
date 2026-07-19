@@ -54,12 +54,12 @@ export default function ClassNotesComposer() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Class Notes</h1>
+      <h1 className="text-2xl font-display text-ink">Class Notes</h1>
       {message && <div className="p-3 bg-green-100 text-green-700 text-sm rounded">{message}</div>}
       {error && <div className="p-3 bg-red-100 text-red-700 text-sm rounded">{error}</div>}
 
-      <form onSubmit={handleCreate} className="bg-white p-5 border rounded-lg shadow-sm space-y-3">
-        <h2 className="text-lg font-semibold text-gray-800">New Note / Class Plan</h2>
+      <form onSubmit={handleCreate} className="bg-white p-5 rounded-2xl border border-cream-deep/70 space-y-3">
+        <h2 className="text-lg font-display text-ink">New Note / Class Plan</h2>
         <div className="grid grid-cols-2 gap-3">
           <select value={form.class_id} onChange={(e) => setForm({ ...form, class_id: e.target.value })} required className="p-2 border text-sm rounded bg-white">
             <option value="">Select class</option>
@@ -70,15 +70,15 @@ export default function ClassNotesComposer() {
             {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
-        <input type="text" placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required className="w-full p-2 border text-sm rounded" />
-        <textarea placeholder="Note / homework text" value={form.body_text} onChange={(e) => setForm({ ...form, body_text: e.target.value })} rows={3} className="w-full p-2 border text-sm rounded" />
-        <input type="text" placeholder="Attachment URL (optional, e.g. PDF link)" value={form.attachment_url} onChange={(e) => setForm({ ...form, attachment_url: e.target.value })} className="w-full p-2 border text-sm rounded" />
-        <button type="submit" className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">Create Note</button>
+        <input type="text" placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required className="w-full p-2 rounded-lg border border-cream-deep bg-white text-sm" />
+        <textarea placeholder="Note / homework text" value={form.body_text} onChange={(e) => setForm({ ...form, body_text: e.target.value })} rows={3} className="w-full p-2 rounded-lg border border-cream-deep bg-white text-sm" />
+        <input type="text" placeholder="Attachment URL (optional, e.g. PDF link)" value={form.attachment_url} onChange={(e) => setForm({ ...form, attachment_url: e.target.value })} className="w-full p-2 rounded-lg border border-cream-deep bg-white text-sm" />
+        <button type="submit" className="w-full py-2 bg-terracotta hover:bg-terracotta-deep text-primary-foreground rounded-lg text-sm font-medium">Create Note</button>
       </form>
 
-      <div className="bg-white border rounded-lg shadow-sm overflow-hidden">
-        <table className="w-full text-left text-sm text-gray-500">
-          <thead className="bg-gray-50 text-xs font-semibold text-gray-700 uppercase">
+      <div className="bg-white border border-cream-deep/70 rounded-2xl overflow-hidden">
+        <table className="w-full text-left text-sm text-ink-soft">
+          <thead className="bg-cream-deep/40 text-xs font-semibold text-ink-soft uppercase">
             <tr>
               <th className="p-3">Title</th>
               <th className="p-3">By</th>
@@ -89,7 +89,7 @@ export default function ClassNotesComposer() {
           <tbody className="divide-y">
             {notes.map((n) => (
               <tr key={n.id}>
-                <td className="p-3 font-medium text-gray-900">{n.title}</td>
+                <td className="p-3 font-medium text-ink">{n.title}</td>
                 <td className="p-3">{n.teacher_name}</td>
                 <td className="p-3 text-xs">
                   {n.sent_at
@@ -98,7 +98,7 @@ export default function ClassNotesComposer() {
                 </td>
                 <td className="p-3 text-right">
                   {!n.sent_at && (
-                    <button onClick={() => handleSend(n.id)} className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800 font-medium">
+                    <button onClick={() => handleSend(n.id)} className="text-xs px-2 py-1 rounded-full bg-terracotta/15 text-terracotta-deep font-medium">
                       Send to Parents
                     </button>
                   )}

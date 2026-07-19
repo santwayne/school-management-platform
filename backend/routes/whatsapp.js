@@ -1,6 +1,7 @@
 import express from 'express';
+import { webhookLimiter } from '../middleware/rateLimit.js';
 import pool from '../config/db.js';
-import { generateAIHint, tagDoubtChapter, extractCashSlip } from '../services/aiService.js';
+import { generateAIHint, tagDoubtChapter, extractCashSlip, extractDoubtImage } from '../services/aiService.js';
 import { sendTextMessage, downloadMedia } from '../services/whatsappService.js';
 
 const router = express.Router();
@@ -22,7 +23,7 @@ router.get('/webhook', (req, res) => {
 // doubt-solving (text / image OCR), and — new — cash slip photos from a
 // registered fee collector, gated by the same OPTED_IN-style checks used
 // everywhere else in the platform.
-router.post('/webhook', async (req, res) => {
+router.post('/webhook', webhookLimiter, async (req, res) => {
   try {
     const entry = req.body.entry?.[0];
     const change = entry?.changes?.[0]?.value;
@@ -93,12 +94,17 @@ router.post('/webhook', async (req, res) => {
     if (message.type === 'text') {
       userMessageText = message.text.body;
     } else if (message.type === 'image') {
-      // Real OCR would run here (e.g. Google Vision / Textract) — kept as a
-      // clearly-marked placeholder until an OCR provider is wired in.
-      const { mimeType } = await downloadMedia(message.image.id).catch(() => ({ mimeType: null }));
-      userMessageText = mimeType
-        ? '[Image received — OCR extraction not yet configured]'
-        : '[Could not download image]';
+      // A parent/student photographed a homework question or textbook page.
+      // Previously this was a hardcoded placeholder that silently dropped
+      // the content — now Claude vision reads the actual question so it
+      // flows into the same doubt-solving pipeline as a typed message.
+      const { buffer, mimeType } = await downloadMedia(message.image.id).catch(() => ({ buffer: null, mimeType: null }));
+      if (!buffer) {
+        userMessageText = '[Could not download image]';
+      } else {
+        const base64Image = Buffer.from(buffer).toString('base64');
+        userMessageText = await extractDoubtImage(base64Image, mimeType || 'image/jpeg');
+      }
     } else {
       return res.sendStatus(200); // unsupported message type (audio/video/etc.) — ignore for now
     }

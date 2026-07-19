@@ -1,9 +1,11 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
+import crypto from 'crypto';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
+import { sendTextMessage } from '../services/whatsappService.js';
 
 const router = express.Router();
 
@@ -67,32 +69,80 @@ router.patch('/branding', requireAuth, requirePrincipal, async (req, res) => {
   }
 });
 
-// Update WhatsApp Business number. NOTE: this stores the number and flips
-// whatsapp_connected — it does not itself perform WhatsApp Business API
-// verification. Wire that check in before trusting whatsapp_connected=true
-// in production; right now a principal typing a number in is enough to
-// set it to true, which is a placeholder, not a real verification.
+// Step 1: send a 6-digit code to the number via our own WhatsApp Business
+// API. Nothing is marked "connected" yet — that only happens once the code
+// comes back correctly in /whatsapp/verify below. Previously this route set
+// whatsapp_connected = TRUE the instant someone typed a number in, with no
+// actual proof the number could receive anything.
 router.patch('/whatsapp', requireAuth, requirePrincipal, async (req, res) => {
   const school_id = req.user.school_id;
   const { whatsapp_business_number } = req.body;
   if (!whatsapp_business_number) {
     return res.status(400).json({ error: 'whatsapp_business_number is required' });
   }
+  const code = String(crypto.randomInt(100000, 999999));
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  try {
+    await sendTextMessage(whatsapp_business_number, `Your Waynur WhatsApp verification code is ${code}. It expires in 10 minutes.`);
+  } catch (err) {
+    console.error('WhatsApp verification send failed:', err.message);
+    return res.status(502).json({ error: 'Could not send a verification message to that number. Check the number and try again.' });
+  }
+
   try {
     const result = await pool.query(
-      `INSERT INTO school_settings (school_id, whatsapp_business_number, whatsapp_connected)
-       VALUES ($1, $2, TRUE)
+      `INSERT INTO school_settings (school_id, whatsapp_pending_number, whatsapp_verify_code, whatsapp_verify_expires_at)
+       VALUES ($1, $2, $3, $4)
        ON CONFLICT (school_id) DO UPDATE SET
-         whatsapp_business_number = EXCLUDED.whatsapp_business_number,
-         whatsapp_connected = TRUE,
+         whatsapp_pending_number = EXCLUDED.whatsapp_pending_number,
+         whatsapp_verify_code = EXCLUDED.whatsapp_verify_code,
+         whatsapp_verify_expires_at = EXCLUDED.whatsapp_verify_expires_at,
          updated_at = CURRENT_TIMESTAMP
-       RETURNING *`,
-      [school_id, whatsapp_business_number]
+       RETURNING school_id, whatsapp_pending_number`,
+      [school_id, whatsapp_business_number, code, expiresAt]
+    );
+    res.json({ success: true, pending_number: result.rows[0].whatsapp_pending_number, message: 'Verification code sent via WhatsApp.' });
+  } catch (err) {
+    console.error('WhatsApp settings update error:', err);
+    res.status(500).json({ error: 'Failed to save pending verification' });
+  }
+});
+
+// Step 2: confirm the code — only this flips whatsapp_connected to TRUE.
+router.post('/whatsapp/verify', requireAuth, requirePrincipal, async (req, res) => {
+  const school_id = req.user.school_id;
+  const { code } = req.body;
+  if (!code) return res.status(400).json({ error: 'code is required' });
+
+  try {
+    const { rows } = await pool.query('SELECT * FROM school_settings WHERE school_id = $1', [school_id]);
+    const settings = rows[0];
+    if (!settings?.whatsapp_verify_code || !settings?.whatsapp_pending_number) {
+      return res.status(400).json({ error: 'No verification in progress — request a new code first.' });
+    }
+    if (new Date(settings.whatsapp_verify_expires_at) < new Date()) {
+      return res.status(400).json({ error: 'Code expired — request a new one.' });
+    }
+    if (String(code).trim() !== settings.whatsapp_verify_code) {
+      return res.status(400).json({ error: 'Incorrect code.' });
+    }
+
+    const result = await pool.query(
+      `UPDATE school_settings SET
+         whatsapp_business_number = whatsapp_pending_number,
+         whatsapp_connected = TRUE,
+         whatsapp_pending_number = NULL,
+         whatsapp_verify_code = NULL,
+         whatsapp_verify_expires_at = NULL,
+         updated_at = CURRENT_TIMESTAMP
+       WHERE school_id = $1 RETURNING *`,
+      [school_id]
     );
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('WhatsApp settings update error:', err);
-    res.status(500).json({ error: 'Failed to update WhatsApp settings' });
+    console.error('WhatsApp verify error:', err);
+    res.status(500).json({ error: 'Failed to verify WhatsApp number' });
   }
 });
 

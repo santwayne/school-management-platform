@@ -95,3 +95,36 @@ export async function tagDoubtChapter(studentQuery, syllabusChapters = []) {
     return 'Untagged';
   }
 }
+
+// Reads a photo a parent/student sends over WhatsApp of a homework problem,
+// textbook page, or handwritten question, and turns it into the question
+// text so the normal doubt-solving pipeline (generateAIHint + tagDoubtChapter)
+// can run on it exactly like a typed message would. This replaces what was
+// previously a hardcoded "OCR not configured" placeholder — Claude vision
+// reads the photo directly rather than needing a separate OCR provider.
+export async function extractDoubtImage(base64Image, mimeType) {
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-5',
+      max_tokens: 400,
+      system:
+        'A student or parent has sent a photo over WhatsApp — likely a homework question, textbook page, or handwritten problem. ' +
+        'Transcribe the actual question(s) being asked, in plain text, as if the student had typed it themselves. ' +
+        'If the image is unclear, blurry, or not actually a question, say so plainly instead of guessing.',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Image } },
+            { type: 'text', text: 'What question is being asked in this image? Transcribe it.' },
+          ],
+        },
+      ],
+    });
+    const textBlock = response.content.find((block) => block.type === 'text');
+    return textBlock ? textBlock.text.trim() : "I received the image but couldn't make out a clear question in it.";
+  } catch (err) {
+    console.error('Doubt image extraction failed:', err.message);
+    return "I received your image but I'm having trouble reading it right now — could you try describing your question in text?";
+  }
+}

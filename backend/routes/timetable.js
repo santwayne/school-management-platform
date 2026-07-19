@@ -62,12 +62,31 @@ router.put('/slot', requireAuth, requirePrincipal, async (req, res) => {
   }
 
   try {
+    // None of class_id/subject_id/teacher_id were checked against the
+    // caller's own school. Since timetable_slots' conflict target is
+    // (class_id, day_of_week, period_number) with no school_id in it, an
+    // unscoped call could overwrite a DIFFERENT school's timetable slot
+    // outright, not just read across schools.
+    const ownership = await pool.query(
+      `SELECT
+         (SELECT id FROM classes WHERE id = $1 AND school_id = $4) AS class_ok,
+         (SELECT id FROM subjects WHERE id = $2 AND school_id = $4) AS subject_ok,
+         (SELECT id FROM teachers WHERE id = $3 AND school_id = $4) AS teacher_ok`,
+      [class_id, subject_id || null, teacher_id || null, req.user.school_id]
+    );
+    const { class_ok, subject_ok, teacher_ok } = ownership.rows[0];
+    if (!class_ok) return res.status(404).json({ error: 'Class not found for this school' });
+    if (subject_id && !subject_ok) return res.status(404).json({ error: 'Subject not found for this school' });
+    if (teacher_id && !teacher_ok) return res.status(404).json({ error: 'Teacher not found for this school' });
+
     // Prevent double-booking: same teacher, same day+period, different class.
+    // Scoped to this school too — otherwise the clash-check itself would leak
+    // another school's teacher schedule (their class name) via the error message.
     if (teacher_id) {
       const clash = await pool.query(
         `SELECT ts.id, c.name AS class_name FROM timetable_slots ts JOIN classes c ON c.id = ts.class_id
-         WHERE ts.teacher_id = $1 AND ts.day_of_week = $2 AND ts.period_number = $3 AND ts.class_id != $4`,
-        [teacher_id, day_of_week, period_number, class_id]
+         WHERE ts.teacher_id = $1 AND ts.day_of_week = $2 AND ts.period_number = $3 AND ts.class_id != $4 AND ts.school_id = $5`,
+        [teacher_id, day_of_week, period_number, class_id, req.user.school_id]
       );
       if (clash.rowCount > 0) {
         return res.status(409).json({ error: `Teacher already scheduled in ${clash.rows[0].class_name} for this period` });

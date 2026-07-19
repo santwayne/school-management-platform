@@ -1,4 +1,5 @@
 import express from 'express';
+import { onboardingLimiter } from '../middleware/rateLimit.js';
 import bcrypt from 'bcryptjs';
 import pool from '../config/db.js';
 
@@ -11,7 +12,7 @@ const router = express.Router();
 // self-serve SaaS, so an open door that instantly creates live accounts
 // isn't the right default — this keeps the full wizard experience for the
 // prospect while still requiring a human to say yes before it goes live.
-router.post('/', async (req, res) => {
+router.post('/', onboardingLimiter, async (req, res) => {
   const { schoolName, city, address, logoDataUrl, attendance, classes, adminName, adminEmail, adminPassword } = req.body;
 
   if (!schoolName || !adminName || !adminEmail || !adminPassword) {
