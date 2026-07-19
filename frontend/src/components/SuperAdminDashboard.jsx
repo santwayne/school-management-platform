@@ -58,6 +58,7 @@ export default function SuperAdminDashboard() {
   };
 
   const generateDemo = async (id) => {
+    if (!confirm('Regenerate demo accounts for this school? Any demo credentials already shared with a prospect will stop working.')) return;
     setError('');
     try {
       const data = await apiRequest(`/api/super-admin/schools/${id}/test-users`, { method: 'POST' });
@@ -83,17 +84,19 @@ export default function SuperAdminDashboard() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <form onSubmit={handleCreateSchool} className="bg-white p-6 rounded-lg shadow space-y-3 h-fit">
+        <form onSubmit={handleCreateSchool} autoComplete="off" className="bg-white p-6 rounded-lg shadow space-y-3 h-fit">
           <h2 className="font-display text-xl font-semibold">Add School</h2>
-          <input type="text" placeholder="School Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="w-full p-2 border rounded" />
-          <input type="text" placeholder="Address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="w-full p-2 border rounded" />
-          <input type="text" placeholder="School Contact Phone" value={form.contact_phone} onChange={(e) => setForm({ ...form, contact_phone: e.target.value })} className="w-full p-2 border rounded" />
+          <input type="text" placeholder="School Name" autoComplete="off" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="w-full p-2 border rounded" />
+          <input type="text" placeholder="Address" autoComplete="off" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="w-full p-2 border rounded" />
+          <input type="text" placeholder="School Contact Phone" autoComplete="off" value={form.contact_phone} onChange={(e) => setForm({ ...form, contact_phone: e.target.value })} className="w-full p-2 border rounded" />
           <hr />
           <h3 className="text-sm font-medium text-ink-soft">First Principal Login</h3>
-          <input type="text" placeholder="Principal Name" value={form.principal_name} onChange={(e) => setForm({ ...form, principal_name: e.target.value })} required className="w-full p-2 border rounded" />
-          <input type="email" placeholder="Principal Email" value={form.principal_email} onChange={(e) => setForm({ ...form, principal_email: e.target.value })} required className="w-full p-2 border rounded" />
-          <input type="text" placeholder="Principal Phone" value={form.principal_phone} onChange={(e) => setForm({ ...form, principal_phone: e.target.value })} required className="w-full p-2 border rounded" />
-          <input type="password" placeholder="Principal Password" value={form.principal_password} onChange={(e) => setForm({ ...form, principal_password: e.target.value })} required className="w-full p-2 border rounded" />
+          <input type="text" placeholder="Principal Name" autoComplete="off" value={form.principal_name} onChange={(e) => setForm({ ...form, principal_name: e.target.value })} required className="w-full p-2 border rounded" />
+          {/* name="principal-email-new" + autoComplete="off" keeps the browser's saved super-admin
+              login from being suggested/autofilled into this unrelated principal-creation field. */}
+          <input type="email" name="principal-email-new" placeholder="Principal Email" autoComplete="off" value={form.principal_email} onChange={(e) => setForm({ ...form, principal_email: e.target.value })} required className="w-full p-2 border rounded" />
+          <input type="text" placeholder="Principal Phone" autoComplete="off" value={form.principal_phone} onChange={(e) => setForm({ ...form, principal_phone: e.target.value })} required className="w-full p-2 border rounded" />
+          <input type="password" name="principal-password-new" placeholder="Principal Password" autoComplete="new-password" value={form.principal_password} onChange={(e) => setForm({ ...form, principal_password: e.target.value })} required className="w-full p-2 border rounded" />
           <button type="submit" disabled={submitting} className="w-full py-2 bg-terracotta text-white rounded font-medium hover:bg-terracotta-deep disabled:opacity-50">
             {submitting ? 'Creating...' : 'Create School'}
           </button>

@@ -42,7 +42,18 @@ router.post('/ask', requireAuth, requireStudent, async (req, res) => {
     }
 
     const history = session.conversation_history || [];
-    const reply = await askTutor(history, message, session.subject, session.grade);
+
+    let reply;
+    try {
+      reply = await askTutor(history, message, session.subject, session.grade);
+    } catch (tutorErr) {
+      // Genuine AI integration failure (e.g. missing/invalid ANTHROPIC_API_KEY,
+      // model error, rate limit). Log the real cause and tell the caller this
+      // actually failed — don't write a fake assistant turn into the saved
+      // conversation, and don't report 200 OK for a request that didn't work.
+      console.error('Tutor ask error (AI call failed):', tutorErr.message);
+      return res.status(502).json({ error: "The AI tutor is temporarily unavailable — please try again in a bit." });
+    }
 
     const updatedHistory = [
       ...history,

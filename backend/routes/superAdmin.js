@@ -47,8 +47,8 @@ router.post('/schools', requireAuth, requireSuperAdmin, async (req, res) => {
     await client.query('BEGIN');
 
     const schoolRes = await client.query(
-      `INSERT INTO schools (name, address, contact_phone, status)
-       VALUES ($1, $2, $3, 'active') RETURNING id`,
+      `INSERT INTO schools (name, address, contact_phone, status, plan_renews_at)
+       VALUES ($1, $2, $3, 'active', CURRENT_DATE + INTERVAL '30 days') RETURNING id`,
       [name, address, contact_phone]
     );
     const schoolId = schoolRes.rows[0].id;
