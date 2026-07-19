@@ -269,10 +269,10 @@ export default function Login() {
             </div>
 
             <div className="mt-6">
-              {role === 'admin' && <AdminForm />}
-              {role === 'accountant' && <AdminForm />}
-              {role === 'teacher' && <TeacherForm />}
-              {role === 'student' && <StudentForm />}
+              {role === 'admin' && <AdminForm key="admin" />}
+              {role === 'accountant' && <AdminForm key="accountant" />}
+              {role === 'teacher' && <TeacherForm key="teacher" />}
+              {role === 'student' && <StudentForm key="student" />}
             </div>
           </div>
 

@@ -18,7 +18,7 @@ function NotificationBell() {
       const pending = [
         ...pettyCash.filter((p) => p.status === 'PENDING').map((p) => ({
           text: `Petty cash request pending: ₹${Number(p.amount).toLocaleString('en-IN')}`,
-          to: '/accountant/payroll',
+          to: '/accountant/payroll?tab=petty',
         })),
         ...waQueue.map((w) => ({
           text: `WhatsApp cash slip needs confirming — ${w.collector_name}`,
@@ -71,7 +71,7 @@ function NotificationBell() {
 const NAV = [
   { label: 'Dashboard', icon: LayoutDashboard, to: '/accountant' },
   { label: 'Fee Collection', icon: Wallet, to: '/accountant/fee-collection' },
-  { label: 'Petty Cash Approvals', icon: Receipt, to: '/accountant/payroll' },
+  { label: 'Petty Cash Approvals', icon: Receipt, to: '/accountant/payroll?tab=petty' },
   { label: 'Payroll', icon: Users, to: '/accountant/payroll' },
   { label: 'Reports', icon: FileBarChart, to: '/accountant/reports' },
 ];
@@ -82,7 +82,7 @@ function initials(name) {
 }
 
 export default function AccountantShell({ children }) {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const { user, logout } = useAuth();
   const [schoolName, setSchoolName] = useState('');
 
@@ -105,7 +105,8 @@ export default function AccountantShell({ children }) {
         <nav className="flex flex-col gap-1">
           {NAV.map((item) => {
             const Icon = item.icon;
-            const active = pathname === item.to;
+            const [itemPath, itemQuery] = item.to.split('?');
+            const active = pathname === itemPath && (itemQuery || '') === search.replace(/^\?/, '');
             return (
               <Link
                 key={item.to}
