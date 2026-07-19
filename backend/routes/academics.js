@@ -94,6 +94,23 @@ router.post('/assign-teacher', requireAuth, requirePrincipal, async (req, res) =
   }
 
   try {
+    // None of these three ids were previously checked against the caller's
+    // own school. Since class_subject_teachers' conflict target is
+    // (class_id, subject_id) with no school_id in it, an unscoped call could
+    // silently overwrite a DIFFERENT school's existing assignment — not just
+    // read across schools, but corrupt another school's data outright.
+    const ownership = await pool.query(
+      `SELECT
+         (SELECT id FROM classes WHERE id = $1 AND school_id = $4) AS class_ok,
+         (SELECT id FROM subjects WHERE id = $2 AND school_id = $4) AS subject_ok,
+         (SELECT id FROM teachers WHERE id = $3 AND school_id = $4) AS teacher_ok`,
+      [class_id, subject_id, teacher_id, schoolId]
+    );
+    const { class_ok, subject_ok, teacher_ok } = ownership.rows[0];
+    if (!class_ok || !subject_ok || !teacher_ok) {
+      return res.status(404).json({ error: 'Class, subject, or teacher not found for this school' });
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO class_subject_teachers (school_id, class_id, subject_id, teacher_id)
        VALUES ($1, $2, $3, $4)
@@ -146,6 +163,16 @@ router.post('/students/bulk', requireAuth, requirePrincipal, async (req, res) =>
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // class_id was never checked against the caller's own school — without
+    // this, a principal could bulk-insert students into a class belonging
+    // to a different school by passing that class's id.
+    const classCheck = await client.query('SELECT id FROM classes WHERE id = $1 AND school_id = $2', [class_id, schoolId]);
+    if (classCheck.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Class not found for this school' });
+    }
+
     const provisioned = [];
 
     for (const student of students) {

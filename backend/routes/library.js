@@ -107,6 +107,24 @@ router.post('/issue', requireAuth, requirePrincipal, async (req, res) => {
       return res.status(409).json({ error: 'No copies currently available' });
     }
 
+    // student_id/teacher_id weren't checked against this school either —
+    // otherwise a book could be "issued" to someone who belongs to a
+    // different school entirely.
+    if (student_id) {
+      const check = await client.query('SELECT id FROM students WHERE id = $1 AND school_id = $2', [student_id, req.user.school_id]);
+      if (check.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Student not found for this school' });
+      }
+    }
+    if (teacher_id) {
+      const check = await client.query('SELECT id FROM teachers WHERE id = $1 AND school_id = $2', [teacher_id, req.user.school_id]);
+      if (check.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Teacher not found for this school' });
+      }
+    }
+
     const { rows: issued } = await client.query(
       `INSERT INTO library_issues (school_id, book_id, student_id, teacher_id, due_date)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
