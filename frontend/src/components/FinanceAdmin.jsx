@@ -52,8 +52,86 @@ function PaymentHistory({ refreshKey }) {
   );
 }
 
+function StudentPicker({ selected, onSelect }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    setSearching(true);
+    const handle = setTimeout(() => {
+      apiRequest(`/api/finance/students/search?q=${encodeURIComponent(query)}`)
+        .then((rows) => setResults(rows))
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false));
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [query]);
+
+  if (selected) {
+    return (
+      <div className="w-full border rounded-lg p-2 text-sm flex items-center justify-between bg-cream-deep/20">
+        <span>
+          <span className="font-medium">{selected.name}</span>
+          <span className="text-ink-soft"> · {selected.login_id}{selected.class_name ? ` · ${selected.class_name}` : ''}</span>
+        </span>
+        <button type="button" onClick={() => onSelect(null)} className="text-xs text-terracotta-deep font-medium ml-2 shrink-0">
+          Change
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        placeholder="Search by student name or login ID (e.g. STD-2-KKSY)"
+        className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-terracotta/40"
+      />
+      {open && query.trim() && (
+        <div className="absolute z-10 mt-1 w-full bg-white border border-cream-deep rounded-lg shadow-md max-h-56 overflow-y-auto">
+          {searching ? (
+            <div className="p-2 text-xs text-ink-soft">Searching…</div>
+          ) : results.length === 0 ? (
+            <div className="p-2 text-xs text-ink-soft">No students match "{query}".</div>
+          ) : (
+            results.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => {
+                  onSelect(s);
+                  setQuery('');
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-cream-deep/40"
+              >
+                <span className="font-medium">{s.name}</span>
+                <span className="text-ink-soft"> · {s.login_id}{s.class_name ? ` · ${s.class_name}` : ''}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FinanceAdmin() {
-  const [feeForm, setFeeForm] = useState({ studentId: '', amount: '', mode: 'Cash', remarks: '' });
+  const [student, setStudent] = useState(null);
+  const [feeForm, setFeeForm] = useState({ amount: '', mode: 'Cash', remarks: '' });
   const [proofPhoto, setProofPhoto] = useState(null);
   const [msg, setMsg] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -61,11 +139,15 @@ export default function FinanceAdmin() {
   const handleFeeSubmit = async (e) => {
     e.preventDefault();
     setMsg('');
+    if (!student) {
+      setMsg('Please search for and select a student first.');
+      return;
+    }
     try {
       const data = await apiRequest('/api/finance/fee/collect', {
         method: 'POST',
         body: {
-          student_id: parseInt(feeForm.studentId, 10),
+          student_id: student.id,
           amount_paid: parseFloat(feeForm.amount),
           payment_mode: feeForm.mode,
           remarks: feeForm.remarks,
@@ -73,8 +155,9 @@ export default function FinanceAdmin() {
         },
       });
       if (data.success) {
-        setMsg('Fee recorded successfully! Parameterized transaction complete.');
-        setFeeForm({ studentId: '', amount: '', mode: 'Cash', remarks: '' });
+        setMsg('Fee recorded successfully!');
+        setStudent(null);
+        setFeeForm({ amount: '', mode: 'Cash', remarks: '' });
         setProofPhoto(null);
         setRefreshKey((k) => k + 1);
       }
@@ -91,14 +174,8 @@ export default function FinanceAdmin() {
 
         <form onSubmit={handleFeeSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Student ID</label>
-            <input
-              type="text"
-              value={feeForm.studentId}
-              onChange={(e) => setFeeForm({ ...feeForm, studentId: e.target.value })}
-              className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-terracotta/40"
-              required
-            />
+            <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Student</label>
+            <StudentPicker selected={student} onSelect={setStudent} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
