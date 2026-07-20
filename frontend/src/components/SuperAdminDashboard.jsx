@@ -58,6 +58,7 @@ export default function SuperAdminDashboard() {
   };
 
   const generateDemo = async (id) => {
+    if (!window.confirm('Regenerate demo credentials? Any existing demo account passwords will be invalidated.')) return;
     setError('');
     try {
       const data = await apiRequest(`/api/super-admin/schools/${id}/test-users`, { method: 'POST' });
@@ -91,9 +92,9 @@ export default function SuperAdminDashboard() {
           <hr />
           <h3 className="text-sm font-medium text-ink-soft">First Principal Login</h3>
           <input type="text" placeholder="Principal Name" value={form.principal_name} onChange={(e) => setForm({ ...form, principal_name: e.target.value })} required className="w-full p-2 border rounded" />
-          <input type="email" placeholder="Principal Email" value={form.principal_email} onChange={(e) => setForm({ ...form, principal_email: e.target.value })} required className="w-full p-2 border rounded" />
+          <input type="email" name="principal_email" autoComplete="off" placeholder="Principal Email" value={form.principal_email} onChange={(e) => setForm({ ...form, principal_email: e.target.value })} required className="w-full p-2 border rounded" />
           <input type="text" placeholder="Principal Phone" value={form.principal_phone} onChange={(e) => setForm({ ...form, principal_phone: e.target.value })} required className="w-full p-2 border rounded" />
-          <input type="password" placeholder="Principal Password" value={form.principal_password} onChange={(e) => setForm({ ...form, principal_password: e.target.value })} required className="w-full p-2 border rounded" />
+          <input type="password" name="principal_password" autoComplete="new-password" placeholder="Principal Password" value={form.principal_password} onChange={(e) => setForm({ ...form, principal_password: e.target.value })} required className="w-full p-2 border rounded" />
           <button type="submit" disabled={submitting} className="w-full py-2 bg-terracotta text-white rounded font-medium hover:bg-terracotta-deep disabled:opacity-50">
             {submitting ? 'Creating...' : 'Create School'}
           </button>

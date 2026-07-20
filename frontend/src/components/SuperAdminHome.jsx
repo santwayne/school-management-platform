@@ -15,9 +15,14 @@ export default function SuperAdminHome() {
   }, []);
 
   const active = schools.filter((s) => s.status === 'ACTIVE' || s.status === 'active').length;
-  const planCounts = ['starter', 'growth', 'district'].map((p) => ({
+  const knownPlans = ['starter', 'growth', 'district'];
+  const normPlan = (p) => {
+    const v = (p || '').toLowerCase().trim();
+    return knownPlans.includes(v) ? v : 'starter';
+  };
+  const planCounts = knownPlans.map((p) => ({
     name: p,
-    value: schools.filter((s) => (s.plan || 'starter') === p).length,
+    value: schools.filter((s) => normPlan(s.plan) === p).length,
   })).filter((p) => p.value > 0);
 
   return (

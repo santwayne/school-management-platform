@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { LayoutDashboard, Wallet, Receipt, Users, FileBarChart, Settings, Bell, LogOut } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
@@ -18,7 +18,7 @@ function NotificationBell() {
       const pending = [
         ...pettyCash.filter((p) => p.status === 'PENDING').map((p) => ({
           text: `Petty cash request pending: ₹${Number(p.amount).toLocaleString('en-IN')}`,
-          to: '/accountant/payroll',
+          to: '/accountant/payroll?tab=petty',
         })),
         ...waQueue.map((w) => ({
           text: `WhatsApp cash slip needs confirming — ${w.collector_name}`,
@@ -71,8 +71,8 @@ function NotificationBell() {
 const NAV = [
   { label: 'Dashboard', icon: LayoutDashboard, to: '/accountant' },
   { label: 'Fee Collection', icon: Wallet, to: '/accountant/fee-collection' },
-  { label: 'Petty Cash Approvals', icon: Receipt, to: '/accountant/payroll' },
-  { label: 'Payroll', icon: Users, to: '/accountant/payroll' },
+  { label: 'Petty Cash Approvals', icon: Receipt, to: '/accountant/payroll?tab=petty', path: '/accountant/payroll', tab: 'petty' },
+  { label: 'Payroll', icon: Users, to: '/accountant/payroll', path: '/accountant/payroll', tab: 'payroll' },
   { label: 'Reports', icon: FileBarChart, to: '/accountant/reports' },
 ];
 
@@ -83,6 +83,7 @@ function initials(name) {
 
 export default function AccountantShell({ children }) {
   const { pathname } = useLocation();
+  const [searchParams] = useSearchParams();
   const { user, logout } = useAuth();
   const [schoolName, setSchoolName] = useState('');
 
@@ -105,10 +106,12 @@ export default function AccountantShell({ children }) {
         <nav className="flex flex-col gap-1">
           {NAV.map((item) => {
             const Icon = item.icon;
-            const active = pathname === item.to;
+            const active = item.tab
+              ? pathname === item.path && (searchParams.get('tab') || 'payroll') === item.tab
+              : pathname === item.to;
             return (
               <Link
-                key={item.to}
+                key={item.label}
                 to={item.to}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-left transition ${
                   active ? 'bg-terracotta/10 text-terracotta-deep font-medium border-l-2 border-terracotta' : 'text-ink-soft hover:bg-cream-deep/50 hover:text-ink'

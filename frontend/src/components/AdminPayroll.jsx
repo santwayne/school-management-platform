@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Play, CheckCircle2, Pencil, Plus, X, Info } from 'lucide-react';
 import { apiRequest } from '../api';
 
@@ -19,7 +20,14 @@ function Td({ children, className = '' }) {
 }
 
 export default function AdminPayroll() {
-  const [tab, setTab] = useState('payroll');
+  const { search } = useLocation();
+  const [tab, setTab] = useState(() => new URLSearchParams(search).get('tab') || 'payroll');
+
+  useEffect(() => {
+    const t = new URLSearchParams(search).get('tab') || 'payroll';
+    setTab(t);
+  }, [search]);
+
   return (
     <div className="space-y-4">
       <div>
