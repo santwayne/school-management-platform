@@ -109,11 +109,11 @@ export default function AdminShell({ children }) {
   return (
     <div className="flex min-h-screen bg-cream text-ink font-sans">
       <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r border-cream-deep/70 bg-white/60 backdrop-blur-sm px-4 py-6 gap-1 sticky top-0 h-screen">
-        <div className="flex items-center gap-2 px-2 pb-6">
+        <div className="flex items-center gap-2 px-2 pb-6 shrink-0">
           <div className="h-8 w-8 rounded-lg bg-terracotta flex items-center justify-center text-primary-foreground font-display font-semibold">W</div>
           <span className="font-display text-xl text-ink">Waynur</span>
         </div>
-        <nav className="flex flex-col gap-1">
+        <nav className="sidebar-scroll flex flex-col gap-1 flex-1 overflow-y-auto pr-1">
           {NAV.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.to;
@@ -131,7 +131,7 @@ export default function AdminShell({ children }) {
             );
           })}
         </nav>
-        <div className="mt-auto p-3 rounded-xl bg-cream-deep/60 border border-cream-deep">
+        <div className="mt-auto shrink-0 p-3 rounded-xl bg-cream-deep/60 border border-cream-deep">
           <div className="flex items-center gap-2 text-xs text-ink-soft">
             <Sparkles className="w-3.5 h-3.5 text-terracotta" />
             AI Assistant

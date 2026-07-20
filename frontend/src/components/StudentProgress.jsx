@@ -20,7 +20,7 @@ export default function StudentProgress() {
 
   return (
     <StudentShell>
-      <div className="max-w-2xl w-full mx-auto px-4 py-6 space-y-5">
+      <div className="space-y-5">
         <div>
           <h1 className="font-display text-3xl text-ink">My Progress</h1>
           <p className="text-sm text-ink-soft mt-1">A little every day adds up.</p>

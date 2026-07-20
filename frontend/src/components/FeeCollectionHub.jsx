@@ -12,7 +12,7 @@ const TABS = [
 export default function FeeCollectionHub() {
   const [tab, setTab] = useState('manual');
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-4">
+    <div className="space-y-4">
       <div>
         <h1 className="font-display text-3xl text-ink">Fee Collection</h1>
         <p className="text-sm text-ink-soft mt-1">Manual entry, WhatsApp cash slip review, and online payment links.</p>

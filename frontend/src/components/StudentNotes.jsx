@@ -78,7 +78,7 @@ export default function StudentNotes() {
 
   return (
     <StudentShell>
-      <div className="max-w-4xl w-full mx-auto px-4 py-6">
+      <div>
         <div className="flex items-end justify-between mb-4">
           <div>
             <h1 className="font-display text-3xl text-ink">Notes</h1>

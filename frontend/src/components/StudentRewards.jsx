@@ -18,7 +18,7 @@ export default function StudentRewards() {
 
   return (
     <StudentShell>
-      <div className="max-w-2xl w-full mx-auto px-4 py-6 space-y-5">
+      <div className="space-y-5">
         <div>
           <h1 className="font-display text-3xl text-ink">Rewards</h1>
           <p className="text-sm text-ink-soft mt-1">Collect badges as you learn. No pressure — just fun.</p>

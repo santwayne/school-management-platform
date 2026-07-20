@@ -23,3 +23,22 @@
   --input: oklch(0.88 0.028 70);
   --ring: oklch(0.60 0.19 38);
 }
+
+/* Sidebar scrollbar — terracotta/cream theme */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.78 0.10 36) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: oklch(0.78 0.10 36);
+  border-radius: 999px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.62 0.17 36);
+}

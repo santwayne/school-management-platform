@@ -3,7 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 
 function homeFor(role) {
-  if (role === 'student') return '/tutor';
+  if (role === 'student') return '/student';
   if (role === 'super_admin') return '/super-admin';
   if (role === 'accountant') return '/accountant/fee-collection';
   return '/teacher'; // teacher and principal both land on the Teacher Portal by default

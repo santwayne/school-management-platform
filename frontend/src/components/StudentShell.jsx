@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Sparkles, BookOpen, TrendingUp, Trophy, Flame, Zap, NotebookPen } from 'lucide-react';
+import { Home, Sparkles, BookOpen, TrendingUp, Trophy, Flame, Zap, NotebookPen, LogOut } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
 
@@ -20,7 +20,7 @@ function initials(name) {
 
 export default function StudentShell({ children }) {
   const { pathname } = useLocation();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [rewards, setRewards] = useState(null);
   const [homework, setHomework] = useState(null);
 
@@ -58,17 +58,27 @@ export default function StudentShell({ children }) {
             );
           })}
         </nav>
-        <div className="mt-auto rounded-2xl p-4 bg-gradient-to-br from-joy-gold/40 to-joy-leaf/30 border border-joy-gold/40">
-          <div className="text-xs text-ink-soft">Homework done</div>
-          <div className="mt-1 text-sm font-semibold">
-            {hwTotal !== null ? `${hwDone} of ${hwTotal} tasks` : '…'}
+        <div className="mt-auto space-y-3">
+          <div className="rounded-2xl p-4 bg-gradient-to-br from-joy-gold/40 to-joy-leaf/30 border border-joy-gold/40">
+            <div className="text-xs text-ink-soft">Homework done</div>
+            <div className="mt-1 text-sm font-semibold">
+              {hwTotal !== null ? `${hwDone} of ${hwTotal} tasks` : '…'}
+            </div>
+            <div className="mt-2 h-2 rounded-full bg-white/60 overflow-hidden">
+              <div
+                className="h-full bg-joy-leaf transition-all duration-700"
+                style={{ width: `${hwTotal ? Math.min(100, (hwDone / hwTotal) * 100) : 0}%` }}
+              />
+            </div>
           </div>
-          <div className="mt-2 h-2 rounded-full bg-white/60 overflow-hidden">
-            <div
-              className="h-full bg-joy-leaf transition-all duration-700"
-              style={{ width: `${hwTotal ? Math.min(100, (hwDone / hwTotal) * 100) : 0}%` }}
-            />
-          </div>
+
+          <button
+            onClick={logout}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-2xl text-sm font-medium text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition"
+          >
+            <LogOut className="w-4 h-4" />
+            Log out
+          </button>
         </div>
       </aside>
 

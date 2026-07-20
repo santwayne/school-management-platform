@@ -40,7 +40,7 @@ export default function StudentHomework() {
 
   return (
     <StudentShell>
-      <div className="max-w-2xl w-full mx-auto px-4 py-6 space-y-4">
+      <div className="space-y-4">
         <div className="flex items-end justify-between flex-wrap gap-3">
           <div>
             <h1 className="font-display text-3xl text-ink">Homework</h1>

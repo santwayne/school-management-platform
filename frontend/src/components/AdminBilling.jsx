@@ -55,11 +55,11 @@ export default function AdminBilling() {
     }
   };
 
-  if (loading) return <div className="p-6 max-w-3xl mx-auto"><p className="text-sm text-ink-soft">Loading…</p></div>;
-  if (error && !data) return <div className="p-6 max-w-3xl mx-auto"><div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div></div>;
+  if (loading) return <p className="text-sm text-ink-soft">Loading…</p>;
+  if (error && !data) return <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>;
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-5">
+    <div className="space-y-5">
       <div>
         <h1 className="font-display text-3xl text-ink">Billing</h1>
         <p className="text-sm text-ink-soft mt-1">Your plan and usage.</p>

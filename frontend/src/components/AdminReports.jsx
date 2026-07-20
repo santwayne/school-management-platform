@@ -172,7 +172,7 @@ export default function AdminReports() {
   const TABS = user?.role === 'accountant' ? ALL_TABS.filter((t) => t.key !== 'attendance') : ALL_TABS;
   const [tab, setTab] = useState(TABS[0].key);
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4">
+    <div className="space-y-4">
       <div>
         <h1 className="font-display text-3xl text-ink">Reports</h1>
         <p className="text-sm text-ink-soft mt-1">Pull attendance, fee collection, and payroll data for any date range.</p>

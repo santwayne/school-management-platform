@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Send, Mic, Keyboard, Sparkles, RotateCcw, LogOut } from 'lucide-react';
+import { Send, Mic, Keyboard, Sparkles, RotateCcw } from 'lucide-react';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
 import StudentShell from './StudentShell';
@@ -22,7 +22,7 @@ const SUGGESTIONS = [
 ];
 
 export default function StudentTutor() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [subject, setSubject] = useState(SUBJECTS[0].key);
   const [mode, setMode] = useState('text');
   const [sessionId, setSessionId] = useState(null);
@@ -73,7 +73,7 @@ export default function StudentTutor() {
 
   return (
     <StudentShell>
-      <div className="max-w-2xl w-full mx-auto flex flex-col h-[75vh] px-0">
+      <div className="flex flex-col">
         <div className="flex flex-wrap items-center gap-3 pt-4 pb-4 border-b border-cream-deep/60">
           <div>
             <h1 className="font-display text-2xl text-ink">Ask AI Tutor</h1>
@@ -110,15 +110,12 @@ export default function StudentTutor() {
                 <Mic className="w-4 h-4" /> Voice
               </button>
             </div>
-            <button onClick={logout} className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition" aria-label="Log out">
-              <LogOut className="w-4 h-4" />
-            </button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto py-6 space-y-4">
+        <div className="py-6 space-y-4 min-h-[40vh]">
           {messages.length === 0 ? (
-            <div className="max-w-2xl mx-auto text-center">
+            <div className="text-center">
               <div className="mx-auto w-20 h-20 rounded-3xl bg-gradient-to-br from-joy-gold to-terracotta flex items-center justify-center text-4xl shadow-lg">🦉</div>
               <h2 className="mt-4 font-display text-2xl text-ink">Hi! I'm your {currentSubject.name} tutor.</h2>
               <p className="text-ink-soft text-sm mt-1">Try one of these to get going:</p>
@@ -164,7 +161,7 @@ export default function StudentTutor() {
 
         {error && <div className="mb-2 px-4 py-2 text-xs rounded-xl bg-destructive/10 text-destructive">{error}</div>}
 
-        <div className="border-t border-cream-deep/60 pt-3 pb-4">
+        <div className="sticky bottom-0 bg-cream/95 backdrop-blur-md border-t border-cream-deep/60 pt-3 pb-4 -mx-5 lg:-mx-8 px-5 lg:px-8">
           {mode === 'voice' ? (
             <VoiceTutorPanel subject={currentSubject.name} subjectKey={subject} studentId={user?.id} />
           ) : (
