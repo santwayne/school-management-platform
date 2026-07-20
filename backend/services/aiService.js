@@ -18,7 +18,7 @@ export async function generateAIHint(studentQuery) {
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 300,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: studentQuery }],

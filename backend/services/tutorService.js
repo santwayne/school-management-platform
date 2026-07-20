@@ -23,23 +23,22 @@ Rules you must always follow:
 // conversationHistory: array of { role: 'user' | 'assistant', content: string }
 // newMessage: the student's latest message (not yet in conversationHistory)
 export async function askTutor(conversationHistory, newMessage, subject, grade) {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY is not configured');
+  }
+
   const messages = [
     ...conversationHistory.map((m) => ({ role: m.role, content: m.content })),
     { role: 'user', content: newMessage },
   ];
 
-  try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
-      max_tokens: 500,
-      system: buildSystemPrompt(subject, grade),
-      messages,
-    });
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-5',
+    max_tokens: 500,
+    system: buildSystemPrompt(subject, grade),
+    messages,
+  });
 
-    const textBlock = response.content.find((b) => b.type === 'text');
-    return textBlock ? textBlock.text : "Let's slow down — can you tell me what you already know about this?";
-  } catch (err) {
-    console.error('Tutor session error:', err.message);
-    return "I'm having a little trouble right now — please try asking again in a moment.";
-  }
+  const textBlock = response.content.find((b) => b.type === 'text');
+  return textBlock ? textBlock.text : "Let's slow down — can you tell me what you already know about this?";
 }

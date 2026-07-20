@@ -42,7 +42,16 @@ router.post('/ask', requireAuth, requireStudent, async (req, res) => {
     }
 
     const history = session.conversation_history || [];
-    const reply = await askTutor(history, message, session.subject, session.grade);
+    let reply;
+    try {
+      reply = await askTutor(history, message, session.subject, session.grade);
+    } catch (err) {
+      console.error('Tutor ask error:', err.message);
+      if (err.message === 'ANTHROPIC_API_KEY is not configured') {
+        return res.status(502).json({ error: 'AI Tutor is unavailable — API key not configured.' });
+      }
+      return res.status(502).json({ error: 'AI Tutor is temporarily unavailable. Please try again in a moment.' });
+    }
 
     const updatedHistory = [
       ...history,
@@ -57,8 +66,8 @@ router.post('/ask', requireAuth, requireStudent, async (req, res) => {
 
     res.status(200).json({ success: true, session_id: session.id, reply, conversation_history: updatedHistory });
   } catch (err) {
-    console.error('Tutor ask error:', err.message);
-    res.status(500).json({ error: 'Failed to get tutor response' });
+    console.error('Tutor route error:', err.message);
+    res.status(500).json({ error: 'Failed to process tutor request' });
   }
 });
 

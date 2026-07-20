@@ -27,7 +27,8 @@ router.post('/', onboardingLimiter, async (req, res) => {
     await client.query('BEGIN');
 
     const schoolRes = await client.query(
-      `INSERT INTO schools (name, address, status, plan) VALUES ($1, $2, 'pending', 'starter') RETURNING id`,
+      `INSERT INTO schools (name, address, status, plan, plan_renews_at)
+       VALUES ($1, $2, 'pending', 'starter', CURRENT_DATE + INTERVAL '30 days') RETURNING id`,
       [schoolName, address || city || null]
     );
     const schoolId = schoolRes.rows[0].id;
