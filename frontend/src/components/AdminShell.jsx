@@ -15,9 +15,10 @@ function NotificationBell() {
 
   const load = async () => {
     try {
-      const [pettyCash, waQueue] = await Promise.all([
+      const [pettyCash, waQueue, feed] = await Promise.all([
         apiRequest('/api/finance/petty-cash').catch(() => []),
         apiRequest('/api/fee-intake/pending').catch(() => []),
+        apiRequest('/api/notifications').catch(() => ({ notifications: [] })),
       ]);
       const pending = [
         ...pettyCash.filter((p) => p.status === 'PENDING').map((p) => ({
@@ -28,10 +29,27 @@ function NotificationBell() {
           text: `WhatsApp cash slip needs confirming — ${w.collector_name}`,
           to: '/finance',
         })),
+        // Homework/fee/activity/exam notifications routed through the
+        // central NotificationService — unread ones surface here too.
+        ...(feed.notifications || []).filter((n) => !n.is_read).map((n) => ({
+          id: n.id,
+          text: n.title || n.body || n.trigger_event,
+          to: n.student_id ? `/admin/students/${n.student_id}/profile` : '/dashboard',
+        })),
       ];
       setItems(pending);
     } catch (err) {
       setError(err.message);
+    }
+  };
+
+  const dismiss = async (item) => {
+    if (item.id) {
+      try {
+        await apiRequest(`/api/notifications/${item.id}/read`, { method: 'PATCH' });
+      } catch {
+        // non-fatal — feed will just show it again next refresh
+      }
     }
   };
 
@@ -61,7 +79,12 @@ function NotificationBell() {
             {error && <div className="px-4 py-3 text-xs text-destructive">{error}</div>}
             {items && items.length === 0 && <div className="px-4 py-6 text-sm text-ink-soft text-center">Nothing pending — you're all caught up.</div>}
             {items?.map((n, i) => (
-              <Link key={i} to={n.to} onClick={() => setOpen(false)} className="block px-4 py-3 text-sm text-ink hover:bg-cream-deep/30 border-b border-cream-deep/40 last:border-0">
+              <Link
+                key={i}
+                to={n.to}
+                onClick={() => { setOpen(false); dismiss(n); }}
+                className="block px-4 py-3 text-sm text-ink hover:bg-cream-deep/30 border-b border-cream-deep/40 last:border-0"
+              >
                 {n.text}
               </Link>
             ))}

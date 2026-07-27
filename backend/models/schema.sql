@@ -699,3 +699,98 @@ ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS voice_tutor_enabled BOOLEAN
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_code VARCHAR(10);
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_expires_at TIMESTAMP;
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_pending_number VARCHAR(20);
+
+-- ============================================================
+-- Unified Notification Service (Phase 7)
+-- ============================================================
+-- IMPORTANT ADAPTATION FROM THE ORIGINAL SPEC: Waynur has no parent web
+-- login (parents table has no password_hash — parents only ever interact via
+-- WhatsApp). So for recipient_type='parent' the WhatsApp send *is* the
+-- notification; there is no separate "parent dashboard feed" to build.
+-- dashboard_notifications rows are still written for parents (so a future
+-- parent portal wouldn't need a backfill), but the bell/feed UI only needs
+-- wiring into the Staff (teacher/principal/accountant) and Student shells.
+--
+-- This is a NEW, general-purpose table — it is intentionally separate from
+-- the existing `notification_log` table, which stays exactly as-is (it's
+-- the attendance-specific absence-alert -> voice-escalation pipeline used by
+-- workers/attendanceWorker.js and the WhatsApp webhook's REPLIED update;
+-- don't repoint those at this new table).
+
+CREATE TABLE IF NOT EXISTS notification_templates (
+    id SERIAL PRIMARY KEY,
+    school_id INT REFERENCES schools(id) ON DELETE CASCADE, -- NULL = global default, used when no school-specific override exists
+    trigger_event VARCHAR(50) NOT NULL, -- 'attendance_marked' | 'fee_due' | 'fee_payment_confirmed' | 'homework_assigned' | 'exam_result' | 'activity_shared' | 'salary_credited'
+    channel VARCHAR(20) NOT NULL DEFAULT 'both', -- 'whatsapp' | 'dashboard' | 'both'
+    name VARCHAR(255) NOT NULL,
+    -- Meta requires a pre-approved template for the first outbound message in
+    -- a WhatsApp conversation window (see workers/attendanceWorker.js) — so
+    -- whatsapp_template_name must match a template already approved in the
+    -- WhatsApp Business Manager, and whatsapp_param_order lists the
+    -- variable keys in the exact order that template's {{1}} {{2}} ... expect.
+    whatsapp_template_name VARCHAR(100),
+    whatsapp_param_order JSONB NOT NULL DEFAULT '[]',
+    -- Dashboard copy uses our own {{var}} named placeholders (no Meta
+    -- approval needed since it's just rendered in-app, not sent as a message).
+    dashboard_title_template TEXT,
+    dashboard_body_template TEXT,
+    media_supported BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+-- Postgres treats every NULL as distinct under a plain UNIQUE constraint, so
+-- a single UNIQUE(school_id, trigger_event) would silently allow duplicate
+-- global (school_id IS NULL) templates. Two indexes instead: one for real
+-- per-school overrides, one partial index enforcing exactly one global
+-- default per trigger_event.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_templates_school_trigger
+  ON notification_templates(school_id, trigger_event) WHERE school_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_templates_global_trigger
+  ON notification_templates(trigger_event) WHERE school_id IS NULL;
+
+-- One row per (notification attempt, recipient) — this single table doubles
+-- as both the delivery log AND the dashboard bell feed (recipient_type +
+-- recipient_id + is_read is exactly what the feed query needs), so we don't
+-- need a separate notification_recipients table for the simple single-send
+-- case. Batch sends (Activities module) just insert multiple rows sharing
+-- a batch_key.
+CREATE TABLE IF NOT EXISTS dashboard_notifications (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    template_id INT REFERENCES notification_templates(id) ON DELETE SET NULL,
+    trigger_event VARCHAR(50) NOT NULL,
+    recipient_type VARCHAR(20) NOT NULL, -- 'parent' | 'student' | 'staff'
+    recipient_id INT NOT NULL, -- parents.id | students.id | teachers.id depending on recipient_type
+    student_id INT REFERENCES students(id) ON DELETE CASCADE, -- context, nullable (e.g. staff salary notice has no student)
+    channel_used VARCHAR(20) NOT NULL DEFAULT 'dashboard',
+    title TEXT,
+    body TEXT,
+    payload_sent JSONB NOT NULL DEFAULT '{}',
+    whatsapp_status VARCHAR(20) NOT NULL DEFAULT 'not_applicable', -- 'not_applicable' | 'queued' | 'sent' | 'failed'
+    whatsapp_message_id VARCHAR(255),
+    error_message TEXT,
+    batch_key VARCHAR(100), -- e.g. 'activity:42' — groups a fan-out send for reporting
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    read_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    sent_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_dashboard_notif_recipient ON dashboard_notifications(school_id, recipient_type, recipient_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_dashboard_notif_batch ON dashboard_notifications(batch_key);
+
+-- Seed global default templates for the two modules retrofitted first
+-- (fees + homework) to prove the pattern, per the build spec. School-level
+-- overrides can be added later via SuperAdmin CRUD (same table, school_id set).
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, v.trigger_event, v.channel, v.name, v.whatsapp_template_name, v.whatsapp_param_order::jsonb, v.dashboard_title_template, v.dashboard_body_template, v.media_supported
+FROM (VALUES
+  ('homework_assigned', 'both', 'Homework Assigned',
+   'homework_assigned_alert', '["student_name","subject","title","due_date"]',
+   'New homework: {{title}}', '{{subject}} — due {{due_date}}. {{description}}', FALSE),
+  ('fee_payment_confirmed', 'both', 'Fee Payment Confirmed',
+   'fee_payment_confirmed_alert', '["student_name","amount"]',
+   'Payment received', 'We received ₹{{amount}} for {{student_name}}. Thank you!', FALSE)
+) AS v(trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = v.trigger_event
+);

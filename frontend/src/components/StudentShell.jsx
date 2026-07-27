@@ -1,8 +1,67 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Sparkles, BookOpen, TrendingUp, Trophy, Flame, Zap, NotebookPen, LogOut } from 'lucide-react';
+import { Home, Sparkles, BookOpen, TrendingUp, Trophy, Flame, Zap, NotebookPen, LogOut, Bell } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
+
+function StudentNotificationBell() {
+  const [open, setOpen] = useState(false);
+  const [feed, setFeed] = useState(null);
+
+  const load = () => apiRequest('/api/notifications').then(setFeed).catch(() => {});
+
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const markRead = async (id) => {
+    try {
+      await apiRequest(`/api/notifications/${id}/read`, { method: 'PATCH' });
+      load();
+    } catch {
+      // non-fatal
+    }
+  };
+
+  const unread = feed?.unread_count || 0;
+
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen((o) => !o)} className="relative p-2 rounded-full hover:bg-cream-deep/60 transition">
+        <Bell className="w-5 h-5 text-ink-soft" />
+        {unread > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-terracotta text-white text-[10px] font-semibold flex items-center justify-center">
+            {unread > 9 ? '9+' : unread}
+          </span>
+        )}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl border border-cream-deep/70 shadow-xl z-20 max-h-96 overflow-y-auto">
+            <div className="px-4 py-3 border-b border-cream-deep/60 font-display text-sm text-ink">Notifications</div>
+            {feed?.notifications?.length === 0 && (
+              <div className="px-4 py-6 text-sm text-ink-soft text-center">Nothing yet.</div>
+            )}
+            {feed?.notifications?.map((n) => (
+              <button
+                key={n.id}
+                onClick={() => markRead(n.id)}
+                className={`w-full text-left px-4 py-3 text-sm border-b border-cream-deep/40 last:border-0 hover:bg-cream-deep/30 ${
+                  n.is_read ? 'text-ink-soft' : 'text-ink font-medium'
+                }`}
+              >
+                {n.title || n.body}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 const NAV = [
   { to: '/student', label: 'Home', icon: Home, exact: true },
@@ -88,6 +147,7 @@ export default function StudentShell({ children }) {
             <div className="h-8 w-8 rounded-xl bg-terracotta flex items-center justify-center text-white font-display">W</div>
           </div>
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            <StudentNotificationBell />
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-warm/20 border border-joy-gold/50">
               <Flame className="w-4 h-4 text-terracotta" />
               <span className="text-sm font-semibold text-ink">{rewards ? rewards.streak : '—'}</span>

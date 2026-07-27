@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import pool from '../config/db.js';
 import { requireAuth, requireFinance } from '../middleware/auth.js';
 import { sendTextMessage } from '../services/whatsappService.js';
+import { send as sendNotification } from '../services/notificationService.js';
 
 const router = express.Router();
 
@@ -153,6 +154,18 @@ router.post('/webhook', async (req, res) => {
 
       await client.query('COMMIT');
       res.sendStatus(200);
+
+      // Fire-and-forget, after commit — Razorpay just wants a 200 quickly,
+      // and a slow/failed WhatsApp send must never risk the webhook retrying
+      // and double-processing the payment.
+      sendNotification({
+        triggerEvent: 'fee_payment_confirmed',
+        schoolId: link.school_id,
+        recipients: [{ type: 'parent', studentId: link.student_id }],
+        variables: { amount: link.amount },
+      }).catch((notifyErr) => {
+        console.error('fee_payment_confirmed notification failed:', notifyErr.message);
+      });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
