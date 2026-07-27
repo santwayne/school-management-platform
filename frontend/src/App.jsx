@@ -43,6 +43,8 @@ import TeacherLeave from './components/TeacherLeave';
 import AdminTimetable from './components/AdminTimetable';
 import AdminEventCalendar from './components/AdminEventCalendar';
 import AdminLibrary from './components/AdminLibrary';
+import AdminActivities from './components/AdminActivities';
+import StudentActivities from './components/StudentActivities';
 import SuperAdminAiVoiceTutor from './components/SuperAdminAiVoiceTutor';
 
 // Every role now has its own sidebar shell (matches the approved Lovable
@@ -99,6 +101,7 @@ function AppRoutes() {
         <Route path="/admin/timetable" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminTimetable)}</ProtectedRoute>} />
         <Route path="/admin/events" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminEventCalendar)}</ProtectedRoute>} />
         <Route path="/admin/library" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminLibrary)}</ProtectedRoute>} />
+        <Route path="/admin/activities" element={<ProtectedRoute teacherOrPrincipalOnly>{inShell(AdminShell, AdminActivities)}</ProtectedRoute>} />
         <Route path="/admin/reports" element={<ProtectedRoute financeOnly>{inShell(AdminShell, AdminReports)}</ProtectedRoute>} />
         <Route path="/accountant/reports" element={<ProtectedRoute accountantOnly>{inShell(AccountantShell, AdminReports)}</ProtectedRoute>} />
         <Route path="/grading" element={<ProtectedRoute>{inShell(AdminShell, AIGrading)}</ProtectedRoute>} />
@@ -112,6 +115,7 @@ function AppRoutes() {
         <Route path="/tutor" element={<ProtectedRoute studentOnly><StudentTutor /></ProtectedRoute>} />
         <Route path="/homework" element={<ProtectedRoute studentOnly><StudentHomework /></ProtectedRoute>} />
         <Route path="/notes" element={<ProtectedRoute studentOnly><StudentNotes /></ProtectedRoute>} />
+        <Route path="/activities" element={<ProtectedRoute studentOnly><StudentActivities /></ProtectedRoute>} />
         <Route path="/progress" element={<ProtectedRoute studentOnly><StudentProgress /></ProtectedRoute>} />
         <Route path="/rewards" element={<ProtectedRoute studentOnly><StudentRewards /></ProtectedRoute>} />
 

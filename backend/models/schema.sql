@@ -794,3 +794,60 @@ FROM (VALUES
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = v.trigger_event
 );
+
+-- ============================================================
+-- Activities module (Phase 9)
+-- ============================================================
+-- ADAPTATIONS FROM THE ORIGINAL SPEC:
+-- 1. This platform has no "section" entity — only `classes` (e.g. one row
+--    per "Grade 8", no "8-A"/"8-B" split). So visibility_scope only supports
+--    'all' | 'class' | 'individual', not 'section'.
+-- 2. No parent web portal exists (see the notification_templates comment
+--    above) — the "parent dashboard feed" from the spec is realized as the
+--    WhatsApp message itself for parents, and as a real feed tab on the
+--    STUDENT portal instead (students do have a web login).
+CREATE TABLE IF NOT EXISTS activities (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    activity_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_by INT REFERENCES teachers(id),
+    visibility_scope VARCHAR(20) NOT NULL DEFAULT 'all', -- 'all' | 'class' | 'individual'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_activities_school ON activities(school_id, activity_date DESC);
+
+CREATE TABLE IF NOT EXISTS activity_media (
+    id SERIAL PRIMARY KEY,
+    activity_id INT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    media_url TEXT NOT NULL,
+    media_type VARCHAR(10) NOT NULL DEFAULT 'photo', -- 'photo' | 'video'
+    thumbnail_url TEXT,
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_activity_media_activity ON activity_media(activity_id);
+
+-- Recipients are resolved to actual student rows AT SEND TIME (per
+-- acceptance criteria: a student added to the class later must never
+-- retroactively see old activities) — this table stores the resolved list,
+-- not the scope, so nothing here changes after creation.
+CREATE TABLE IF NOT EXISTS activity_recipients (
+    id SERIAL PRIMARY KEY,
+    activity_id INT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (activity_id, student_id)
+);
+CREATE INDEX IF NOT EXISTS idx_activity_recipients_student ON activity_recipients(student_id);
+
+-- New trigger_event for the shared NotificationService (see notification_templates
+-- above) — media_supported = TRUE so notificationService.send() attaches photos.
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'activity_shared', 'both', 'Activity Shared',
+       'activity_shared_alert', '["student_name","title"]'::jsonb,
+       '{{title}}', '{{description}}', TRUE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'activity_shared'
+);
