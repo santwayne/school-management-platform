@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Send, Mic, Keyboard, Sparkles, RotateCcw } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Send, Mic, MicOff, Keyboard, Sparkles, RotateCcw, Volume2, VolumeX } from 'lucide-react';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
 import StudentShell from './StudentShell';
@@ -38,7 +38,7 @@ export default function StudentTutor() {
 
   const currentSubject = SUBJECTS.find((s) => s.key === subject);
 
-  async function send(text) {
+  async function sendImpl(text) {
     const t = text.trim();
     if (!t || loading) return;
     setError('');
@@ -63,6 +63,9 @@ export default function StudentTutor() {
       setLoading(false);
     }
   }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const send = useCallback(sendImpl, [loading, sessionId, subject, user]);
 
   function startNew() {
     setSessionId(null);
@@ -163,7 +166,11 @@ export default function StudentTutor() {
 
         <div className="sticky bottom-0 bg-cream/95 backdrop-blur-md border-t border-cream-deep/60 pt-3 pb-4 -mx-5 lg:-mx-8 px-5 lg:px-8">
           {mode === 'voice' ? (
-            <VoiceTutorPanel subject={currentSubject.name} subjectKey={subject} studentId={user?.id} />
+            <InAppVoiceTutorPanel
+              onTranscript={send}
+              loading={loading}
+              lastTutorReply={[...messages].reverse().find((m) => m.role === 'tutor')?.text}
+            />
           ) : (
             <form
               onSubmit={(e) => {
@@ -200,50 +207,100 @@ export default function StudentTutor() {
   );
 }
 
-function VoiceTutorPanel({ subject, studentId }) {
-  const [schoolEnabled, setSchoolEnabled] = useState(null);
-  const [phone, setPhone] = useState('');
-  const [language, setLanguage] = useState('en');
-  const [requesting, setRequesting] = useState(false);
-  const [result, setResult] = useState(null);
+// ------------------------------------------------------------------
+// In-app voice tutor — device-native STT/TTS only (Web Speech API on
+// web/desktop; the same component works unchanged if wrapped for a
+// React Native mobile build using the native SpeechRecognizer/TTS APIs
+// behind an equivalent interface). No telephony, no cloud STT/TTS call —
+// this sends plain text into the exact same /api/tutor/ask pipeline as
+// typed chat (see the `send` function above), so cost/pattern is
+// identical to text chat and AI Grading. See routes/aiVoiceTutor.js for
+// why the old Vapi phone-call approach doesn't apply to an in-app feature.
+// ------------------------------------------------------------------
+function InAppVoiceTutorPanel({ onTranscript, loading, lastTutorReply }) {
+  const [supported, setSupported] = useState(true);
+  const [listening, setListening] = useState(false);
+  const [interimText, setInterimText] = useState('');
+  const [speakEnabled, setSpeakEnabled] = useState(true);
+  const [speaking, setSpeaking] = useState(false);
   const [error, setError] = useState('');
+  const recognitionRef = useRef(null);
+  const spokenRepliesRef = useRef(new Set());
 
   useEffect(() => {
-    apiRequest('/api/super-admin/ai-voice-tutor/school-status')
-      .then((r) => setSchoolEnabled(r.enabled))
-      .catch(() => setSchoolEnabled(false));
-  }, []);
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition || !window.speechSynthesis) {
+      setSupported(false);
+      return;
+    }
 
-  const requestCall = async () => {
-    if (!phone) return setError('Enter a phone number to receive the call.');
-    setRequesting(true);
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-IN'; // matches the platform's Hindi/Punjabi/English mix; browser falls back gracefully if unavailable
+
+    recognition.onresult = (event) => {
+      let finalText = '';
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) finalText += transcript;
+        else interim += transcript;
+      }
+      setInterimText(interim);
+      if (finalText.trim()) {
+        setInterimText('');
+        onTranscript(finalText.trim());
+      }
+    };
+    recognition.onerror = (event) => {
+      setError(event.error === 'not-allowed' ? 'Microphone permission was denied.' : `Voice input error: ${event.error}`);
+      setListening(false);
+    };
+    recognition.onend = () => setListening(false);
+
+    recognitionRef.current = recognition;
+    return () => recognition.stop();
+  }, [onTranscript]);
+
+  // Speak each new tutor reply aloud automatically, once, using the
+  // device's own speech synthesis — no cloud call, no per-word cost.
+  useEffect(() => {
+    if (!supported || !speakEnabled || !lastTutorReply) return;
+    if (spokenRepliesRef.current.has(lastTutorReply)) return;
+    spokenRepliesRef.current.add(lastTutorReply);
+
+    const utterance = new SpeechSynthesisUtterance(lastTutorReply);
+    utterance.lang = 'en-IN';
+    utterance.onstart = () => setSpeaking(true);
+    utterance.onend = () => setSpeaking(false);
+    window.speechSynthesis.cancel(); // don't overlap with a previous reply
+    window.speechSynthesis.speak(utterance);
+  }, [lastTutorReply, speakEnabled, supported]);
+
+  const toggleListening = () => {
     setError('');
-    setResult(null);
+    if (listening) {
+      recognitionRef.current?.stop();
+      setListening(false);
+      return;
+    }
     try {
-      await apiRequest('/api/super-admin/ai-voice-tutor/start', {
-        method: 'POST',
-        body: { student_id: studentId, phone, subject, language },
-      });
-      setResult('ok');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setRequesting(false);
+      recognitionRef.current?.start();
+      setListening(true);
+    } catch {
+      // start() throws if called twice in quick succession — safe to ignore
     }
   };
 
-  if (schoolEnabled === null) {
-    return <div className="text-sm text-ink-soft text-center py-6">Checking availability…</div>;
-  }
-
-  if (!schoolEnabled) {
+  if (!supported) {
     return (
-      <div className="flex flex-col items-center py-4 gap-3">
+      <div className="flex flex-col items-center py-4 gap-2">
         <div className="w-16 h-16 rounded-full bg-cream-deep/60 text-ink-soft flex items-center justify-center">
-          <Mic className="w-7 h-7" />
+          <MicOff className="w-7 h-7" />
         </div>
         <p className="text-xs text-ink-soft text-center max-w-xs">
-          Voice tutoring isn't turned on for your school yet — ask your principal to enable it.
+          Voice isn't supported in this browser — try Chrome, or use text chat instead.
         </p>
       </div>
     );
@@ -251,32 +308,31 @@ function VoiceTutorPanel({ subject, studentId }) {
 
   return (
     <div className="flex flex-col items-center py-4 gap-3">
-      <div className="w-16 h-16 rounded-full bg-terracotta/10 text-terracotta-deep flex items-center justify-center">
-        <Mic className="w-7 h-7" />
-      </div>
-      <p className="text-xs text-ink-soft text-center">Get a call from your AI voice tutor for {subject}.</p>
-      <div className="flex gap-2 w-full max-w-xs">
-        <input
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          placeholder="+9198XXXXXXXX"
-          className="flex-1 px-3 py-2 rounded-lg border border-cream-deep/70 text-sm"
-        />
-        <select value={language} onChange={(e) => setLanguage(e.target.value)} className="px-2 py-2 rounded-lg border border-cream-deep/70 text-sm">
-          <option value="en">English</option>
-          <option value="hi">Hindi</option>
-          <option value="pa">Punjabi</option>
-        </select>
-      </div>
       <button
-        disabled={requesting}
-        onClick={requestCall}
-        className="px-4 py-2 rounded-lg bg-terracotta text-white text-sm font-medium hover:bg-terracotta-deep disabled:opacity-50"
+        onClick={toggleListening}
+        disabled={loading}
+        className={`w-16 h-16 rounded-full flex items-center justify-center transition disabled:opacity-50 ${
+          listening ? 'bg-terracotta text-white animate-pulse' : 'bg-terracotta/10 text-terracotta-deep hover:bg-terracotta/20'
+        }`}
       >
-        {requesting ? 'Calling…' : 'Call me now'}
+        <Mic className="w-7 h-7" />
       </button>
-      {error && <div className="text-xs text-destructive">{error}</div>}
-      {result === 'ok' && <div className="text-xs text-emerald-700">Call started — answer your phone!</div>}
+      <p className="text-xs text-ink-soft text-center min-h-[1rem]">
+        {listening ? (interimText || 'Listening…') : loading ? 'Thinking…' : 'Tap the mic and ask your question'}
+      </p>
+
+      <button
+        onClick={() => {
+          if (speaking) window.speechSynthesis.cancel();
+          setSpeakEnabled((v) => !v);
+        }}
+        className="text-xs text-ink-soft inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-cream-deep/40"
+      >
+        {speakEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+        {speakEnabled ? 'Reading replies aloud' : 'Replies muted'}
+      </button>
+
+      {error && <div className="text-xs text-destructive text-center max-w-xs">{error}</div>}
     </div>
   );
 }
