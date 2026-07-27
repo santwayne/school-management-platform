@@ -117,7 +117,7 @@ export default function AdminTransport() {
         <div className="flex items-center gap-2">
           <Link
             to="/admin/transport/payouts"
-            className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2.5 rounded-lg bg-ink text-cream hover:bg-ink-soft transition"
+            className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2.5 rounded-lg bg-white border border-cream-deep text-ink hover:bg-cream-deep/40 transition"
           >
             <Wallet className="w-4 h-4" /> Payouts & Profitability
           </Link>

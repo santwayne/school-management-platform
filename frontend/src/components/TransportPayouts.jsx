@@ -140,7 +140,7 @@ export default function TransportPayouts() {
                     <button
                       disabled={busy === p.id}
                       onClick={() => setPayoutStatus(p.id, 'approved')}
-                      className="px-3 py-1.5 rounded-full bg-ink text-cream text-xs font-medium hover:bg-ink-soft transition disabled:opacity-50"
+                      className="px-3 py-1.5 rounded-full bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 transition disabled:opacity-50"
                     >
                       Approve
                     </button>
