@@ -47,8 +47,8 @@ function ComposeForm({ classes, students, onCreated, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-40 bg-ink/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-cream rounded-2xl border border-cream-deep max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-cream rounded-2xl border border-cream-deep shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h2 className="font-display text-xl text-ink">Create Activity</h2>
           <button onClick={onClose}><X size={20} className="text-ink-soft" /></button>
