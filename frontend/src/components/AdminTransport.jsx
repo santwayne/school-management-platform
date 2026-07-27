@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Plus, X, Bus, Gauge, Clock, Wifi, Copy, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Plus, X, Bus, Gauge, Clock, Wifi, Copy, CheckCircle2, AlertCircle, Wallet } from 'lucide-react';
 import { apiRequest } from '../api';
 
 const DEFAULT_CENTER = [30.9010, 75.8573]; // Ludhiana, Punjab — matches the reference GPS adapter's simulated area
@@ -113,12 +114,20 @@ export default function AdminTransport() {
           <h1 className="font-display text-3xl text-ink">Transport</h1>
           <p className="text-sm text-ink-soft mt-1">Fleet health and live location for today's routes.</p>
         </div>
-        <button
-          onClick={() => setAddOpen(true)}
-          className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2.5 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep transition"
-        >
-          <Plus className="w-4 h-4" /> Register bus
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/admin/transport/payouts"
+            className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2.5 rounded-lg bg-ink text-cream hover:bg-ink-soft transition"
+          >
+            <Wallet className="w-4 h-4" /> Payouts & Profitability
+          </Link>
+          <button
+            onClick={() => setAddOpen(true)}
+            className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2.5 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep transition"
+          >
+            <Plus className="w-4 h-4" /> Register bus
+          </button>
+        </div>
       </div>
 
       {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
