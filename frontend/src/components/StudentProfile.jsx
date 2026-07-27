@@ -11,16 +11,26 @@ const HUB_LINKS = [
   { label: 'Activities', to: (id) => `/admin/activities?student=${id}` },
 ];
 
+const AVATAR_SIZES = {
+  14: 'w-14 h-14',
+  20: 'w-20 h-20',
+};
+
 function Avatar({ url, name, size = 20 }) {
+  // Tailwind's JIT compiler scans source for literal class strings — a
+  // template literal like `w-${size}` never resolves to a real utility
+  // class at build time, so sizes must be full literal strings, not
+  // interpolated. See AVATAR_SIZES above.
+  const sizeClasses = AVATAR_SIZES[size] || AVATAR_SIZES[20];
   return url ? (
     <img
       src={url}
       alt={name}
-      className={`w-${size} h-${size} rounded-full object-cover border-2 border-cream-deep`}
+      className={`${sizeClasses} rounded-full object-cover border-2 border-cream-deep`}
     />
   ) : (
     <div
-      className={`w-${size} h-${size} rounded-full bg-cream-deep flex items-center justify-center text-ink-soft font-display text-2xl`}
+      className={`${sizeClasses} rounded-full bg-cream-deep flex items-center justify-center text-ink-soft font-display text-2xl`}
     >
       {(name || '?').charAt(0).toUpperCase()}
     </div>
@@ -86,9 +96,9 @@ export default function StudentProfile() {
   const guardians = profile.parents?.filter((p) => p.relation === 'guardian') || [];
 
   return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
+    <div className="max-w-4xl space-y-6">
       {/* Header */}
-      <div className="bg-cream rounded-2xl border border-cream-deep p-5 flex items-center gap-5">
+      <div className="bg-white rounded-2xl border border-cream-deep/70 p-5 flex items-center gap-5">
         <div className="relative">
           <Avatar url={profile.photo_url} name={profile.name} size={20} />
           <label className="absolute -bottom-1 -right-1 bg-terracotta text-cream rounded-full p-1.5 cursor-pointer shadow">
@@ -108,7 +118,7 @@ export default function StudentProfile() {
       {uploading && <p className="text-xs text-ink-soft">Uploading photo…</p>}
 
       {/* Basic info */}
-      <div className="bg-cream rounded-2xl border border-cream-deep p-5">
+      <div className="bg-white rounded-2xl border border-cream-deep/70 p-5">
         <h2 className="font-display text-lg text-ink mb-4">Basic Info</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <Field icon={Cake} label="Date of Birth" value={profile.date_of_birth && new Date(profile.date_of_birth).toLocaleDateString()} />
@@ -126,7 +136,7 @@ export default function StudentProfile() {
       </div>
 
       {/* Parents */}
-      <div className="bg-cream rounded-2xl border border-cream-deep p-5">
+      <div className="bg-white rounded-2xl border border-cream-deep/70 p-5">
         <h2 className="font-display text-lg text-ink mb-4">Parents / Guardian</h2>
         <div className="grid md:grid-cols-2 gap-4">
           {[father, mother, ...guardians].filter(Boolean).map((p) => (
@@ -154,7 +164,7 @@ export default function StudentProfile() {
           <Link
             key={l.label}
             to={l.to(studentId)}
-            className="px-4 py-2 rounded-full bg-ink text-cream text-sm font-medium hover:bg-ink-soft transition-colors"
+            className="px-4 py-2 rounded-lg bg-white border border-cream-deep text-ink text-sm font-medium hover:bg-cream-deep/40 transition"
           >
             {l.label}
           </Link>
