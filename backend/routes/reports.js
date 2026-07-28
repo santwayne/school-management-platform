@@ -24,7 +24,8 @@ router.get('/attendance', requireAuth, async (req, res) => {
               COUNT(*) FILTER (WHERE a.status = 'present') AS present_days,
               COUNT(*) FILTER (WHERE a.status = 'absent') AS absent_days,
               COUNT(*) FILTER (WHERE a.status = 'late') AS late_days,
-              COUNT(*) AS total_marked
+              COUNT(*) AS total_marked,
+              ROUND(100.0 * COUNT(*) FILTER (WHERE a.status = 'present') / NULLIF(COUNT(*), 0), 1) AS percentage
        FROM students s
        LEFT JOIN classes c ON c.id = s.class_id
        LEFT JOIN attendance a ON a.student_id = s.id AND a.date BETWEEN $2 AND $3

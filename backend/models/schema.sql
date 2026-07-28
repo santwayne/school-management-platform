@@ -699,3 +699,33 @@ ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS voice_tutor_enabled BOOLEAN
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_code VARCHAR(10);
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_expires_at TIMESTAMP;
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_pending_number VARCHAR(20);
+
+-- ---------- Academic Evaluation System (AES) — Marks Entry & Report Cards ----------
+-- Deliberately separate from generated_tests/test_rubrics/ai_graded_submissions
+-- (the AI-assisted OCR test-grading prototype in grading.js/AIGrading.jsx).
+-- This is plain manual marks entry per exam/term (e.g. a teacher typing in a
+-- student's Mid-Term Maths score) — the two systems are not merged here.
+CREATE TABLE IF NOT EXISTS exams (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL, -- e.g. 'Mid-Term 2026'
+    term VARCHAR(50),
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_exams_school_class ON exams(school_id, class_id);
+
+CREATE TABLE IF NOT EXISTS exam_marks (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    exam_id INT NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    subject_id INT NOT NULL REFERENCES subjects(id),
+    marks_obtained NUMERIC(5,2) NOT NULL,
+    max_marks NUMERIC(5,2) NOT NULL DEFAULT 100,
+    entered_by INT REFERENCES teachers(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (exam_id, student_id, subject_id)
+);
+CREATE INDEX IF NOT EXISTS idx_exam_marks_exam ON exam_marks(exam_id);
+CREATE INDEX IF NOT EXISTS idx_exam_marks_student ON exam_marks(student_id);

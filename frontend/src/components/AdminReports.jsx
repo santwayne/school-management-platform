@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -50,8 +50,16 @@ function buildPDF(type, data, rangeLabel) {
   if (type === 'attendance') {
     autoTable(doc, {
       startY: 31,
-      head: [['Student', 'Class', 'Present', 'Absent', 'Late', 'Days Marked']],
-      body: data.rows.map((r) => [r.student_name, r.class_name, r.present_days, r.absent_days, r.late_days, r.total_marked]),
+      head: [['Student', 'Class', 'Present', 'Absent', 'Late', 'Days Marked', 'Percentage']],
+      body: data.rows.map((r) => [
+        r.student_name,
+        r.class_name,
+        r.present_days,
+        r.absent_days,
+        r.late_days,
+        r.total_marked,
+        r.percentage !== null && r.percentage !== undefined ? `${r.percentage}%` : '—',
+      ]),
       styles: { fontSize: 9 },
     });
   } else if (type === 'fees') {
@@ -98,6 +106,7 @@ function buildExcel(type, data) {
         Absent: r.absent_days,
         Late: r.late_days,
         'Days Marked': r.total_marked,
+        'Percentage': r.percentage !== null && r.percentage !== undefined ? Number(r.percentage) : '',
       }))
     );
     XLSX.utils.book_append_sheet(wb, ws, 'Attendance');
@@ -202,15 +211,22 @@ export default function AdminReports() {
 function AttendanceReport() {
   const [from, setFrom] = useState(firstOfMonth());
   const [to, setTo] = useState(today());
+  const [classId, setClassId] = useState('');
+  const [classes, setClasses] = useState([]);
   const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiRequest('/api/academics/classes').then(setClasses).catch(() => {});
+  }, []);
 
   const run = async () => {
     setLoading(true);
     setError('');
     try {
-      setRows(await apiRequest(`/api/reports/attendance?from=${from}&to=${to}`));
+      const classParam = classId ? `&class_id=${classId}` : '';
+      setRows(await apiRequest(`/api/reports/attendance?from=${from}&to=${to}${classParam}`));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -231,6 +247,15 @@ function AttendanceReport() {
           <span className="block text-xs font-medium text-ink-soft mb-1">To</span>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm" />
         </label>
+        <label className="text-sm">
+          <span className="block text-xs font-medium text-ink-soft mb-1">Class</span>
+          <select value={classId} onChange={(e) => setClassId(e.target.value)} className="px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm min-w-[9rem]">
+            <option value="">All classes</option>
+            {classes.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </label>
         <button onClick={run} className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
           Generate
         </button>
@@ -243,7 +268,7 @@ function AttendanceReport() {
           <div className="rounded-2xl bg-white border border-cream-deep/70 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead><tr><Th>Student</Th><Th>Class</Th><Th>Present</Th><Th>Absent</Th><Th>Late</Th><Th>Days marked</Th></tr></thead>
+                <thead><tr><Th>Student</Th><Th>Class</Th><Th>Present</Th><Th>Absent</Th><Th>Late</Th><Th>Days marked</Th><Th>Percentage</Th></tr></thead>
                 <tbody className="divide-y divide-cream-deep/60">
                   {rows.rows.map((r) => (
                     <tr key={r.student_id} className="hover:bg-cream-deep/20">
@@ -253,10 +278,11 @@ function AttendanceReport() {
                       <Td>{r.absent_days}</Td>
                       <Td>{r.late_days}</Td>
                       <Td>{r.total_marked}</Td>
+                      <Td>{r.percentage !== null && r.percentage !== undefined ? `${r.percentage}%` : '—'}</Td>
                     </tr>
                   ))}
                   {rows.rows.length === 0 && (
-                    <tr><Td className="text-ink-soft" colSpan={6}>No attendance records in this range.</Td></tr>
+                    <tr><Td className="text-ink-soft" colSpan={7}>No attendance records in this range.</Td></tr>
                   )}
                 </tbody>
               </table>

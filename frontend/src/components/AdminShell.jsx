@@ -4,6 +4,7 @@ import {
   LayoutDashboard, CalendarCheck2, Wallet, Users, Bus, MessageSquare,
   FileBarChart, CreditCard, Settings, Bell, Sparkles, Building2, LogOut,
   ClipboardList, CalendarClock, CalendarDays, BookOpen, GraduationCap,
+  ClipboardEdit, FileText,
 } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
@@ -82,6 +83,8 @@ const NAV = [
   { label: 'Events', icon: CalendarDays, to: '/admin/events' },
   { label: 'Library', icon: BookOpen, to: '/admin/library' },
   { label: 'AI Grading', icon: GraduationCap, to: '/grading' },
+  { label: 'Marks Entry', icon: ClipboardEdit, to: '/marks-entry' },
+  { label: 'Report Cards', icon: FileText, to: '/report-cards' },
   { label: 'Transport', icon: Bus, to: '/admin/transport' },
   { label: 'Communications', icon: MessageSquare, to: '/admin/communications' },
   { label: 'Reports', icon: FileBarChart, to: '/admin/reports' },
