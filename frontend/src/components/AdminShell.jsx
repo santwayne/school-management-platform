@@ -4,6 +4,7 @@ import {
   LayoutDashboard, CalendarCheck2, Wallet, Users, Bus, MessageSquare,
   FileBarChart, CreditCard, Settings, Bell, Sparkles, Building2, LogOut,
   ClipboardList, CalendarClock, CalendarDays, BookOpen, GraduationCap,
+  ListChecks, UserCheck,
 } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
@@ -78,6 +79,8 @@ const NAV = [
   { label: 'Fees', icon: Wallet, to: '/finance' },
   { label: 'Staff & Payroll', icon: Users, to: '/admin/payroll' },
   { label: 'Staff Leave', icon: ClipboardList, to: '/admin/staff-leave' },
+  { label: 'Optional Subjects', icon: ListChecks, to: '/optional-subjects' },
+  { label: 'Student Leave', icon: UserCheck, to: '/student-leave' },
   { label: 'Timetable', icon: CalendarClock, to: '/admin/timetable' },
   { label: 'Events', icon: CalendarDays, to: '/admin/events' },
   { label: 'Library', icon: BookOpen, to: '/admin/library' },

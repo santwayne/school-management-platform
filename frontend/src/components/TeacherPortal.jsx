@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen } from 'lucide-react';
+import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
@@ -77,6 +77,20 @@ export default function TeacherPortal() {
             <div className="font-display text-base text-ink truncate">{user?.name}</div>
             <div className="text-xs text-ink-soft">Teacher Portal</div>
           </div>
+          <Link
+            to="/optional-subjects"
+            className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition"
+            aria-label="Optional subjects"
+          >
+            <ListChecks className="w-5 h-5" />
+          </Link>
+          <Link
+            to="/student-leave"
+            className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition"
+            aria-label="Student leave requests"
+          >
+            <UserCheck className="w-5 h-5" />
+          </Link>
           <Link
             to="/teacher/leave"
             className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition"

@@ -699,3 +699,61 @@ ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS voice_tutor_enabled BOOLEAN
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_code VARCHAR(10);
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_expires_at TIMESTAMP;
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_pending_number VARCHAR(20);
+
+-- ---------- Teacher Management additions: Optional Subjects + Student Leave ----------
+-- `classes` had no section column at all — sections aren't modeled anywhere
+-- else in the schema (each class name like "Class 8A" already implies its
+-- own roster/class row), so this is added as free-text rather than a new
+-- sections table, per the spec's guidance for this ambiguous case.
+ALTER TABLE classes ADD COLUMN IF NOT EXISTS section VARCHAR(20);
+
+-- `students` had no admission number either. Nullable — real schools need
+-- this field, but existing/legacy rows shouldn't be forced to backfill it.
+ALTER TABLE students ADD COLUMN IF NOT EXISTS admission_number VARCHAR(50);
+
+CREATE TABLE IF NOT EXISTS optional_subjects (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (school_id, name)
+);
+
+-- `section` here is a denormalized copy of classes.section at assignment
+-- time (free text, matching the classes table — see above), not a
+-- section_id FK, since there is no sections table to reference.
+CREATE TABLE IF NOT EXISTS student_optional_subject_assignments (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    subject_id INT NOT NULL REFERENCES optional_subjects(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    section VARCHAR(20),
+    assigned_by INT REFERENCES teachers(id),
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (student_id, subject_id)
+);
+CREATE INDEX IF NOT EXISTS idx_optional_subject_assignments_school ON student_optional_subject_assignments(school_id);
+CREATE INDEX IF NOT EXISTS idx_optional_subject_assignments_class ON student_optional_subject_assignments(class_id);
+
+-- Student leave approval — distinct from staff_leave_requests above (that's
+-- for teaching/admin staff; this is students applying to their class
+-- teacher/principal). Both principal and the student's class teacher(s) can
+-- review — see backend/routes/studentLeave.js for the access rule.
+CREATE TABLE IF NOT EXISTS student_leave_requests (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    class_id INT REFERENCES classes(id),
+    from_date DATE NOT NULL,
+    to_date DATE NOT NULL,
+    reason TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING | APPROVED | DECLINED
+    reviewed_by INT REFERENCES teachers(id),
+    reviewed_at TIMESTAMP,
+    review_note TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_student_leave_requests_school ON student_leave_requests(school_id);
+CREATE INDEX IF NOT EXISTS idx_student_leave_requests_student ON student_leave_requests(student_id);
+CREATE INDEX IF NOT EXISTS idx_student_leave_requests_class ON student_leave_requests(class_id);
