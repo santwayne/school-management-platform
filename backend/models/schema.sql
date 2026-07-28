@@ -698,4 +698,29 @@ ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS voice_tutor_enabled BOOLEAN
 -- rather than the moment someone types a number into the settings form.
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_code VARCHAR(10);
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_expires_at TIMESTAMP;
+
+-- ---------- Lesson plans ----------
+-- A teacher's per-class/subject lesson plan. attachment_url follows the same
+-- convention as class_notes — a plain URL string, not real upload infra.
+-- timetable_slot_id is a nullable link to a specific (day, period) cell so a
+-- plan CAN be tied to a scheduled period, but most plans won't map 1:1 to a
+-- slot, so it's optional. ON DELETE SET NULL keeps the plan intact if the
+-- principal later reshapes the timetable grid.
+CREATE TABLE IF NOT EXISTS lesson_plans (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    subject_id INT REFERENCES subjects(id) ON DELETE SET NULL,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    content TEXT,
+    attachment_url TEXT,
+    timetable_slot_id INT REFERENCES timetable_slots(id) ON DELETE SET NULL,
+    plan_date DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_lesson_plans_school ON lesson_plans(school_id);
+CREATE INDEX IF NOT EXISTS idx_lesson_plans_teacher ON lesson_plans(teacher_id);
+CREATE INDEX IF NOT EXISTS idx_lesson_plans_class ON lesson_plans(class_id);
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_pending_number VARCHAR(20);
