@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth, requireStudent, requirePrincipal } from '../middleware/auth.js';
+import { send as sendNotification } from '../services/notificationService.js';
 
 const router = express.Router();
 
@@ -48,6 +49,29 @@ router.post('/homework', requireAuth, async (req, res) => {
       [school_id, class_id, subject_id, title, description || null, due_date || null, req.user.teacher_id]
     );
     res.status(201).json(result.rows[0]);
+
+    // Fire-and-forget: fan out to every student in the class (dashboard +
+    // WhatsApp to their parent). Runs after the response so a slow/failed
+    // notification never delays homework creation for the teacher.
+    (async () => {
+      try {
+        const studentsRes = await pool.query('SELECT id FROM students WHERE class_id = $1 AND school_id = $2', [
+          class_id, school_id,
+        ]);
+        const recipients = studentsRes.rows.flatMap((s) => ([
+          { type: 'student', studentId: s.id },
+          { type: 'parent', studentId: s.id },
+        ]));
+        await sendNotification({
+          triggerEvent: 'homework_assigned',
+          schoolId: school_id,
+          recipients,
+          variables: { subject: subject_id, title, description: description || '', due_date: due_date || 'no due date' },
+        });
+      } catch (notifyErr) {
+        console.error('homework_assigned notification fan-out failed:', notifyErr.message);
+      }
+    })();
   } catch (err) {
     console.error('Homework create error:', err);
     res.status(500).json({ error: 'Failed to create homework' });
