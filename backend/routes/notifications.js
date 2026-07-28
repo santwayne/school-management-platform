@@ -20,7 +20,7 @@ router.get('/', requireAuth, async (req, res) => {
 
   try {
     const { rows } = await pool.query(
-      `SELECT id, trigger_event, title, body, is_read, created_at, student_id
+      `SELECT id, trigger_event, title, body, is_read, created_at, student_id, link
          FROM dashboard_notifications
         WHERE school_id = $1 AND recipient_type = $2 AND recipient_id = $3
         ORDER BY created_at DESC

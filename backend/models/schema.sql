@@ -698,6 +698,26 @@ ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS voice_tutor_enabled BOOLEAN
 -- rather than the moment someone types a number into the settings form.
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_code VARCHAR(10);
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_expires_at TIMESTAMP;
+
+-- ---------- Communication (Feature Group 3) ----------
+-- 3.1 Messages — extends the existing `broadcasts` log (rather than a
+-- parallel table) into threaded class/individual messaging. `audience`
+-- already used the 'class:<id>' / 'student:<id>' shape in its comment even
+-- before anything sent to those targets, so thread_key just mirrors that
+-- same value for rows that represent an addressable, replayable thread.
+-- Mass blasts ('all_parents' / 'all_staff') stay thread_key = NULL — they're
+-- one-off campaigns, not a conversation with a single class or family, and
+-- keeping them out of thread_key keeps the Messages thread list from being
+-- cluttered with entries nobody would click into as a "thread".
+ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS thread_key VARCHAR(50);
+CREATE INDEX IF NOT EXISTS idx_broadcasts_thread ON broadcasts(school_id, thread_key);
+
+-- 3.2 Notifications — superseded by dashboard_notifications/
+-- notification_templates (feature/whatsapp-notifications, see further down
+-- this file) which landed a more complete generic notification center with
+-- WhatsApp template integration. This branch's own `notifications` table
+-- was never wired to anything after reconciling the two — intentionally not
+-- created here to avoid an orphaned, unused table.
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_pending_number VARCHAR(20);
 
 -- ============================================================
@@ -846,6 +866,20 @@ CREATE TABLE IF NOT EXISTS dashboard_notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_dashboard_notif_recipient ON dashboard_notifications(school_id, recipient_type, recipient_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_dashboard_notif_batch ON dashboard_notifications(batch_key);
+
+-- Deep-link target for the notification bell (e.g. a specific message
+-- thread) — without this, every non-student-context notification fell back
+-- to a generic /dashboard link regardless of what it was actually about.
+ALTER TABLE dashboard_notifications ADD COLUMN IF NOT EXISTS link TEXT;
+
+-- Seed a dashboard-only template for the Messages feature's principal ping
+-- (feature/communication-messages-notifications) — no WhatsApp side, this
+-- notification is purely an in-app "someone sent a message" alert.
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, dashboard_title_template, dashboard_body_template)
+SELECT NULL, 'new_message', 'dashboard', 'New Message', 'New message', '{{sender_name}} sent a message to {{audience_label}}'
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'new_message'
+);
 
 -- Seed global default templates for the two modules retrofitted first
 -- (fees + homework) to prove the pattern, per the build spec. School-level

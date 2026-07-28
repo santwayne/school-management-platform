@@ -108,10 +108,13 @@ async function resolveRecipient(schoolId, recipient) {
  * attachments: [{ url, type }] optional — sent as WhatsApp media after the
  *              template message, when the template's media_supported = true
  * batchKey: optional string to group a fan-out send (e.g. 'activity:42')
+ * link: optional deep-link the notification bell should navigate to when
+ *       clicked (e.g. a specific message thread) — falls back to a generic
+ *       destination on the frontend when omitted.
  *
  * Returns { sent, failed, skipped } counts.
  */
-export async function send({ triggerEvent, recipients, variables = {}, attachments = [], batchKey = null, schoolId }) {
+export async function send({ triggerEvent, recipients, variables = {}, attachments = [], batchKey = null, link = null, schoolId }) {
   if (!schoolId) throw new Error('notificationService.send requires schoolId');
   if (!recipients || recipients.length === 0) return { sent: 0, failed: 0, skipped: 0 };
 
@@ -173,13 +176,13 @@ export async function send({ triggerEvent, recipients, variables = {}, attachmen
         `INSERT INTO dashboard_notifications
            (school_id, template_id, trigger_event, recipient_type, recipient_id, student_id,
             channel_used, title, body, payload_sent, whatsapp_status, whatsapp_message_id,
-            error_message, batch_key, sent_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,CURRENT_TIMESTAMP)`,
+            error_message, batch_key, link, sent_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,CURRENT_TIMESTAMP)`,
         [
           schoolId, template?.id || null, triggerEvent, resolved.recipientType, resolved.recipientId,
           resolved.studentId, template?.channel || 'dashboard', title, body,
           JSON.stringify({ variables: mergedVars, attachments }), whatsappStatus, whatsappMessageId,
-          errorMessage, batchKey,
+          errorMessage, batchKey, link,
         ]
       );
       if (whatsappStatus === 'failed') failed += 1;

@@ -4,11 +4,20 @@ import {
   LayoutDashboard, CalendarCheck2, Wallet, Users, Bus, MessageSquare,
   FileBarChart, CreditCard, Settings, Bell, Sparkles, Building2, LogOut,
   ClipboardList, CalendarClock, CalendarDays, BookOpen, GraduationCap, GalleryHorizontal,
-  ListChecks, UserCheck,
+  ListChecks, UserCheck, MessagesSquare,
 } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
 
+// Backed by the generic, event-driven `dashboard_notifications` table
+// (backend/services/notificationService.js's send() + GET/PATCH
+// /api/notifications) instead of two hand-picked queries. The two legacy
+// queries (petty cash, WhatsApp cash intake queue) are still mixed in
+// client-side below — they don't yet push through the shared service, so
+// dropping them would lose real pending-action visibility the rest of the
+// app still relies on. New event sources (e.g. new_message from the
+// Messages page, activity_shared) only need to call notificationService's
+// send() — no frontend change required, they show up here for free.
 function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState(null);
@@ -19,38 +28,42 @@ function NotificationBell() {
       const [pettyCash, waQueue, feed] = await Promise.all([
         apiRequest('/api/finance/petty-cash').catch(() => []),
         apiRequest('/api/fee-intake/pending').catch(() => []),
-        apiRequest('/api/notifications').catch(() => ({ notifications: [] })),
+        apiRequest('/api/notifications').catch(() => ({ notifications: [], unread_count: 0 })),
       ]);
-      const pending = [
+
+      const legacyItems = [
         ...pettyCash.filter((p) => p.status === 'PENDING').map((p) => ({
+          key: `pc-${p.id}`,
           text: `Petty cash request pending: ₹${Number(p.amount).toLocaleString('en-IN')}`,
           to: '/admin/payroll',
+          read: false,
+          generic: false,
         })),
         ...waQueue.map((w) => ({
+          key: `wa-${w.id}`,
           text: `WhatsApp cash slip needs confirming — ${w.collector_name}`,
           to: '/finance',
-        })),
-        // Homework/fee/activity/exam notifications routed through the
-        // central NotificationService — unread ones surface here too.
-        ...(feed.notifications || []).filter((n) => !n.is_read).map((n) => ({
-          id: n.id,
-          text: n.title || n.body || n.trigger_event,
-          to: n.student_id ? `/admin/students/${n.student_id}/profile` : '/dashboard',
+          read: false,
+          generic: false,
         })),
       ];
-      setItems(pending);
+
+      // Homework/fee/activity/message/exam notifications routed through the
+      // central NotificationService — link prefers the notification's own
+      // deep link, falls back to the related student's profile, then to a
+      // generic destination.
+      const genericItems = (feed.notifications || []).map((n) => ({
+        key: `n-${n.id}`,
+        id: n.id,
+        text: n.title || n.body || n.trigger_event,
+        to: n.link || (n.student_id ? `/admin/students/${n.student_id}/profile` : '/dashboard'),
+        read: !!n.is_read,
+        generic: true,
+      }));
+
+      setItems([...genericItems, ...legacyItems]);
     } catch (err) {
       setError(err.message);
-    }
-  };
-
-  const dismiss = async (item) => {
-    if (item.id) {
-      try {
-        await apiRequest(`/api/notifications/${item.id}/read`, { method: 'PATCH' });
-      } catch {
-        // non-fatal — feed will just show it again next refresh
-      }
     }
   };
 
@@ -60,15 +73,34 @@ function NotificationBell() {
     return () => clearInterval(interval);
   }, []);
 
-  const count = items?.length || 0;
+  const unreadCount = items?.filter((n) => !n.read).length || 0;
+
+  const handleItemClick = (n) => {
+    setOpen(false);
+    if (n.generic && !n.read) {
+      apiRequest(`/api/notifications/${n.id}/read`, { method: 'PATCH' }).catch(() => {});
+      setItems((prev) => prev.map((i) => (i.key === n.key ? { ...i, read: true } : i)));
+    }
+  };
+
+  const markAllRead = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await apiRequest('/api/notifications/read-all', { method: 'PATCH' });
+      setItems((prev) => prev.map((i) => (i.generic ? { ...i, read: true } : i)));
+    } catch {
+      // best-effort — dropdown stays interactive either way
+    }
+  };
 
   return (
     <div className="relative">
       <button onClick={() => setOpen((o) => !o)} className="relative p-2 rounded-lg hover:bg-cream-deep/60 transition">
         <Bell className="w-5 h-5 text-ink-soft" />
-        {count > 0 && (
+        {unreadCount > 0 && (
           <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-terracotta text-white text-[10px] font-semibold flex items-center justify-center">
-            {count > 9 ? '9+' : count}
+            {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
@@ -76,17 +108,27 @@ function NotificationBell() {
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-cream-deep/70 shadow-xl z-20 max-h-96 overflow-y-auto">
-            <div className="px-4 py-3 border-b border-cream-deep/60 font-display text-sm text-ink">Needs your attention</div>
+            <div className="px-4 py-3 border-b border-cream-deep/60 flex items-center justify-between">
+              <span className="font-display text-sm text-ink">Needs your attention</span>
+              {unreadCount > 0 && (
+                <button onClick={markAllRead} className="text-[11px] text-terracotta-deep font-medium hover:underline">
+                  Mark all read
+                </button>
+              )}
+            </div>
             {error && <div className="px-4 py-3 text-xs text-destructive">{error}</div>}
             {items && items.length === 0 && <div className="px-4 py-6 text-sm text-ink-soft text-center">Nothing pending — you're all caught up.</div>}
-            {items?.map((n, i) => (
+            {items?.map((n) => (
               <Link
-                key={i}
+                key={n.key}
                 to={n.to}
-                onClick={() => { setOpen(false); dismiss(n); }}
-                className="block px-4 py-3 text-sm text-ink hover:bg-cream-deep/30 border-b border-cream-deep/40 last:border-0"
+                onClick={() => handleItemClick(n)}
+                className={`flex items-start gap-2 px-4 py-3 text-sm hover:bg-cream-deep/30 border-b border-cream-deep/40 last:border-0 ${
+                  n.read ? 'text-ink-soft' : 'text-ink'
+                }`}
               >
-                {n.text}
+                {!n.read && <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-terracotta shrink-0" />}
+                <span className={n.read ? '' : 'font-medium'}>{n.text}</span>
               </Link>
             ))}
           </div>
@@ -111,6 +153,7 @@ const NAV = [
   { label: 'AI Grading', icon: GraduationCap, to: '/grading' },
   { label: 'Transport', icon: Bus, to: '/admin/transport' },
   { label: 'Communications', icon: MessageSquare, to: '/admin/communications' },
+  { label: 'Messages', icon: MessagesSquare, to: '/admin/messages' },
   { label: 'Reports', icon: FileBarChart, to: '/admin/reports' },
   { label: 'Billing', icon: CreditCard, to: '/admin/billing' },
   { label: 'Manage School', icon: Building2, to: '/admin/manage' },
