@@ -906,6 +906,20 @@ WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'new_message'
 );
 
+-- Seed dashboard-only templates for student leave approval (Feature Group 1)
+-- — the class incharge gets pinged on submission, the student gets pinged
+-- on approve/decline. Neither needs WhatsApp; both are in-app only.
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, dashboard_title_template, dashboard_body_template)
+SELECT NULL, 'student_leave_submitted', 'dashboard', 'Student Leave Submitted', 'New leave request', '{{student_name}} requested leave from {{from_date}} to {{to_date}}'
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'student_leave_submitted'
+);
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, dashboard_title_template, dashboard_body_template)
+SELECT NULL, 'student_leave_status_changed', 'dashboard', 'Leave Request Reviewed', 'Leave request {{status}}', 'Your leave request was {{status}}. {{review_note}}'
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'student_leave_status_changed'
+);
+
 -- Seed global default templates for the two modules retrofitted first
 -- (fees + homework) to prove the pattern, per the build spec. School-level
 -- overrides can be added later via SuperAdmin CRUD (same table, school_id set).

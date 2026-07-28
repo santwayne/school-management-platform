@@ -100,6 +100,24 @@ export default function ClassManager() {
     }
   };
 
+  // Class incharge — the one teacher who can approve this class's student
+  // leave requests (see backend/routes/studentLeave.js's canReviewClass).
+  // Any teacher assigned to a subject in the class can be made incharge,
+  // not just subject-specific assignees, since it's a whole-class role.
+  const handleSetClassTeacher = async (classId, teacherId) => {
+    setError('');
+    try {
+      await apiRequest(`/api/profiles/classes/${classId}/class-teacher`, {
+        method: 'PATCH',
+        body: { teacher_id: teacherId || null },
+      });
+      setMessage('Class incharge updated.');
+      loadBaseData();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleAddStudent = async (e) => {
     e.preventDefault();
     setError('');
@@ -208,6 +226,20 @@ export default function ClassManager() {
                 {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
+
+            <div className="flex items-center gap-2 pb-2 border-b">
+              <span className="text-sm text-ink-soft w-32 shrink-0">Class Incharge</span>
+              <select
+                key={selectedClass}
+                defaultValue={classes.find((c) => String(c.id) === String(selectedClass))?.class_teacher_id || ''}
+                onChange={(e) => handleSetClassTeacher(selectedClass, e.target.value)}
+                className="flex-1 p-1.5 border text-sm rounded bg-white"
+              >
+                <option value="">— Unassigned —</option>
+                {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <p className="text-xs text-ink-soft -mt-2">The class incharge is the only teacher who can approve this class's student leave requests.</p>
 
             {subjects.length === 0 && <p className="text-sm text-ink-soft">Add a subject first.</p>}
 
