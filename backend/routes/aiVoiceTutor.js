@@ -3,6 +3,26 @@ import pool from '../config/db.js';
 import { requireAuth, requireSuperAdmin, requirePrincipal } from '../middleware/auth.js';
 import { triggerVapiCall } from '../services/voiceService.js';
 
+// ============================================================
+// SUPERSEDED — kept for existing SuperAdmin config/history only.
+// ============================================================
+// This route dials a real phone call via Vapi (telephony: PSTN + paid
+// STT/TTS), which only makes sense for WayneRing calling an outbound number.
+// Waynur's tutor is a feature INSIDE the app, on a device the student is
+// already holding — no phone call is needed, so this whole paid stack
+// (Vapi/Twilio/Bolna/Deepgram/ElevenLabs/Cartesia) doesn't apply here.
+//
+// The student-facing "Voice" mode in StudentTutor.jsx now uses the device's
+// own built-in speech recognition/synthesis (Web Speech API on web, native
+// OS APIs on mobile) and sends plain text to the existing /api/tutor/ask
+// endpoint — same cost/pattern as the text chat and AI Grading, no
+// telephony or cloud STT/TTS call per session. See tutor.js / StudentTutor.jsx.
+//
+// This file is left in place (not deleted) only so existing SuperAdmin
+// config/call history isn't lost. Recommend removing it and
+// SuperAdminAiVoiceTutor.jsx in a follow-up cleanup PR once confirmed unused.
+// ============================================================
+
 const router = express.Router();
 
 function mask(key) {
