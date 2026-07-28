@@ -34,6 +34,7 @@ import libraryRoutes from './routes/library.js';
 import aiVoiceTutorRoutes from './routes/aiVoiceTutor.js';
 import profilesRoutes from './routes/profiles.js';
 import notificationsRoutes from './routes/notifications.js';
+import activitiesRoutes from './routes/activities.js';
 import './workers/gpsPollWorker.js';
 import './workers/teacherAttendanceAggregationWorker.js';
 import './workers/classNoteWorker.js';
@@ -99,6 +100,7 @@ app.use('/api/library', libraryRoutes);
 app.use('/api/super-admin/ai-voice-tutor', aiVoiceTutorRoutes);
 app.use('/api/profiles', profilesRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/activities', activitiesRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {
