@@ -92,6 +92,13 @@ export default function TeacherPortal() {
             <UserCheck className="w-5 h-5" />
           </Link>
           <Link
+            to="/teacher/lesson-plans"
+            className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition"
+            aria-label="Lesson plans"
+          >
+            <NotebookPen className="w-5 h-5" />
+          </Link>
+          <Link
             to="/teacher/leave"
             className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition"
             aria-label="Leave requests"

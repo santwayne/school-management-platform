@@ -42,6 +42,8 @@ import SuperAdminShell from './components/SuperAdminShell';
 import AdminStaffLeave from './components/AdminStaffLeave';
 import TeacherLeave from './components/TeacherLeave';
 import AdminTimetable from './components/AdminTimetable';
+import TeacherLessonPlans from './components/TeacherLessonPlans';
+import AdminLessonPlans from './components/AdminLessonPlans';
 import AdminEventCalendar from './components/AdminEventCalendar';
 import AdminLibrary from './components/AdminLibrary';
 import TransportPayouts from './components/TransportPayouts';
@@ -96,6 +98,7 @@ function AppRoutes() {
 
         <Route path="/teacher" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherPortal /></ProtectedRoute>} />
         <Route path="/teacher/leave" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherLeave /></ProtectedRoute>} />
+        <Route path="/teacher/lesson-plans" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherLessonPlans /></ProtectedRoute>} />
 
         <Route path="/dashboard" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminHome)}</ProtectedRoute>} />
         <Route path="/dashboard-alerts" element={<ProtectedRoute principalOnly>{inShell(AdminShell, PrincipalDashboard)}</ProtectedRoute>} />
@@ -115,6 +118,7 @@ function AppRoutes() {
         <Route path="/optional-subjects" element={<ProtectedRoute teacherOrPrincipalOnly>{inShell(AdminShell, AdminOptionalSubjects)}</ProtectedRoute>} />
         <Route path="/student-leave" element={<ProtectedRoute teacherOrPrincipalOnly>{inShell(AdminShell, AdminStudentLeave)}</ProtectedRoute>} />
         <Route path="/admin/timetable" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminTimetable)}</ProtectedRoute>} />
+        <Route path="/admin/lesson-plans" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminLessonPlans)}</ProtectedRoute>} />
         <Route path="/admin/events" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminEventCalendar)}</ProtectedRoute>} />
         <Route path="/admin/library" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminLibrary)}</ProtectedRoute>} />
         <Route path="/admin/students/:studentId/profile" element={<ProtectedRoute teacherOrPrincipalOnly>{inShell(AdminShell, StudentProfile)}</ProtectedRoute>} />
