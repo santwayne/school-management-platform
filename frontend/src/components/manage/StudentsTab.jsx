@@ -2,6 +2,44 @@ import React, { useEffect, useState } from 'react';
 import { Search, Pencil, Trash2, X } from 'lucide-react';
 import { apiRequest } from '../../api';
 
+// Observations logged by teachers for this student (feature 4.6) — shown
+// read-only inside the existing edit-student modal, which is already where
+// an admin looks a student up, rather than a brand new admin page.
+function ObservationsList({ studentId }) {
+  const [observations, setObservations] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiRequest(`/api/student-records/observations/student/${studentId}`)
+      .then(setObservations)
+      .catch((err) => setError(err.message));
+  }, [studentId]);
+
+  return (
+    <div className="mt-4 pt-4 border-t border-cream-deep/70">
+      <div className="text-xs font-medium text-ink-soft uppercase tracking-wider mb-2">Teacher observations</div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      {observations === null && !error ? (
+        <p className="text-xs text-ink-soft">Loading…</p>
+      ) : observations && observations.length === 0 ? (
+        <p className="text-xs text-ink-soft">No observations logged yet.</p>
+      ) : (
+        <ul className="space-y-2 max-h-48 overflow-y-auto">
+          {observations?.map((o) => (
+            <li key={o.id} className="text-xs bg-cream-deep/30 rounded-lg px-3 py-2">
+              <div className="text-ink">{o.note}</div>
+              <div className="text-ink-soft mt-1">
+                {o.teacher_name} · {new Date(o.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                {!o.visible_to_student && ' · Private'}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function StudentsTab() {
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -134,6 +172,7 @@ export default function StudentsTab() {
                 Save changes
               </button>
             </div>
+            <ObservationsList studentId={modal.id} />
           </div>
         </div>
       )}

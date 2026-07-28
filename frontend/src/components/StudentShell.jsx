@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Sparkles, BookOpen, TrendingUp, Trophy, Flame, Zap, NotebookPen, LogOut } from 'lucide-react';
+import { Home, Sparkles, BookOpen, TrendingUp, Trophy, Flame, Zap, NotebookPen, LogOut, FileText } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
 
@@ -9,6 +9,7 @@ const NAV = [
   { to: '/tutor', label: 'Ask AI Tutor', icon: Sparkles },
   { to: '/homework', label: 'Homework', icon: BookOpen },
   { to: '/notes', label: 'Notes', icon: NotebookPen },
+  { to: '/certificates', label: 'Certificates', icon: FileText },
   { to: '/progress', label: 'My Progress', icon: TrendingUp },
   { to: '/rewards', label: 'Rewards', icon: Trophy },
 ];

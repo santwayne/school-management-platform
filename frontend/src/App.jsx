@@ -44,6 +44,10 @@ import AdminTimetable from './components/AdminTimetable';
 import AdminEventCalendar from './components/AdminEventCalendar';
 import AdminLibrary from './components/AdminLibrary';
 import SuperAdminAiVoiceTutor from './components/SuperAdminAiVoiceTutor';
+import AdminBulkUpload from './components/AdminBulkUpload';
+import AdminCertificates from './components/AdminCertificates';
+import AdminDocumentRequests from './components/AdminDocumentRequests';
+import StudentCertificateRequest from './components/StudentCertificateRequest';
 
 // Every role now has its own sidebar shell (matches the approved Lovable
 // designs) — Admin/Accountant/Student/Super Admin pages render inside their
@@ -99,6 +103,9 @@ function AppRoutes() {
         <Route path="/admin/timetable" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminTimetable)}</ProtectedRoute>} />
         <Route path="/admin/events" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminEventCalendar)}</ProtectedRoute>} />
         <Route path="/admin/library" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminLibrary)}</ProtectedRoute>} />
+        <Route path="/admin/students/bulk-upload" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminBulkUpload)}</ProtectedRoute>} />
+        <Route path="/admin/certificates" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminCertificates)}</ProtectedRoute>} />
+        <Route path="/admin/document-requests" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminDocumentRequests)}</ProtectedRoute>} />
         <Route path="/admin/reports" element={<ProtectedRoute financeOnly>{inShell(AdminShell, AdminReports)}</ProtectedRoute>} />
         <Route path="/accountant/reports" element={<ProtectedRoute accountantOnly>{inShell(AccountantShell, AdminReports)}</ProtectedRoute>} />
         <Route path="/grading" element={<ProtectedRoute>{inShell(AdminShell, AIGrading)}</ProtectedRoute>} />
@@ -114,6 +121,7 @@ function AppRoutes() {
         <Route path="/notes" element={<ProtectedRoute studentOnly><StudentNotes /></ProtectedRoute>} />
         <Route path="/progress" element={<ProtectedRoute studentOnly><StudentProgress /></ProtectedRoute>} />
         <Route path="/rewards" element={<ProtectedRoute studentOnly><StudentRewards /></ProtectedRoute>} />
+        <Route path="/certificates" element={<ProtectedRoute studentOnly><StudentCertificateRequest /></ProtectedRoute>} />
 
         <Route path="/super-admin-login" element={<SuperAdminLogin />} />
         <Route path="/super-admin" element={<ProtectedRoute superAdminOnly>{inShell(SuperAdminShell, SuperAdminHome)}</ProtectedRoute>} />

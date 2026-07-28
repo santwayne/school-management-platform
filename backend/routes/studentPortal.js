@@ -290,4 +290,83 @@ router.get('/rewards', requireAuth, requireStudent, async (req, res) => {
   }
 });
 
+// ============================================================
+// Student Records & Documents — student-facing pieces (Feature Group 4)
+// ============================================================
+
+// Full profile (name, class, parent) — the student-login JWT only carries
+// name/grade, not class_id/class_name, so certificate generation and the
+// "Request a certificate" page need this richer read.
+router.get('/me', requireAuth, requireStudent, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT s.id, s.name, s.grade, s.login_id, s.created_at AS enrolled_at,
+              c.name AS class_name, p.name AS parent_name
+       FROM students s
+       LEFT JOIN classes c ON c.id = s.class_id
+       LEFT JOIN parents p ON p.id = s.parent_id
+       WHERE s.id = $1`,
+      [req.user.student_id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Student not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Student profile fetch error:', err);
+    res.status(500).json({ error: 'Failed to load profile' });
+  }
+});
+
+// 4.4/4.7 — student submits a document/ID-card request. request_type is a
+// free-text string (open-ended per spec) rather than an enum.
+router.post('/document-requests', requireAuth, requireStudent, async (req, res) => {
+  const { request_type } = req.body;
+  if (!request_type || !request_type.trim()) {
+    return res.status(400).json({ error: 'request_type is required' });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO document_requests (school_id, student_id, request_type)
+       VALUES ($1, $2, $3) RETURNING *`,
+      [req.user.school_id, req.user.student_id, request_type.trim()]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Create document request error:', err);
+    res.status(500).json({ error: 'Failed to submit request' });
+  }
+});
+
+// 4.5 — student's own requests, so they can track status and download once
+// APPROVED/READY.
+router.get('/document-requests', requireAuth, requireStudent, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM document_requests WHERE student_id = $1 ORDER BY requested_at DESC`,
+      [req.user.student_id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('List own document requests error:', err);
+    res.status(500).json({ error: 'Failed to load requests' });
+  }
+});
+
+// 4.6 — observations a teacher chose to make visible to the student.
+router.get('/observations', requireAuth, requireStudent, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT o.id, o.note, o.created_at, t.name AS teacher_name
+       FROM student_observations o
+       JOIN teachers t ON t.id = o.teacher_id
+       WHERE o.student_id = $1 AND o.visible_to_student = TRUE
+       ORDER BY o.created_at DESC`,
+      [req.user.student_id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('List student observations error:', err);
+    res.status(500).json({ error: 'Failed to load observations' });
+  }
+});
+
 export default router;

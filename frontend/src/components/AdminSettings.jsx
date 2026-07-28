@@ -36,6 +36,9 @@ export default function AdminSettings() {
   const [verifyCode, setVerifyCode] = useState('');
   const [awaitingCode, setAwaitingCode] = useState(false);
   const [limit, setLimit] = useState('5000');
+  const [letterhead, setLetterhead] = useState('');
+  const [signatoryName, setSignatoryName] = useState('');
+  const [signatoryDesignation, setSignatoryDesignation] = useState('');
   const [error, setError] = useState('');
   const [savedMsg, setSavedMsg] = useState('');
   const [loading, setLoading] = useState(true);
@@ -50,6 +53,9 @@ export default function AdminSettings() {
       setLimit(String(s.petty_cash_accountant_limit ?? 5000));
       setLogoUrl(s.logo_url || '');
       setLogoPreview(s.logo_url || '');
+      setLetterhead(s.leaving_cert_letterhead_text || '');
+      setSignatoryName(s.leaving_cert_signatory_name || '');
+      setSignatoryDesignation(s.leaving_cert_signatory_designation || '');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -149,6 +155,24 @@ export default function AdminSettings() {
     try {
       const s = await apiRequest('/api/settings/notifications', { method: 'PATCH', body: { [key]: value } });
       setSettings(s);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const saveLeavingCert = async () => {
+    setError('');
+    try {
+      const s = await apiRequest('/api/settings/leaving-cert', {
+        method: 'PATCH',
+        body: {
+          leaving_cert_letterhead_text: letterhead,
+          leaving_cert_signatory_name: signatoryName,
+          leaving_cert_signatory_designation: signatoryDesignation,
+        },
+      });
+      setSettings(s);
+      flash('Leaving certificate settings saved.');
     } catch (err) {
       setError(err.message);
     }
@@ -294,6 +318,48 @@ export default function AdminSettings() {
 
           <Card title="Fee Collectors">
             <FeeCollectorsCard />
+          </Card>
+
+          <Card title="Leaving Certificate">
+            <p className="text-xs text-ink-soft mb-3">
+              Configure the letterhead text and signatory shown on generated School Leaving Certificates — no code
+              deploy needed. See the Certificates page to generate one.
+            </p>
+            <label className="block mb-3">
+              <span className="text-xs font-medium text-ink-soft">Letterhead text</span>
+              <textarea
+                value={letterhead}
+                onChange={(e) => setLetterhead(e.target.value)}
+                placeholder="School address, affiliation number, etc."
+                rows={3}
+                className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <label className="block">
+                <span className="text-xs font-medium text-ink-soft">Signatory name</span>
+                <input
+                  type="text"
+                  value={signatoryName}
+                  onChange={(e) => setSignatoryName(e.target.value)}
+                  placeholder="e.g. Dr. Anita Rao"
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-ink-soft">Signatory designation</span>
+                <input
+                  type="text"
+                  value={signatoryDesignation}
+                  onChange={(e) => setSignatoryDesignation(e.target.value)}
+                  placeholder="e.g. Principal"
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
+                />
+              </label>
+            </div>
+            <button onClick={saveLeavingCert} className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
+              Save
+            </button>
           </Card>
         </div>
       </div>

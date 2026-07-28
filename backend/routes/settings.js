@@ -195,6 +195,31 @@ router.patch('/petty-cash-limit', requireAuth, requirePrincipal, async (req, res
   }
 });
 
+// Leaving-certificate letterhead/signatory text (feature 4.3) — lets the
+// principal edit the PDF's per-school text without a code deploy. The PDF
+// layout itself stays generic/shared; only this text is per-tenant.
+router.patch('/leaving-cert', requireAuth, requirePrincipal, async (req, res) => {
+  const school_id = req.user.school_id;
+  const { leaving_cert_letterhead_text, leaving_cert_signatory_name, leaving_cert_signatory_designation } = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO school_settings (school_id, leaving_cert_letterhead_text, leaving_cert_signatory_name, leaving_cert_signatory_designation)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (school_id) DO UPDATE SET
+         leaving_cert_letterhead_text = COALESCE(EXCLUDED.leaving_cert_letterhead_text, school_settings.leaving_cert_letterhead_text),
+         leaving_cert_signatory_name = COALESCE(EXCLUDED.leaving_cert_signatory_name, school_settings.leaving_cert_signatory_name),
+         leaving_cert_signatory_designation = COALESCE(EXCLUDED.leaving_cert_signatory_designation, school_settings.leaving_cert_signatory_designation),
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [school_id, leaving_cert_letterhead_text ?? null, leaving_cert_signatory_name ?? null, leaving_cert_signatory_designation ?? null]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Leaving cert settings update error:', err);
+    res.status(500).json({ error: 'Failed to update leaving certificate settings' });
+  }
+});
+
 // Upload school logo to S3, save URL to DB, return updated settings.
 router.post('/logo', requireAuth, requirePrincipal, (req, res, next) => {
   upload.single('logo')(req, res, (err) => {

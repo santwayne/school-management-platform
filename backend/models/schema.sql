@@ -699,3 +699,44 @@ ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS voice_tutor_enabled BOOLEAN
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_code VARCHAR(10);
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_expires_at TIMESTAMP;
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_pending_number VARCHAR(20);
+
+-- ---------- Student Records & Documents ----------
+-- Leaving-certificate letterhead/signatory text, configurable per school so a
+-- principal can edit it without a code deploy (feature 4.3). One generic PDF
+-- layout is shared across schools — only this text is per-tenant.
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS leaving_cert_letterhead_text TEXT;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS leaving_cert_signatory_name VARCHAR(255);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS leaving_cert_signatory_designation VARCHAR(255);
+
+-- Generic document/ID-card request queue (features 4.4 and 4.7 share this
+-- table). request_type is a free-text VARCHAR rather than an enum so new
+-- request kinds (e.g. 'transfer_certificate') can be added later without a
+-- migration — the admin queue UI is parameterized by request_type instead of
+-- needing a new table + a near-duplicate queue component per type.
+CREATE TABLE IF NOT EXISTS document_requests (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    request_type VARCHAR(50) NOT NULL, -- 'leaving_certificate' | 'bonafide' | 'id_card' | ...
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING | APPROVED | REJECTED | READY
+    requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    reviewed_by INT REFERENCES teachers(id),
+    reviewed_at TIMESTAMP,
+    review_note TEXT,
+    document_url TEXT -- NULL for certs regenerated client-side on demand; set if a real file/data-URL was stored
+);
+CREATE INDEX IF NOT EXISTS idx_document_requests_school ON document_requests(school_id, request_type, status);
+CREATE INDEX IF NOT EXISTS idx_document_requests_student ON document_requests(student_id);
+
+-- Teacher-logged behavioral/academic notes against a student (feature 4.6).
+-- created_at doubles as the observation date — no separate date column needed.
+CREATE TABLE IF NOT EXISTS student_observations (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    note TEXT NOT NULL,
+    visible_to_student BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_student_observations_student ON student_observations(student_id);

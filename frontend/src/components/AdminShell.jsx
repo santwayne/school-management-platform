@@ -4,6 +4,7 @@ import {
   LayoutDashboard, CalendarCheck2, Wallet, Users, Bus, MessageSquare,
   FileBarChart, CreditCard, Settings, Bell, Sparkles, Building2, LogOut,
   ClipboardList, CalendarClock, CalendarDays, BookOpen, GraduationCap,
+  UploadCloud, Award, FileCheck2,
 } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
@@ -82,6 +83,9 @@ const NAV = [
   { label: 'Events', icon: CalendarDays, to: '/admin/events' },
   { label: 'Library', icon: BookOpen, to: '/admin/library' },
   { label: 'AI Grading', icon: GraduationCap, to: '/grading' },
+  { label: 'Bulk Upload', icon: UploadCloud, to: '/admin/students/bulk-upload' },
+  { label: 'Certificates', icon: Award, to: '/admin/certificates' },
+  { label: 'Document Requests', icon: FileCheck2, to: '/admin/document-requests' },
   { label: 'Transport', icon: Bus, to: '/admin/transport' },
   { label: 'Communications', icon: MessageSquare, to: '/admin/communications' },
   { label: 'Reports', icon: FileBarChart, to: '/admin/reports' },
