@@ -166,6 +166,47 @@ router.delete('/notes/:id', requireAuth, requireStudent, async (req, res) => {
 });
 
 // ============================================================
+// Attendance — this student's own history + percentage. Marking itself
+// happens on the teacher side (attendance.js RollCall flow) — this is
+// read-only, the "parent view" analog since parents don't have their own
+// login in this system (see PR notes).
+// ============================================================
+
+router.get('/attendance', requireAuth, requireStudent, async (req, res) => {
+  const studentId = req.user.student_id;
+  // Default window: last 365 days, so the page loads fast even for a
+  // student with years of history. Explicit from/to (e.g. a single term)
+  // can be passed to narrow or widen it.
+  const { from = null, to = null } = req.query;
+  const rangeFrom = from || null;
+  const rangeTo = to || null;
+
+  try {
+    const result = await pool.query(
+      `SELECT date, status FROM attendance
+       WHERE student_id = $1
+         AND date BETWEEN COALESCE($2::date, CURRENT_DATE - INTERVAL '365 days') AND COALESCE($3::date, CURRENT_DATE)
+       ORDER BY date DESC`,
+      [studentId, rangeFrom, rangeTo]
+    );
+
+    const present = result.rows.filter((r) => r.status === 'present').length;
+    const absent = result.rows.filter((r) => r.status === 'absent').length;
+    const late = result.rows.filter((r) => r.status === 'late').length;
+    const total = result.rows.length;
+    const percentage = total ? Number(((present / total) * 100).toFixed(1)) : null;
+
+    res.json({
+      summary: { present, absent, late, total, percentage },
+      records: result.rows,
+    });
+  } catch (err) {
+    console.error('Student attendance fetch error:', err);
+    res.status(500).json({ error: 'Failed to load attendance history' });
+  }
+});
+
+// ============================================================
 // Progress — chapter completion (from syllabus_progress, class-wide) +
 // average confirmed test score for this student
 // ============================================================

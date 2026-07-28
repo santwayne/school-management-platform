@@ -38,6 +38,7 @@ import activitiesRoutes from './routes/activities.js';
 import optionalSubjectsRoutes from './routes/optionalSubjects.js';
 import studentLeaveRoutes from './routes/studentLeave.js';
 import studentRecordsRoutes from './routes/studentRecords.js';
+import examsRoutes from './routes/exams.js';
 import './workers/gpsPollWorker.js';
 import './workers/teacherAttendanceAggregationWorker.js';
 import './workers/classNoteWorker.js';
@@ -107,6 +108,7 @@ app.use('/api/activities', activitiesRoutes);
 app.use('/api/optional-subjects', optionalSubjectsRoutes);
 app.use('/api/student-leave', studentLeaveRoutes);
 app.use('/api/student-records', studentRecordsRoutes);
+app.use('/api/exams', examsRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {

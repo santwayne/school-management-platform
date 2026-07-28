@@ -5,6 +5,7 @@ import {
   FileBarChart, CreditCard, Settings, Bell, Sparkles, Building2, LogOut,
   ClipboardList, CalendarClock, CalendarDays, BookOpen, GraduationCap, GalleryHorizontal,
   ListChecks, UserCheck, MessagesSquare, UploadCloud, Award, FileCheck2,
+  ClipboardEdit, FileText,
 } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
@@ -154,6 +155,8 @@ const NAV = [
   { label: 'Bulk Upload', icon: UploadCloud, to: '/admin/students/bulk-upload' },
   { label: 'Certificates', icon: Award, to: '/admin/certificates' },
   { label: 'Document Requests', icon: FileCheck2, to: '/admin/document-requests' },
+  { label: 'Marks Entry', icon: ClipboardEdit, to: '/marks-entry' },
+  { label: 'Report Cards', icon: FileText, to: '/report-cards' },
   { label: 'Transport', icon: Bus, to: '/admin/transport' },
   { label: 'Communications', icon: MessageSquare, to: '/admin/communications' },
   { label: 'Messages', icon: MessagesSquare, to: '/admin/messages' },
