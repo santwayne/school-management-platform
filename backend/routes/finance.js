@@ -105,6 +105,117 @@ router.get('/fee/history', requireAuth, requireFinance, async (req, res) => {
   }
 });
 
+// GET /api/finance/fee/dashboard — everything the Fee Management Dashboard
+// needs in one call: summary totals, collection/due-by-class, payment-mode
+// split, and a paginated recent-transactions table. Computed live from
+// student_payment / student_payment_history / students / classes — no mock
+// data. Grouping uses classes.name (via students.class_id) rather than
+// students.grade: grade is only ever populated by the super-admin demo seed
+// route, so joining through classes is the only grouping that reflects real
+// data for schools created through the normal admin flow.
+router.get('/fee/dashboard', requireAuth, requireFinance, async (req, res) => {
+  const school_id = req.user.school_id;
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize, 10) || 10));
+  const offset = (page - 1) * pageSize;
+
+  try {
+    const summaryRes = await pool.query(
+      `SELECT COALESCE(SUM(amount_due), 0) AS total_expected,
+              COALESCE(SUM(amount_paid), 0) AS total_paid
+       FROM student_payment WHERE school_id = $1`,
+      [school_id]
+    );
+    const totalExpected = parseFloat(summaryRes.rows[0].total_expected);
+    const totalPaid = parseFloat(summaryRes.rows[0].total_paid);
+    // amount_due is never set by any route today (no fee-structure feature
+    // yet), so total_expected is realistically 0 for most schools — clamp
+    // unpaid at 0 instead of showing a negative number in that case.
+    const totalUnpaid = Math.max(totalExpected - totalPaid, 0);
+
+    const collectedByClassRes = await pool.query(
+      `SELECT COALESCE(c.name, 'Unassigned') AS class_name,
+              COALESCE(SUM(sp.amount_paid), 0) AS collected
+       FROM students s
+       LEFT JOIN classes c ON c.id = s.class_id
+       LEFT JOIN student_payment sp ON sp.student_id = s.id AND sp.school_id = s.school_id
+       WHERE s.school_id = $1
+       GROUP BY c.name
+       ORDER BY c.name NULLS LAST`,
+      [school_id]
+    );
+
+    const dueByClassRes = await pool.query(
+      `SELECT COALESCE(c.name, 'Unassigned') AS class_name,
+              GREATEST(COALESCE(SUM(sp.amount_due), 0) - COALESCE(SUM(sp.amount_paid), 0), 0) AS unpaid
+       FROM students s
+       LEFT JOIN classes c ON c.id = s.class_id
+       LEFT JOIN student_payment sp ON sp.student_id = s.id AND sp.school_id = s.school_id
+       WHERE s.school_id = $1
+       GROUP BY c.name
+       ORDER BY c.name NULLS LAST`,
+      [school_id]
+    );
+
+    const byModeRes = await pool.query(
+      `SELECT COALESCE(payment_mode, 'Unknown') AS payment_mode,
+              COALESCE(SUM(amount_paid), 0) AS amount,
+              COUNT(*) AS txn_count
+       FROM student_payment_history
+       WHERE school_id = $1
+       GROUP BY payment_mode
+       ORDER BY amount DESC`,
+      [school_id]
+    );
+
+    const countRes = await pool.query(
+      `SELECT COUNT(*) FROM student_payment_history WHERE school_id = $1`,
+      [school_id]
+    );
+    const total = parseInt(countRes.rows[0].count, 10);
+
+    // No students.admission_number column exists yet — fall back to the
+    // internal numeric student id (another branch may add admission_number;
+    // this call is written so it's a one-line swap once it lands).
+    const recentRes = await pool.query(
+      `SELECT h.id, h.student_id, s.name AS student_name, h.amount_paid, h.payment_mode,
+              h.created_at, COALESCE(c.name, 'Unassigned') AS class_name
+       FROM student_payment_history h
+       JOIN students s ON s.id = h.student_id
+       LEFT JOIN classes c ON c.id = s.class_id
+       WHERE h.school_id = $1
+       ORDER BY h.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [school_id, pageSize, offset]
+    );
+
+    res.json({
+      summary: {
+        total_expected: totalExpected,
+        total_paid: totalPaid,
+        total_unpaid: totalUnpaid,
+      },
+      collected_by_class: collectedByClassRes.rows.map((r) => ({ class_name: r.class_name, collected: parseFloat(r.collected) })),
+      due_by_class: dueByClassRes.rows.map((r) => ({ class_name: r.class_name, unpaid: parseFloat(r.unpaid) })),
+      by_payment_mode: byModeRes.rows.map((r) => ({
+        payment_mode: r.payment_mode,
+        amount: parseFloat(r.amount),
+        txn_count: parseInt(r.txn_count, 10),
+      })),
+      recent_transactions: {
+        rows: recentRes.rows,
+        total,
+        page,
+        pageSize,
+        totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      },
+    });
+  } catch (err) {
+    console.error('Fee dashboard error:', err);
+    res.status(500).json({ error: 'Failed to load fee dashboard' });
+  }
+});
+
 router.post('/petty-cash/request', requireAuth, async (req, res) => {
   const school_id = req.user.school_id;
   const { requested_by, amount, purpose } = req.body;

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiRequest } from '../api';
+import FeeDashboard from './FeeDashboard';
 
 function PaymentHistory({ refreshKey }) {
   const [rows, setRows] = useState([]);
@@ -129,7 +130,13 @@ function StudentPicker({ selected, onSelect }) {
   );
 }
 
+const TABS = [
+  { key: 'dashboard', label: 'Dashboard' },
+  { key: 'collect', label: 'Collect Fee' },
+];
+
 export default function FinanceAdmin() {
+  const [tab, setTab] = useState('dashboard');
   const [student, setStudent] = useState(null);
   const [feeForm, setFeeForm] = useState({ amount: '', mode: 'Cash', remarks: '' });
   const [proofPhoto, setProofPhoto] = useState(null);
@@ -167,78 +174,98 @@ export default function FinanceAdmin() {
   };
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <div className="bg-white p-6 rounded-xl border shadow-sm">
-        <h2 className="font-display text-xl font-bold text-ink mb-4">Collect Student Fee</h2>
-        {msg && <div className="p-3 mb-4 text-xs font-semibold bg-terracotta/5 text-terracotta-deep rounded-lg">{msg}</div>}
-
-        <form onSubmit={handleFeeSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Student</label>
-            <StudentPicker selected={student} onSelect={setStudent} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Amount (₹)</label>
-              <input
-                type="number"
-                value={feeForm.amount}
-                onChange={(e) => setFeeForm({ ...feeForm, amount: e.target.value })}
-                className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-terracotta/40"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Mode</label>
-              <select
-                value={feeForm.mode}
-                onChange={(e) => setFeeForm({ ...feeForm, mode: e.target.value })}
-                className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-terracotta/40"
-              >
-                <option>Cash</option>
-                <option>UPI / Online</option>
-                <option>Cheque</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Remarks</label>
-            <input
-              type="text"
-              value={feeForm.remarks}
-              onChange={(e) => setFeeForm({ ...feeForm, remarks: e.target.value })}
-              className="w-full border rounded-lg p-2 text-sm"
-              placeholder="Admission fee, Fine, etc."
-            />
-          </div>
-          {feeForm.mode === 'Cash' && (
-            <div>
-              <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Payment Photo (optional)</label>
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={(e) => {
-                  const file = e.target.files[0];
-                  if (!file) return setProofPhoto(null);
-                  const reader = new FileReader();
-                  reader.onload = () => setProofPhoto(reader.result);
-                  reader.readAsDataURL(file);
-                }}
-                className="block w-full text-xs text-ink-soft file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-terracotta/5 file:text-terracotta-deep hover:file:bg-terracotta/10"
-              />
-              {proofPhoto && <p className="text-xs text-green-600 mt-1">Photo attached ✓</p>}
-            </div>
-          )}
+    <div className="p-6 space-y-4">
+      <div className="border-b border-cream-deep/70 flex gap-1">
+        {TABS.map((t) => (
           <button
-            type="submit"
-            className="w-full bg-terracotta text-white font-medium p-2.5 rounded-lg text-sm hover:bg-terracotta-deep transition"
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${
+              tab === t.key ? 'border-terracotta text-terracotta-deep' : 'border-transparent text-ink-soft hover:text-ink'
+            }`}
           >
-            Record Secure Payment
+            {t.label}
           </button>
-        </form>
+        ))}
       </div>
-      <PaymentHistory refreshKey={refreshKey} />
+
+      {tab === 'dashboard' && <FeeDashboard />}
+
+      {tab === 'collect' && (
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white p-6 rounded-xl border shadow-sm">
+            <h2 className="font-display text-xl font-bold text-ink mb-4">Collect Student Fee</h2>
+            {msg && <div className="p-3 mb-4 text-xs font-semibold bg-terracotta/5 text-terracotta-deep rounded-lg">{msg}</div>}
+
+            <form onSubmit={handleFeeSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Student</label>
+                <StudentPicker selected={student} onSelect={setStudent} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Amount (₹)</label>
+                  <input
+                    type="number"
+                    value={feeForm.amount}
+                    onChange={(e) => setFeeForm({ ...feeForm, amount: e.target.value })}
+                    className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-terracotta/40"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Mode</label>
+                  <select
+                    value={feeForm.mode}
+                    onChange={(e) => setFeeForm({ ...feeForm, mode: e.target.value })}
+                    className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-terracotta/40"
+                  >
+                    <option>Cash</option>
+                    <option>UPI / Online</option>
+                    <option>Cheque</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Remarks</label>
+                <input
+                  type="text"
+                  value={feeForm.remarks}
+                  onChange={(e) => setFeeForm({ ...feeForm, remarks: e.target.value })}
+                  className="w-full border rounded-lg p-2 text-sm"
+                  placeholder="Admission fee, Fine, etc."
+                />
+              </div>
+              {feeForm.mode === 'Cash' && (
+                <div>
+                  <label className="block text-xs font-bold text-ink-soft uppercase mb-1">Payment Photo (optional)</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (!file) return setProofPhoto(null);
+                      const reader = new FileReader();
+                      reader.onload = () => setProofPhoto(reader.result);
+                      reader.readAsDataURL(file);
+                    }}
+                    className="block w-full text-xs text-ink-soft file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-terracotta/5 file:text-terracotta-deep hover:file:bg-terracotta/10"
+                  />
+                  {proofPhoto && <p className="text-xs text-green-600 mt-1">Photo attached ✓</p>}
+                </div>
+              )}
+              <button
+                type="submit"
+                className="w-full bg-terracotta text-white font-medium p-2.5 rounded-lg text-sm hover:bg-terracotta-deep transition"
+              >
+                Record Secure Payment
+              </button>
+            </form>
+          </div>
+          <PaymentHistory refreshKey={refreshKey} />
+        </div>
+      )}
     </div>
   );
 }
