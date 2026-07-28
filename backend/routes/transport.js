@@ -1,8 +1,12 @@
 import express from 'express';
 import crypto from 'crypto';
 import pool from '../config/db.js';
-import { requireAuth, requirePrincipal } from '../middleware/auth.js';
+import { requireAuth, requirePrincipal, requireFinance } from '../middleware/auth.js';
 import { getAdapter, getVendorConfig } from '../services/gpsAdapters/index.js';
+import {
+  computeKmFromGPS, logManualKm, generatePayout, updatePayoutStatus,
+  collectTransportFee, getRouteProfitability,
+} from '../services/transportPayoutService.js';
 
 const router = express.Router();
 
@@ -177,6 +181,192 @@ router.post('/webhook/:vendor', async (req, res) => {
     res.status(200).json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ================================================================
+// Driver payout — independent of student fee collection below (acceptance
+// criteria: editing/deleting one must never touch the other's records).
+// ================================================================
+
+// Set/update a bus's per-km payout rate + driver bank details.
+router.patch('/buses/:id/payout-rate', requireAuth, requirePrincipal, async (req, res) => {
+  const { rate_per_km, driver_bank_details } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE buses SET
+         rate_per_km = COALESCE($1, rate_per_km),
+         driver_bank_details = COALESCE($2, driver_bank_details)
+       WHERE id = $3 AND school_id = $4 RETURNING *`,
+      [rate_per_km, driver_bank_details ? JSON.stringify(driver_bank_details) : null, req.params.id, req.user.school_id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Bus not found for this school' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Set payout rate error:', err);
+    res.status(500).json({ error: 'Failed to update payout rate' });
+  }
+});
+
+// Auto-pull km for a given day from existing GPS pings (bus_location_log).
+// Returns null if there weren't enough pings that day — frontend should
+// then prompt for manual entry via POST /buses/:id/trip-logs/manual.
+router.post('/buses/:id/trip-logs/auto', requireAuth, requirePrincipal, async (req, res) => {
+  const { date } = req.body;
+  if (!date) return res.status(400).json({ error: 'date is required (YYYY-MM-DD)' });
+  try {
+    const km = await computeKmFromGPS(req.user.school_id, req.params.id, date);
+    if (km === null) {
+      return res.status(200).json({ km: null, message: 'Not enough GPS pings for this day — enter km manually.' });
+    }
+    res.json({ km });
+  } catch (err) {
+    console.error('Auto km computation error:', err);
+    res.status(500).json({ error: 'Failed to compute km from GPS data' });
+  }
+});
+
+// Manual fallback entry for a day with no usable GPS data.
+router.post('/buses/:id/trip-logs/manual', requireAuth, requirePrincipal, async (req, res) => {
+  const { date, km } = req.body;
+  if (!date || km == null) return res.status(400).json({ error: 'date and km are required' });
+  try {
+    const row = await logManualKm(req.user.school_id, req.params.id, date, km, req.user.teacher_id);
+    res.json(row);
+  } catch (err) {
+    console.error('Manual km entry error:', err);
+    res.status(500).json({ error: 'Failed to log manual km' });
+  }
+});
+
+// "Generate Payout" — sums logged km over the period and creates a pending
+// driver_payouts row. Does not touch student_transport_fees.
+router.post('/buses/:id/generate-payout', requireAuth, requirePrincipal, async (req, res) => {
+  const { period_start, period_end } = req.body;
+  if (!period_start || !period_end) return res.status(400).json({ error: 'period_start and period_end are required' });
+  try {
+    const payout = await generatePayout(req.user.school_id, req.params.id, period_start, period_end);
+    res.status(201).json(payout);
+  } catch (err) {
+    console.error('Generate payout error:', err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/payouts', requireAuth, requireFinance, async (req, res) => {
+  const { bus_id, status } = req.query;
+  try {
+    const conditions = ['school_id = $1'];
+    const params = [req.user.school_id];
+    if (bus_id) { params.push(bus_id); conditions.push(`bus_id = $${params.length}`); }
+    if (status) { params.push(status); conditions.push(`status = $${params.length}`); }
+    const { rows } = await pool.query(
+      `SELECT dp.*, b.route_name, b.driver_name FROM driver_payouts dp
+         JOIN buses b ON b.id = dp.bus_id
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY dp.period_start DESC`,
+      params
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Payout list error:', err);
+    res.status(500).json({ error: 'Failed to load payouts' });
+  }
+});
+
+// SuperAdmin/Accountant reviews and approves -> 'approved', then 'paid' once
+// the bank transfer is done manually (no live payment API integration yet).
+router.patch('/payouts/:id/status', requireAuth, requireFinance, async (req, res) => {
+  const { status } = req.body;
+  try {
+    const updated = await updatePayoutStatus(req.user.school_id, req.params.id, status, req.user.teacher_id);
+    if (!updated) return res.status(404).json({ error: 'Payout not found for this school' });
+    res.json(updated);
+  } catch (err) {
+    console.error('Payout status update error:', err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ================================================================
+// Student transport fee — separate ledger from driver payout above.
+// ================================================================
+
+// Assign/update a student's monthly transport fee for a route+billing_month.
+router.post('/fees', requireAuth, requireFinance, async (req, res) => {
+  const { student_id, bus_id, pickup_point, monthly_fee, billing_month } = req.body;
+  if (!student_id || !bus_id || !monthly_fee || !billing_month) {
+    return res.status(400).json({ error: 'student_id, bus_id, monthly_fee and billing_month are required' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO student_transport_fees (school_id, student_id, bus_id, pickup_point, monthly_fee, billing_month)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (student_id, billing_month) DO UPDATE SET
+         bus_id = EXCLUDED.bus_id, pickup_point = EXCLUDED.pickup_point, monthly_fee = EXCLUDED.monthly_fee
+       RETURNING *`,
+      [req.user.school_id, student_id, bus_id, pickup_point || null, monthly_fee, billing_month]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('Assign transport fee error:', err);
+    res.status(500).json({ error: 'Failed to assign transport fee' });
+  }
+});
+
+router.get('/fees', requireAuth, requireFinance, async (req, res) => {
+  const { billing_month, bus_id } = req.query;
+  try {
+    const conditions = ['stf.school_id = $1'];
+    const params = [req.user.school_id];
+    if (billing_month) { params.push(billing_month); conditions.push(`stf.billing_month = $${params.length}`); }
+    if (bus_id) { params.push(bus_id); conditions.push(`stf.bus_id = $${params.length}`); }
+    const { rows } = await pool.query(
+      `SELECT stf.*, s.name AS student_name, b.route_name
+         FROM student_transport_fees stf
+         JOIN students s ON s.id = stf.student_id
+         JOIN buses b ON b.id = stf.bus_id
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY b.route_name, s.name`,
+      params
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Transport fee list error:', err);
+    res.status(500).json({ error: 'Failed to load transport fees' });
+  }
+});
+
+// Reuses the existing fee-collection pattern (student_payment_history +
+// cumulative student_payment update) — same Accountant dashboard flow as
+// any other fee, just tagged as transport in `remarks`.
+router.post('/fees/:id/collect', requireAuth, requireFinance, async (req, res) => {
+  const { payment_mode } = req.body;
+  try {
+    const updated = await collectTransportFee(req.user.school_id, req.params.id, {
+      paymentMode: payment_mode,
+      collectedBy: req.user.teacher_id,
+    });
+    if (!updated) return res.status(404).json({ error: 'Transport fee record not found' });
+    res.json(updated);
+  } catch (err) {
+    console.error('Collect transport fee error:', err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ================================================================
+// Route profitability — Principal/SuperAdmin dashboard. Joins driver_payouts
+// and student_transport_fees ONLY for this read; they never share storage.
+// ================================================================
+router.get('/route-profitability', requireAuth, requirePrincipal, async (req, res) => {
+  const billingMonth = req.query.billing_month || new Date().toISOString().slice(0, 7);
+  try {
+    const rows = await getRouteProfitability(req.user.school_id, billingMonth);
+    res.json({ billing_month: billingMonth, routes: rows });
+  } catch (err) {
+    console.error('Route profitability error:', err);
+    res.status(500).json({ error: 'Failed to load route profitability' });
   }
 });
 

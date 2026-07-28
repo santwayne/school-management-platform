@@ -863,3 +863,78 @@ FROM (VALUES
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = v.trigger_event
 );
+
+-- ============================================================
+-- Transport — split driver payout from student fee collection (Phase 8)
+-- ============================================================
+-- ADAPTATION FROM THE ORIGINAL SPEC: this platform has no separate
+-- drivers/vehicles/routes tables — `buses` already IS route+vehicle+driver
+-- combined (one row per bus, with driver_name/driver_phone/route_name
+-- fields). Rather than fork a parallel driver/vehicle/route model, this
+-- extends `buses` with payout fields and keys everything off bus_id.
+ALTER TABLE buses ADD COLUMN IF NOT EXISTS rate_per_km NUMERIC(6,2);
+ALTER TABLE buses ADD COLUMN IF NOT EXISTS driver_bank_details JSONB DEFAULT '{}';
+
+-- km per trip/day. `gps_auto` rows are computed by transportPayoutService.js
+-- (haversine distance summed over that bus's bus_location_log pings for the
+-- day) — no new GPS infra needed, it reuses pings already being collected.
+-- `manual_entry` is the fallback for routes with no GPS vendor connected yet
+-- (see buses.gps_vendor / last_poll_status).
+CREATE TABLE IF NOT EXISTS driver_trip_logs (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    bus_id INT NOT NULL REFERENCES buses(id) ON DELETE CASCADE,
+    trip_date DATE NOT NULL,
+    km_logged NUMERIC(6,2) NOT NULL,
+    km_source VARCHAR(20) NOT NULL DEFAULT 'manual_entry', -- 'gps_auto' | 'manual_entry'
+    logged_by INT REFERENCES teachers(id), -- set only for manual_entry
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (bus_id, trip_date) -- one consolidated km figure per bus per day
+);
+CREATE INDEX IF NOT EXISTS idx_driver_trip_logs_bus ON driver_trip_logs(bus_id, trip_date);
+
+CREATE TABLE IF NOT EXISTS driver_payouts (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    bus_id INT NOT NULL REFERENCES buses(id) ON DELETE CASCADE,
+    period_start DATE NOT NULL,
+    period_end DATE NOT NULL,
+    total_km NUMERIC(8,2) NOT NULL,
+    rate_per_km NUMERIC(6,2) NOT NULL,
+    calculated_amount NUMERIC(10,2) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending', -- 'pending' | 'approved' | 'paid'
+    approved_by INT REFERENCES teachers(id),
+    paid_date DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_driver_payouts_bus ON driver_payouts(bus_id);
+CREATE INDEX IF NOT EXISTS idx_driver_payouts_school ON driver_payouts(school_id, status);
+
+-- Per-student transport fee, independent of driver_payouts (acceptance
+-- criteria: editing/deleting one must never touch the other's records —
+-- the only shared link is bus_id, used for the route-profitability report,
+-- never for storage). billing_month keyed so "Generate Payout"/collection
+-- runs are idempotent per month, same convention as teacher_salary_history.
+CREATE TABLE IF NOT EXISTS student_transport_fees (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    bus_id INT NOT NULL REFERENCES buses(id) ON DELETE CASCADE,
+    pickup_point VARCHAR(255),
+    monthly_fee NUMERIC(8,2) NOT NULL,
+    billing_month VARCHAR(7) NOT NULL, -- e.g. '2026-08'
+    collection_status VARCHAR(20) NOT NULL DEFAULT 'pending', -- 'pending' | 'collected'
+    -- NOTE: student_payment/student_payment_history (existing Billing module)
+    -- store a single cumulative amount_due/amount_paid per student — there is
+    -- no itemized fee_type breakdown anywhere in the platform yet. Collecting
+    -- a transport fee inserts into student_payment_history same as any other
+    -- collection (tagged in `remarks`) and links back here via
+    -- payment_history_id; a true itemized-ledger fee_type column is a larger
+    -- Billing-module refactor, out of scope for this feature.
+    payment_history_id INT REFERENCES student_payment_history(id),
+    collected_date TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (student_id, billing_month)
+);
+CREATE INDEX IF NOT EXISTS idx_student_transport_fees_school ON student_transport_fees(school_id);
+CREATE INDEX IF NOT EXISTS idx_student_transport_fees_bus ON student_transport_fees(bus_id, billing_month);
