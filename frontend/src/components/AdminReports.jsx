@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -10,6 +10,7 @@ const ALL_TABS = [
   { key: 'attendance', label: 'Attendance' },
   { key: 'fees', label: 'Fee collection' },
   { key: 'payroll', label: 'Payroll register' },
+  { key: 'strength', label: 'Student strength' },
 ];
 
 function Th({ children }) {
@@ -39,6 +40,7 @@ function buildPDF(type, data, rangeLabel) {
     attendance: 'Attendance Report',
     fees: 'Fee Collection Report',
     payroll: 'Payroll Register',
+    strength: 'Student Strength Report',
   };
 
   doc.setFontSize(16);
@@ -80,6 +82,14 @@ function buildPDF(type, data, rangeLabel) {
         r.paid_at ? fmtDate(r.paid_at) : '—',
       ]),
       styles: { fontSize: 9 },
+    });
+  } else if (type === 'strength') {
+    autoTable(doc, {
+      startY: 31,
+      head: [['Class', 'Grade', 'Students']],
+      body: data.rows.map((r) => [r.class_name, r.grade, r.student_count]),
+      styles: { fontSize: 9 },
+      foot: [['Total', '', data.total]],
     });
   }
 
@@ -131,6 +141,15 @@ function buildExcel(type, data) {
       }))
     );
     XLSX.utils.book_append_sheet(wb, ws, 'Payroll');
+  } else if (type === 'strength') {
+    const ws = XLSX.utils.json_to_sheet(
+      data.rows.map((r) => ({
+        Class: r.class_name,
+        Grade: r.grade,
+        Students: Number(r.student_count),
+      }))
+    );
+    XLSX.utils.book_append_sheet(wb, ws, 'Strength');
   }
 
   XLSX.writeFile(wb, `${type}-report.xlsx`);
@@ -193,6 +212,7 @@ export default function AdminReports() {
       {tab === 'attendance' && <AttendanceReport />}
       {tab === 'fees' && <FeesReport />}
       {tab === 'payroll' && <PayrollReport />}
+      {tab === 'strength' && <StrengthReport />}
     </div>
   );
 }
@@ -331,6 +351,87 @@ function FeesReport() {
                       <Td className="text-ink-soft whitespace-nowrap">{fmtDate(t.created_at)}</Td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Student strength by class/grade (feature 4.2). ASSUMPTION: this schema has
+// no dedicated "academic year" concept anywhere (checked schema.sql + every
+// route) — the year filter here is the calendar year students were enrolled
+// (students.created_at), which the backend also documents in its response.
+function StrengthReport() {
+  const [year, setYear] = useState('');
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const run = async (y = year) => {
+    setLoading(true);
+    setError('');
+    try {
+      const qs = y ? `?academic_year=${y}` : '';
+      setData(await apiRequest(`/api/student-records/strength-report${qs}`));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { run(''); /* eslint-disable-line react-hooks/exhaustive-deps */ }, []);
+
+  const rangeLabel = year ? `Enrollment year: ${year}` : 'All enrollment years';
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-sm">
+          <span className="block text-xs font-medium text-ink-soft mb-1">Academic year (enrollment)</span>
+          <select
+            value={year}
+            onChange={(e) => { setYear(e.target.value); run(e.target.value); }}
+            className="px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm min-w-[140px]"
+          >
+            <option value="">All years</option>
+            {(data?.available_years || []).map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </label>
+      </div>
+      {data?.assumption && (
+        <p className="text-xs text-ink-soft italic">{data.assumption}</p>
+      )}
+      {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
+      {loading && <p className="text-sm text-ink-soft">Loading…</p>}
+      {data && (
+        <>
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="rounded-2xl bg-white border border-cream-deep/70 px-5 py-3">
+              <div className="text-xs uppercase tracking-wider text-ink-soft">Total enrolled</div>
+              <div className="font-display text-2xl text-ink">{data.total}</div>
+            </div>
+            <ExportButtons type="strength" data={data} rangeLabel={rangeLabel} />
+          </div>
+          <div className="rounded-2xl bg-white border border-cream-deep/70 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr><Th>Class</Th><Th>Grade</Th><Th>Students</Th></tr></thead>
+                <tbody className="divide-y divide-cream-deep/60">
+                  {data.rows.map((r, i) => (
+                    <tr key={i} className="hover:bg-cream-deep/20">
+                      <Td className="font-medium">{r.class_name}</Td>
+                      <Td>{r.grade}</Td>
+                      <Td>{r.student_count}</Td>
+                    </tr>
+                  ))}
+                  {data.rows.length === 0 && (
+                    <tr><Td className="text-ink-soft" colSpan={3}>No students enrolled for this filter.</Td></tr>
+                  )}
                 </tbody>
               </table>
             </div>

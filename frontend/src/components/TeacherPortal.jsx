@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck } from 'lucide-react';
+import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck, NotebookPen, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
@@ -246,6 +246,7 @@ function RollCall({ classPeriod, onSubmit }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [noteStudent, setNoteStudent] = useState(null); // student to log an observation for (feature 4.6)
 
   useEffect(() => {
     let cancelled = false;
@@ -356,6 +357,13 @@ function RollCall({ classPeriod, onSubmit }) {
                   {i + 1}
                 </div>
                 <div className="flex-1 min-w-0 text-sm text-ink truncate">{s.name}</div>
+                <button
+                  onClick={() => setNoteStudent(s)}
+                  title="Log an observation"
+                  className="p-1.5 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition shrink-0"
+                >
+                  <NotebookPen className="w-4 h-4" />
+                </button>
                 <div className="flex gap-1.5 shrink-0">
                   <StatusBtn active={st === 'present'} tone="present" onClick={() => cycle(s.id)}>P</StatusBtn>
                   <StatusBtn active={st === 'late'} tone="late" onClick={() => setStatuses((p) => ({ ...p, [s.id]: 'late' }))}>L</StatusBtn>
@@ -367,6 +375,8 @@ function RollCall({ classPeriod, onSubmit }) {
         })}
       </ul>
 
+      {noteStudent && <ObservationModal student={noteStudent} onClose={() => setNoteStudent(null)} />}
+
       {/* Submit */}
       <div className="sticky bottom-4 pt-2">
         <button
@@ -376,6 +386,100 @@ function RollCall({ classPeriod, onSubmit }) {
         >
           {submitting ? 'Submitting…' : `Submit attendance · ${roster.length} students`}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// Add-observation form + recent-notes list for one student (feature 4.6),
+// opened from the class roster — the closest existing place a teacher
+// already looks up a student, rather than building a separate student
+// search screen from scratch.
+function ObservationModal({ student, onClose }) {
+  const [note, setNote] = useState('');
+  const [visibleToStudent, setVisibleToStudent] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [history, setHistory] = useState(null);
+
+  const loadHistory = async () => {
+    try {
+      setHistory(await apiRequest(`/api/student-records/observations/student/${student.id}`));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  useEffect(() => {
+    loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [student.id]);
+
+  const save = async () => {
+    if (!note.trim()) return setError('Write a note first.');
+    setSaving(true);
+    setError('');
+    try {
+      await apiRequest('/api/student-records/observations', {
+        method: 'POST',
+        body: { student_id: student.id, note: note.trim(), visible_to_student: visibleToStudent },
+      });
+      setNote('');
+      loadHistory();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-5 w-full max-w-md max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3 shrink-0">
+          <h3 className="font-display text-lg text-ink">Observation · {student.name}</h3>
+          <button onClick={onClose}><X className="w-4 h-4 text-ink-soft" /></button>
+        </div>
+        {error && <div className="mb-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs px-3 py-2">{error}</div>}
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="e.g. Struggled with today's fractions worksheet, needs extra practice."
+          rows={3}
+          className="w-full px-3 py-2 rounded-lg border border-cream-deep text-sm shrink-0"
+        />
+        <label className="flex items-center gap-2 mt-2 text-xs text-ink-soft shrink-0">
+          <input type="checkbox" checked={visibleToStudent} onChange={(e) => setVisibleToStudent(e.target.checked)} />
+          Visible to student / parent
+        </label>
+        <button
+          onClick={save}
+          disabled={saving}
+          className="w-full mt-3 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition disabled:opacity-50 shrink-0"
+        >
+          {saving ? 'Saving…' : 'Save observation'}
+        </button>
+
+        <div className="mt-4 pt-3 border-t border-cream-deep/60 overflow-y-auto">
+          <div className="text-xs font-medium text-ink-soft uppercase tracking-wider mb-2">Previous notes</div>
+          {history === null ? (
+            <p className="text-xs text-ink-soft">Loading…</p>
+          ) : history.length === 0 ? (
+            <p className="text-xs text-ink-soft">No observations logged yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {history.map((h) => (
+                <li key={h.id} className="text-xs bg-cream-deep/30 rounded-lg px-3 py-2">
+                  <div className="text-ink">{h.note}</div>
+                  <div className="text-ink-soft mt-1">
+                    {h.teacher_name} · {new Date(h.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {!h.visible_to_student && ' · Private'}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );

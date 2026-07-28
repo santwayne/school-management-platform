@@ -52,6 +52,10 @@ import StudentProfile from './components/StudentProfile';
 import AdminOptionalSubjects from './components/AdminOptionalSubjects';
 import AdminStudentLeave from './components/AdminStudentLeave';
 import StudentLeave from './components/StudentLeave';
+import AdminBulkUpload from './components/AdminBulkUpload';
+import AdminCertificates from './components/AdminCertificates';
+import AdminDocumentRequests from './components/AdminDocumentRequests';
+import StudentCertificateRequest from './components/StudentCertificateRequest';
 
 // Every role now has its own sidebar shell (matches the approved Lovable
 // designs) — Admin/Accountant/Student/Super Admin pages render inside their
@@ -113,6 +117,9 @@ function AppRoutes() {
         <Route path="/admin/students/:studentId/profile" element={<ProtectedRoute teacherOrPrincipalOnly>{inShell(AdminShell, StudentProfile)}</ProtectedRoute>} />
         <Route path="/admin/transport/payouts" element={<ProtectedRoute principalOnly>{inShell(AdminShell, TransportPayouts)}</ProtectedRoute>} />
         <Route path="/admin/activities" element={<ProtectedRoute teacherOrPrincipalOnly>{inShell(AdminShell, AdminActivities)}</ProtectedRoute>} />
+        <Route path="/admin/students/bulk-upload" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminBulkUpload)}</ProtectedRoute>} />
+        <Route path="/admin/certificates" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminCertificates)}</ProtectedRoute>} />
+        <Route path="/admin/document-requests" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminDocumentRequests)}</ProtectedRoute>} />
         <Route path="/admin/reports" element={<ProtectedRoute financeOnly>{inShell(AdminShell, AdminReports)}</ProtectedRoute>} />
         <Route path="/accountant/reports" element={<ProtectedRoute accountantOnly>{inShell(AccountantShell, AdminReports)}</ProtectedRoute>} />
         <Route path="/grading" element={<ProtectedRoute>{inShell(AdminShell, AIGrading)}</ProtectedRoute>} />
@@ -130,6 +137,7 @@ function AppRoutes() {
         <Route path="/progress" element={<ProtectedRoute studentOnly><StudentProgress /></ProtectedRoute>} />
         <Route path="/rewards" element={<ProtectedRoute studentOnly><StudentRewards /></ProtectedRoute>} />
         <Route path="/student/leave" element={<ProtectedRoute studentOnly><StudentLeave /></ProtectedRoute>} />
+        <Route path="/certificates" element={<ProtectedRoute studentOnly><StudentCertificateRequest /></ProtectedRoute>} />
 
         <Route path="/super-admin-login" element={<SuperAdminLogin />} />
         <Route path="/super-admin" element={<ProtectedRoute superAdminOnly>{inShell(SuperAdminShell, SuperAdminHome)}</ProtectedRoute>} />
