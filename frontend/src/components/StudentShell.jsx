@@ -26,11 +26,13 @@ export default function StudentShell({ children }) {
 
   useEffect(() => {
     apiRequest('/api/student/rewards').then(setRewards).catch(() => {});
+    // Same source of truth as the Homework page, so the sidebar count never
+    // disagrees with what the student sees when they open Homework.
     apiRequest('/api/student/homework').then(setHomework).catch(() => {});
-  }, [pathname]); // refetch on nav so streak/XP and homework counts stay current
+  }, [pathname]); // refetch on nav so streak/XP/homework stay current as the student does things
 
-  const hwDone = homework ? homework.filter((h) => h.done).length : null;
-  const hwTotal = homework ? homework.length : null;
+  const homeworkDone = homework ? homework.filter((h) => h.done).length : 0;
+  const homeworkTotal = homework ? homework.length : 0;
 
   return (
     <div className="min-h-screen bg-cream text-ink font-sans flex flex-col lg:flex-row">
@@ -62,12 +64,12 @@ export default function StudentShell({ children }) {
           <div className="rounded-2xl p-4 bg-gradient-to-br from-joy-gold/40 to-joy-leaf/30 border border-joy-gold/40">
             <div className="text-xs text-ink-soft">Homework done</div>
             <div className="mt-1 text-sm font-semibold">
-              {hwTotal !== null ? `${hwDone} of ${hwTotal} tasks` : '…'}
+              {homework ? (homeworkTotal ? `${homeworkDone} of ${homeworkTotal} tasks` : 'Nothing assigned') : '…'}
             </div>
             <div className="mt-2 h-2 rounded-full bg-white/60 overflow-hidden">
               <div
                 className="h-full bg-joy-leaf transition-all duration-700"
-                style={{ width: `${hwTotal ? Math.min(100, (hwDone / hwTotal) * 100) : 0}%` }}
+                style={{ width: `${homeworkTotal ? Math.min(100, (homeworkDone / homeworkTotal) * 100) : 0}%` }}
               />
             </div>
           </div>

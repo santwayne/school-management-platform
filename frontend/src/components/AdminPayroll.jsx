@@ -21,11 +21,16 @@ function Td({ children, className = '' }) {
 
 export default function AdminPayroll() {
   const { search } = useLocation();
-  const [tab, setTab] = useState(() => new URLSearchParams(search).get('tab') || 'payroll');
+  const [tab, setTab] = useState(() => {
+    const t = new URLSearchParams(search).get('tab');
+    return TABS.some((x) => x.key === t) ? t : 'payroll';
+  });
 
+  // Re-sync when the query string changes without a remount (e.g. clicking a
+  // sidebar link that only changes ?tab= while already on this route).
   useEffect(() => {
-    const t = new URLSearchParams(search).get('tab') || 'payroll';
-    setTab(t);
+    const t = new URLSearchParams(search).get('tab');
+    setTab(TABS.some((x) => x.key === t) ? t : 'payroll');
   }, [search]);
 
   return (

@@ -24,6 +24,8 @@ Rules you must always follow:
 // newMessage: the student's latest message (not yet in conversationHistory)
 export async function askTutor(conversationHistory, newMessage, subject, grade) {
   if (!process.env.ANTHROPIC_API_KEY) {
+    // Fail loudly and immediately rather than letting the SDK call fail deep
+    // inside the try/catch below with a less obvious auth error.
     throw new Error('ANTHROPIC_API_KEY is not configured');
   }
 
@@ -32,8 +34,15 @@ export async function askTutor(conversationHistory, newMessage, subject, grade) 
     { role: 'user', content: newMessage },
   ];
 
+  // NOTE: previously this caught every error (auth failures, rate limits,
+  // network issues) and returned a fixed "I'm having trouble" string with no
+  // way for the caller to tell success from failure — the route then saved
+  // that fake reply into conversation_history and reported 200 OK, which is
+  // exactly why real integration failures (e.g. a missing API key) were
+  // invisible in the UI/logs. Let errors propagate so the route can return a
+  // real error status and skip persisting a bogus assistant turn.
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-5',
+    model: 'claude-sonnet-5',
     max_tokens: 500,
     system: buildSystemPrompt(subject, grade),
     messages,
