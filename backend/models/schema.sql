@@ -699,3 +699,72 @@ ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS voice_tutor_enabled BOOLEAN
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_code VARCHAR(10);
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_expires_at TIMESTAMP;
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_pending_number VARCHAR(20);
+
+-- ============================================================
+-- Student & Teacher Profiles — shared master data (Phase 6)
+-- ============================================================
+-- These are ADDITIVE profile tables, not a replacement for students/teachers
+-- (which stay the identity/login/FK anchor). Every other module should read
+-- display data (photo, DOB, blood group, etc.) through profileService.js
+-- rather than keeping its own copy.
+
+-- One class can have a designated homeroom teacher, used to gate access to
+-- a student's sensitive profile fields (blood group, medical notes, parent
+-- contact) to that teacher specifically, not every teacher in the school.
+ALTER TABLE classes ADD COLUMN IF NOT EXISTS class_teacher_id INT REFERENCES teachers(id) ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS student_profiles (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL UNIQUE REFERENCES students(id) ON DELETE CASCADE,
+    photo_url TEXT,
+    date_of_birth DATE,
+    gender VARCHAR(20),
+    blood_group VARCHAR(10),
+    address JSONB DEFAULT '{}',
+    emergency_contact_phone VARCHAR(20),
+    medical_notes TEXT, -- free text, e.g. allergies — optional, sensitive
+    admission_date DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_student_profiles_school ON student_profiles(school_id);
+
+-- A student can have 2+ rows here (father + mother, or a guardian). This is
+-- deliberately separate from the existing `parents` table, which stays the
+-- WhatsApp/notification identity (single row, opt_in_status, phone used for
+-- the webhook lookup) — parent_profiles is richer display-only detail and
+-- must never be joined into the compliance-gated whatsapp flows.
+CREATE TABLE IF NOT EXISTS parent_profiles (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    relation VARCHAR(20) NOT NULL DEFAULT 'guardian', -- 'father' | 'mother' | 'guardian'
+    name VARCHAR(255) NOT NULL,
+    photo_url TEXT,
+    phone VARCHAR(20),
+    email VARCHAR(255),
+    occupation VARCHAR(255),
+    is_primary_contact BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_parent_profiles_student ON parent_profiles(student_id);
+
+CREATE TABLE IF NOT EXISTS teacher_profiles (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL UNIQUE REFERENCES teachers(id) ON DELETE CASCADE,
+    photo_url TEXT,
+    date_of_birth DATE,
+    gender VARCHAR(20),
+    blood_group VARCHAR(10),
+    address JSONB DEFAULT '{}',
+    emergency_contact_phone VARCHAR(20),
+    qualifications JSONB DEFAULT '[]',
+    subjects_taught JSONB DEFAULT '[]',
+    joining_date DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_teacher_profiles_school ON teacher_profiles(school_id);

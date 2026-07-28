@@ -32,6 +32,7 @@ import timetableRoutes from './routes/timetable.js';
 import eventsRoutes from './routes/events.js';
 import libraryRoutes from './routes/library.js';
 import aiVoiceTutorRoutes from './routes/aiVoiceTutor.js';
+import profilesRoutes from './routes/profiles.js';
 import './workers/gpsPollWorker.js';
 import './workers/teacherAttendanceAggregationWorker.js';
 import './workers/classNoteWorker.js';
@@ -95,6 +96,7 @@ app.use('/api/timetable', timetableRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/library', libraryRoutes);
 app.use('/api/super-admin/ai-voice-tutor', aiVoiceTutorRoutes);
+app.use('/api/profiles', profilesRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {
