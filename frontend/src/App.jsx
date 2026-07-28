@@ -29,6 +29,7 @@ import StudentHome from './components/StudentHome';
 import AdminReports from './components/AdminReports';
 import AdminSettings from './components/AdminSettings';
 import AdminCommunications from './components/AdminCommunications';
+import AdminMessages from './components/AdminMessages';
 import AdminBilling from './components/AdminBilling';
 import FeeCollectionHub from './components/FeeCollectionHub';
 import StudentHomework from './components/StudentHomework';
@@ -94,6 +95,7 @@ function AppRoutes() {
         <Route path="/admin/transport" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminTransport)}</ProtectedRoute>} />
         <Route path="/admin/settings" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminSettings)}</ProtectedRoute>} />
         <Route path="/admin/communications" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminCommunications)}</ProtectedRoute>} />
+        <Route path="/admin/messages" element={<ProtectedRoute teacherOrPrincipalOnly>{inShell(AdminShell, AdminMessages)}</ProtectedRoute>} />
         <Route path="/admin/billing" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminBilling)}</ProtectedRoute>} />
         <Route path="/admin/staff-leave" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminStaffLeave)}</ProtectedRoute>} />
         <Route path="/admin/timetable" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminTimetable)}</ProtectedRoute>} />

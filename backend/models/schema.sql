@@ -698,4 +698,34 @@ ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS voice_tutor_enabled BOOLEAN
 -- rather than the moment someone types a number into the settings form.
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_code VARCHAR(10);
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verify_expires_at TIMESTAMP;
+
+-- ---------- Communication (Feature Group 3) ----------
+-- 3.1 Messages — extends the existing `broadcasts` log (rather than a
+-- parallel table) into threaded class/individual messaging. `audience`
+-- already used the 'class:<id>' / 'student:<id>' shape in its comment even
+-- before anything sent to those targets, so thread_key just mirrors that
+-- same value for rows that represent an addressable, replayable thread.
+-- Mass blasts ('all_parents' / 'all_staff') stay thread_key = NULL — they're
+-- one-off campaigns, not a conversation with a single class or family, and
+-- keeping them out of thread_key keeps the Messages thread list from being
+-- cluttered with entries nobody would click into as a "thread".
+ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS thread_key VARCHAR(50);
+CREATE INDEX IF NOT EXISTS idx_broadcasts_thread ON broadcasts(school_id, thread_key);
+
+-- 3.2 Notifications — generic, event-driven in-app notification center.
+-- recipient_role/recipient_id mirror req.user's shape (role + teacher_id or
+-- student_id) so any feature can call notificationService.notify() without
+-- needing a separate "which table is this id from" lookup.
+CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    recipient_role VARCHAR(20) NOT NULL, -- 'teacher' | 'principal' | 'accountant' | 'student'
+    recipient_id INT NOT NULL,
+    event_type VARCHAR(50) NOT NULL, -- e.g. 'new_message'
+    message TEXT NOT NULL,
+    link VARCHAR(255),
+    read_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(school_id, recipient_role, recipient_id, read_at);
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_pending_number VARCHAR(20);
