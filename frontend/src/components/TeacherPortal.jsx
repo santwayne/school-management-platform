@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck, NotebookPen, X } from 'lucide-react';
+import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck, NotebookPen, X, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
@@ -20,6 +20,13 @@ export default function TeacherPortal() {
   const [activeId, setActiveId] = useState(null);
   const [flash, setFlash] = useState(null);
 
+  // "My Class" — only populated for teachers who are the designated
+  // incharge of at least one class (Item 4 of the build spec). Non-incharge
+  // teachers see an empty array here and the section simply doesn't render.
+  const [inchargeClasses, setInchargeClasses] = useState([]);
+  const [inchargeAttendance, setInchargeAttendance] = useState({});
+  const [pendingLeaveCount, setPendingLeaveCount] = useState(0);
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -39,6 +46,26 @@ export default function TeacherPortal() {
         );
         if (cancelled) return;
         setMarkedToday(Object.fromEntries(marks.map((m) => [m.class_id, m.allMarked])));
+
+        const incharge = await apiRequest('/api/academics/my-incharge-classes');
+        if (cancelled) return;
+        setInchargeClasses(incharge);
+        if (incharge.length > 0) {
+          const [leaveReqs, attendanceMarks] = await Promise.all([
+            apiRequest('/api/student-leave/requests?status=pending'),
+            Promise.all(
+              incharge.map((c) =>
+                apiRequest(`/api/attendance/today/${c.class_id}`).then((r) => ({
+                  class_id: c.class_id,
+                  allMarked: r.data.length > 0 && r.data.every((s) => s.status),
+                }))
+              )
+            ),
+          ]);
+          if (cancelled) return;
+          setPendingLeaveCount(leaveReqs.length);
+          setInchargeAttendance(Object.fromEntries(attendanceMarks.map((m) => [m.class_id, m.allMarked])));
+        }
       } catch (err) {
         if (!cancelled) setError(err.message);
       } finally {
@@ -140,6 +167,9 @@ export default function TeacherPortal() {
             markedCount={markedCount}
             totalCount={totalCount}
             onOpen={(id) => setActiveId(id)}
+            inchargeClasses={inchargeClasses}
+            inchargeAttendance={inchargeAttendance}
+            pendingLeaveCount={pendingLeaveCount}
           />
         ) : (
           <RollCall
@@ -157,7 +187,7 @@ export default function TeacherPortal() {
   );
 }
 
-function ClassPicker({ today, classes, markedToday, markedCount, totalCount, onOpen }) {
+function ClassPicker({ today, classes, markedToday, markedCount, totalCount, onOpen, inchargeClasses, inchargeAttendance, pendingLeaveCount }) {
   const allDone = totalCount > 0 && markedCount === totalCount;
 
   return (
@@ -183,6 +213,42 @@ function ClassPicker({ today, classes, markedToday, markedCount, totalCount, onO
           </div>
         )}
       </div>
+
+      {/* My Class — incharge teachers only (Item 4 of the build spec) */}
+      {inchargeClasses.length > 0 && (
+        <div className="rounded-2xl bg-white border border-terracotta/30 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="w-4 h-4 text-terracotta-deep" />
+            <h2 className="font-display text-lg text-ink">My Class</h2>
+            <span className="text-xs text-ink-soft">· you're the class incharge</span>
+          </div>
+          <div className="space-y-2.5">
+            {inchargeClasses.map((c) => {
+              const attendanceMarked = inchargeAttendance[c.class_id];
+              return (
+                <div key={c.class_id} className="flex items-center gap-3 flex-wrap rounded-xl border border-cream-deep/70 px-3.5 py-3">
+                  <span className="font-medium text-sm text-ink">{c.class_name}</span>
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                    attendanceMarked ? 'bg-emerald-500/10 text-emerald-700' : 'bg-amber-400/15 text-amber-700'
+                  }`}>
+                    {attendanceMarked === undefined ? 'Checking…' : attendanceMarked ? 'Attendance marked today' : 'Attendance pending today'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <Link
+            to="/student-leave"
+            className="mt-3 flex items-center gap-2 text-sm font-medium text-terracotta-deep hover:text-terracotta"
+          >
+            <UserCheck className="w-4 h-4" />
+            {pendingLeaveCount > 0
+              ? `${pendingLeaveCount} pending leave request${pendingLeaveCount === 1 ? '' : 's'} for your class`
+              : 'No pending leave requests for your class'}
+            <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
 
       {/* Class list */}
       {classes.length === 0 ? (

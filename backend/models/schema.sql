@@ -357,6 +357,11 @@ CREATE TABLE IF NOT EXISTS petty_cash (
     actioned_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+-- Receipt photo for a petty cash expense. Same convention as
+-- student_payment_history.proof_photo_url: holds a base64 data string, not a
+-- real URL, when it comes from the WhatsApp intake path (routes/whatsapp.js)
+-- since there's no S3/file storage wired up for cash intake anywhere yet.
+ALTER TABLE petty_cash ADD COLUMN IF NOT EXISTS receipt_photo_url TEXT;
 
 CREATE TABLE IF NOT EXISTS petty_cash_history (
     id SERIAL PRIMARY KEY,
@@ -920,6 +925,26 @@ WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'student_leave_status_changed'
 );
 
+-- Upgrade both student-leave events to dual-channel (dashboard + WhatsApp) so
+-- the parent — added as a recipient in studentLeave.js — actually gets
+-- pinged, per Item 2 of the Waynur build spec. UPDATE rather than a fresh
+-- INSERT because idx_notif_templates_global_trigger only allows one global
+-- row per trigger_event, and the dashboard-only row above may already exist
+-- from an earlier run of this file. whatsapp_template_name strings need to
+-- be pre-approved in WhatsApp Business Manager before they'll actually send,
+-- same as every other template here.
+UPDATE notification_templates
+SET channel = 'both',
+    whatsapp_template_name = 'leave_submitted_alert',
+    whatsapp_param_order = '["student_name","from_date","to_date"]'::jsonb
+WHERE school_id IS NULL AND trigger_event = 'student_leave_submitted' AND whatsapp_template_name IS NULL;
+
+UPDATE notification_templates
+SET channel = 'both',
+    whatsapp_template_name = 'leave_status_update_alert',
+    whatsapp_param_order = '["student_name","status","from_date","to_date"]'::jsonb
+WHERE school_id IS NULL AND trigger_event = 'student_leave_status_changed' AND whatsapp_template_name IS NULL;
+
 -- Seed global default templates for the two modules retrofitted first
 -- (fees + homework) to prove the pattern, per the build spec. School-level
 -- overrides can be added later via SuperAdmin CRUD (same table, school_id set).
@@ -1069,6 +1094,17 @@ WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'activity_shared'
 );
 
+-- Item 3 of the Waynur build spec: exam_result was already anticipated in
+-- the trigger_event comment above but never seeded until now — publishing an
+-- exam (POST /api/exams/:id/publish-result) fires this once per student.
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'exam_result', 'both', 'Exam Result Published',
+       'exam_result_alert', '["student_name","exam_name","percentage"]'::jsonb,
+       'Result published: {{exam_name}}', 'You scored {{percentage}}% in {{exam_name}}.', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'exam_result'
+);
+
 -- ---------- Teacher Management additions: Optional Subjects + Student Leave ----------
 -- `classes` had no section column at all — sections aren't modeled anywhere
 -- else in the schema (each class name like "Class 8A" already implies its
@@ -1182,6 +1218,13 @@ CREATE TABLE IF NOT EXISTS exams (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_exams_school_class ON exams(school_id, class_id);
+
+-- Publish flow (Item 3 of the Waynur build spec) — NULL until the principal
+-- publishes once for the whole exam. Marks get entered subject-by-subject
+-- over time via POST /:id/marks with no notification; this timestamp is what
+-- gates the one-time "result_published" notification fan-out plus the
+-- student-portal results list (WHERE result_published_at IS NOT NULL).
+ALTER TABLE exams ADD COLUMN IF NOT EXISTS result_published_at TIMESTAMP;
 
 CREATE TABLE IF NOT EXISTS exam_marks (
     id SERIAL PRIMARY KEY,

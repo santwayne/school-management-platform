@@ -64,15 +64,19 @@ router.post('/requests', requireAuth, requireStudent, async (req, res) => {
         const principals = await pool.query(`SELECT id FROM teachers WHERE school_id = $1 AND role = 'principal'`, [req.user.school_id]);
         reviewerTeacherIds = principals.rows.map((p) => p.id);
       }
-      if (reviewerTeacherIds.length > 0) {
-        await sendNotification({
-          triggerEvent: 'student_leave_submitted',
-          schoolId: req.user.school_id,
-          recipients: reviewerTeacherIds.map((id) => ({ type: 'staff', teacherId: id })),
-          variables: { student_name: studentRes.rows[0].name, from_date, to_date },
-          link: '/student-leave',
-        });
-      }
+      // Parent gets pinged too, for transparency ("your child requested
+      // leave") — same event, same dual-channel template, just one more
+      // recipient (Item 2 of the build spec).
+      const recipients = reviewerTeacherIds.map((id) => ({ type: 'staff', teacherId: id }));
+      recipients.push({ type: 'parent', studentId: req.user.student_id });
+
+      await sendNotification({
+        triggerEvent: 'student_leave_submitted',
+        schoolId: req.user.school_id,
+        recipients,
+        variables: { student_name: studentRes.rows[0].name, from_date, to_date },
+        link: '/student-leave',
+      });
     } catch (notifyErr) {
       console.error('student_leave_submitted notification failed:', notifyErr.message);
     }
@@ -164,11 +168,22 @@ router.put('/requests/:id', requireAuth, requireTeacherOrPrincipal, async (req, 
 
     await client.query('COMMIT');
 
+    // Parent recipient added (Item 2 of the build spec) — the student stays
+    // dashboard-only same as before (students have no WhatsApp number), the
+    // parent is the one who actually gets the WhatsApp ping.
     sendNotification({
       triggerEvent: 'student_leave_status_changed',
       schoolId: req.user.school_id,
-      recipients: [{ type: 'student', studentId: leaveReq.student_id }],
-      variables: { status: status.toLowerCase(), review_note: review_note || '' },
+      recipients: [
+        { type: 'student', studentId: leaveReq.student_id },
+        { type: 'parent', studentId: leaveReq.student_id },
+      ],
+      variables: {
+        status: status.toLowerCase(),
+        review_note: review_note || '',
+        from_date: leaveReq.from_date,
+        to_date: leaveReq.to_date,
+      },
       link: '/student/leave',
     }).catch((notifyErr) => console.error('student_leave_status_changed notification failed:', notifyErr.message));
 

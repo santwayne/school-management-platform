@@ -255,6 +255,95 @@ router.get('/progress', requireAuth, requireStudent, async (req, res) => {
 });
 
 // ============================================================
+// Exams — published results only (Item 3 of the build spec). Marks entry
+// stays teacher/principal-only over in exams.js; a student only ever sees an
+// exam here once the principal has published it (exams.result_published_at).
+// studentId always comes from req.user.student_id, never a request param, so
+// there is no id to guess to see someone else's report.
+// ============================================================
+
+router.get('/exams', requireAuth, requireStudent, async (req, res) => {
+  try {
+    const studentRes = await pool.query('SELECT class_id FROM students WHERE id = $1', [req.user.student_id]);
+    if (studentRes.rowCount === 0) return res.status(404).json({ error: 'Student not found' });
+    const classId = studentRes.rows[0].class_id;
+
+    const result = await pool.query(
+      `SELECT id, name, term, result_published_at
+       FROM exams
+       WHERE class_id = $1 AND school_id = $2 AND result_published_at IS NOT NULL
+       ORDER BY result_published_at DESC`,
+      [classId, req.user.school_id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Student exams list error:', err);
+    res.status(500).json({ error: 'Failed to load exams' });
+  }
+});
+
+// Same data shape as exams.js's admin/teacher report endpoint, scoped to the
+// logged-in student and gated on the exam actually being published.
+router.get('/exams/:id/report', requireAuth, requireStudent, async (req, res) => {
+  const { id } = req.params;
+  const studentId = req.user.student_id;
+  const schoolId = req.user.school_id;
+
+  try {
+    const examRes = await pool.query(
+      `SELECT e.*, c.name AS class_name FROM exams e JOIN classes c ON c.id = e.class_id
+       WHERE e.id = $1 AND e.school_id = $2`,
+      [id, schoolId]
+    );
+    if (examRes.rowCount === 0) return res.status(404).json({ error: 'Exam not found' });
+    const exam = examRes.rows[0];
+
+    if (!exam.result_published_at) {
+      return res.status(404).json({ error: 'Result not published yet' });
+    }
+
+    const studentRes = await pool.query(
+      'SELECT id, name, login_id FROM students WHERE id = $1 AND school_id = $2 AND class_id = $3',
+      [studentId, schoolId, exam.class_id]
+    );
+    if (studentRes.rowCount === 0) return res.status(404).json({ error: 'Exam not found for your class' });
+    const student = studentRes.rows[0];
+
+    const marksRes = await pool.query(
+      `SELECT sub.name AS subject_name, em.marks_obtained, em.max_marks
+       FROM exam_marks em JOIN subjects sub ON sub.id = em.subject_id
+       WHERE em.exam_id = $1 AND em.student_id = $2
+       ORDER BY sub.name`,
+      [id, studentId]
+    );
+
+    const schoolRes = await pool.query(
+      `SELECT sc.name AS school_name, ss.logo_url
+       FROM schools sc LEFT JOIN school_settings ss ON ss.school_id = sc.id
+       WHERE sc.id = $1`,
+      [schoolId]
+    );
+
+    const totalObtained = marksRes.rows.reduce((a, r) => a + Number(r.marks_obtained), 0);
+    const totalMax = marksRes.rows.reduce((a, r) => a + Number(r.max_marks), 0);
+    const percentage = totalMax ? Number(((totalObtained / totalMax) * 100).toFixed(1)) : null;
+
+    res.json({
+      school: schoolRes.rows[0] || { school_name: null, logo_url: null },
+      exam: { id: exam.id, name: exam.name, term: exam.term, class_name: exam.class_name },
+      student,
+      marks: marksRes.rows,
+      total_obtained: totalObtained,
+      total_max: totalMax,
+      percentage,
+    });
+  } catch (err) {
+    console.error('Student report card data error:', err);
+    res.status(500).json({ error: 'Failed to load report card data' });
+  }
+});
+
+// ============================================================
 // Rewards — XP + streak + badges, computed live from real activity.
 // XP rule (confirmed with Pankaj): +5/day present, +10/homework done,
 // +5/tutor session, +15/confirmed test score >= 80%.

@@ -35,6 +35,7 @@ import FeeCollectionHub from './components/FeeCollectionHub';
 import StudentHomework from './components/StudentHomework';
 import StudentNotes from './components/StudentNotes';
 import StudentProgress from './components/StudentProgress';
+import StudentResults from './components/StudentResults';
 import StudentRewards from './components/StudentRewards';
 import AdminShell from './components/AdminShell';
 import AccountantShell from './components/AccountantShell';
@@ -144,6 +145,7 @@ function AppRoutes() {
         <Route path="/notes" element={<ProtectedRoute studentOnly><StudentNotes /></ProtectedRoute>} />
         <Route path="/activities" element={<ProtectedRoute studentOnly><StudentActivities /></ProtectedRoute>} />
         <Route path="/progress" element={<ProtectedRoute studentOnly><StudentProgress /></ProtectedRoute>} />
+        <Route path="/results" element={<ProtectedRoute studentOnly><StudentResults /></ProtectedRoute>} />
         <Route path="/rewards" element={<ProtectedRoute studentOnly><StudentRewards /></ProtectedRoute>} />
         <Route path="/student/leave" element={<ProtectedRoute studentOnly><StudentLeave /></ProtectedRoute>} />
         <Route path="/certificates" element={<ProtectedRoute studentOnly><StudentCertificateRequest /></ProtectedRoute>} />

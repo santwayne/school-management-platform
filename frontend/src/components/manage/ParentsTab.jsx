@@ -14,7 +14,7 @@ export default function ParentsTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({ name: '', phone: '', preferred_language: 'hi' });
+  const [form, setForm] = useState({ name: '', phone: '', preferred_language: 'hi', opt_in: true });
 
   const load = async (q = '') => {
     setLoading(true);
@@ -38,12 +38,21 @@ export default function ParentsTab() {
   }, [search]);
 
   const openAdd = () => {
-    setForm({ name: '', phone: '', preferred_language: 'hi' });
+    setForm({ name: '', phone: '', preferred_language: 'hi', opt_in: true });
     setModal('add');
   };
   const openEdit = (p) => {
-    setForm({ name: p.name, phone: p.phone, preferred_language: p.preferred_language || 'hi' });
+    setForm({ name: p.name, phone: p.phone, preferred_language: p.preferred_language || 'hi', opt_in: p.opt_in_status === 'OPTED_IN' });
     setModal(p);
+  };
+
+  const toggleOptIn = async (p) => {
+    try {
+      await apiRequest(`/api/academics/parents/${p.id}`, { method: 'PATCH', body: { opt_in: p.opt_in_status !== 'OPTED_IN' } });
+      load(search);
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   const save = async () => {
@@ -114,11 +123,15 @@ export default function ParentsTab() {
                     <td className="px-4 py-3 text-ink-soft">{p.phone}</td>
                     <td className="px-4 py-3 text-ink-soft">{p.child_count}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                        p.opt_in_status === 'OPTED_IN' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-cream-deep text-ink-soft'
-                      }`}>
+                      <button
+                        onClick={() => toggleOptIn(p)}
+                        title="Click to toggle WhatsApp opt-in"
+                        className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium transition ${
+                          p.opt_in_status === 'OPTED_IN' ? 'bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20' : 'bg-cream-deep text-ink-soft hover:bg-cream-deep/70'
+                        }`}
+                      >
                         {p.opt_in_status === 'OPTED_IN' ? 'Opted in' : 'Not opted in'}
-                      </span>
+                      </button>
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <button onClick={() => openEdit(p)} className="p-1.5 text-ink-soft hover:text-terracotta-deep"><Pencil className="w-3.5 h-3.5" /></button>
@@ -145,6 +158,10 @@ export default function ParentsTab() {
               <select value={form.preferred_language} onChange={(e) => setForm({ ...form, preferred_language: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-cream-deep text-sm">
                 {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
               </select>
+              <label className="flex items-center gap-2 text-sm text-ink-soft">
+                <input type="checkbox" checked={form.opt_in} onChange={(e) => setForm({ ...form, opt_in: e.target.checked })} className="rounded border-cream-deep" />
+                Opted in to receive WhatsApp updates
+              </label>
               <button onClick={save} className="w-full py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
                 {modal === 'add' ? 'Add parent' : 'Save changes'}
               </button>
