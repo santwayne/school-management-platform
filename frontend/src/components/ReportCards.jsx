@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { FileDown, FileText } from 'lucide-react';
+import { FileDown, FileText, Send, CheckCircle2 } from 'lucide-react';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
 
@@ -99,6 +99,7 @@ export default function ReportCards() {
   const [examId, setExamId] = useState('');
   const [students, setStudents] = useState([]);
   const [generatingId, setGeneratingId] = useState(null);
+  const [publishing, setPublishing] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [rosterLoading, setRosterLoading] = useState(false);
@@ -111,6 +112,7 @@ export default function ReportCards() {
   }, [classes, myClasses, isPrincipal]);
 
   const examsForClass = useMemo(() => exams.filter((e) => String(e.class_id) === String(classId)), [exams, classId]);
+  const selectedExam = useMemo(() => exams.find((e) => String(e.id) === String(examId)), [exams, examId]);
 
   useEffect(() => {
     async function load() {
@@ -160,6 +162,21 @@ export default function ReportCards() {
     }
     loadRoster();
   }, [classId, examId]);
+
+  const publishResult = async () => {
+    if (!examId || !window.confirm('Publish this result? Every student and their parent will be notified once — this can only be done once per exam.')) return;
+    setPublishing(true);
+    setError('');
+    try {
+      await apiRequest(`/api/exams/${examId}/publish-result`, { method: 'POST' });
+      const ex = await apiRequest('/api/exams');
+      setExams(ex);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPublishing(false);
+    }
+  };
 
   const generate = async (studentId) => {
     setGeneratingId(studentId);
@@ -217,6 +234,24 @@ export default function ReportCards() {
             </select>
           </Field>
         </div>
+
+        {isPrincipal && examId && (
+          <div className="mt-4 pt-4 border-t border-cream-deep/60 flex items-center gap-3">
+            {selectedExam?.result_published_at ? (
+              <span className="inline-flex items-center gap-1.5 text-sm text-emerald-700">
+                <CheckCircle2 className="w-4 h-4" /> Result published on {new Date(selectedExam.result_published_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </span>
+            ) : (
+              <button
+                onClick={publishResult}
+                disabled={publishing}
+                className="inline-flex items-center gap-1.5 text-sm font-medium px-3.5 py-2 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep transition disabled:opacity-50"
+              >
+                <Send className="w-4 h-4" /> {publishing ? 'Publishing…' : 'Publish result to parents & students'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {rosterLoading && <p className="text-sm text-ink-soft">Loading students…</p>}

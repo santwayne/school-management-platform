@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
+import { send as sendNotification } from '../services/notificationService.js';
 
 const router = express.Router();
 
@@ -56,7 +57,7 @@ router.get('/', requireAuth, async (req, res) => {
     }
 
     const result = await pool.query(
-      `SELECT e.id, e.name, e.term, e.class_id, c.name AS class_name, e.created_at
+      `SELECT e.id, e.name, e.term, e.class_id, c.name AS class_name, e.created_at, e.result_published_at
        FROM exams e JOIN classes c ON c.id = e.class_id
        WHERE ${where} ${teacherScope}
        ORDER BY e.created_at DESC`,
@@ -212,12 +213,98 @@ router.post('/:id/marks', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/exams/:id/publish-result — principal-only, one-time publish for
+// the whole exam. Marks are entered subject-by-subject via POST /:id/marks
+// with no notification fired on each save (that would be one WhatsApp
+// message per subject per class — spammy); this is the single point where a
+// parent/student notification goes out, once, computed from whatever marks
+// exist at that moment.
+router.post('/:id/publish-result', requireAuth, requirePrincipal, async (req, res) => {
+  const schoolId = req.user.school_id;
+  const { id } = req.params;
+
+  try {
+    const examRes = await pool.query('SELECT * FROM exams WHERE id = $1 AND school_id = $2', [id, schoolId]);
+    if (examRes.rowCount === 0) return res.status(404).json({ error: 'Exam not found' });
+    const exam = examRes.rows[0];
+
+    if (exam.result_published_at) {
+      return res.status(409).json({ error: 'Result already published for this exam' });
+    }
+
+    // NULL-guarded UPDATE closes the same double-click/race window flagged
+    // elsewhere in this schema (see teacher_salary_history's unique index
+    // comment) — only the request that actually flips it from NULL wins.
+    const updateRes = await pool.query(
+      `UPDATE exams SET result_published_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND result_published_at IS NULL RETURNING result_published_at`,
+      [id]
+    );
+    if (updateRes.rowCount === 0) {
+      return res.status(409).json({ error: 'Result already published for this exam' });
+    }
+
+    const studentsRes = await pool.query(
+      `SELECT s.id AS student_id, s.name AS student_name,
+              COALESCE(SUM(em.marks_obtained), 0) AS total_obtained,
+              COALESCE(SUM(em.max_marks), 0) AS total_max
+       FROM students s
+       LEFT JOIN exam_marks em ON em.student_id = s.id AND em.exam_id = $1
+       WHERE s.class_id = $2 AND s.school_id = $3
+       GROUP BY s.id, s.name`,
+      [id, exam.class_id, schoolId]
+    );
+
+    res.json({
+      success: true,
+      result_published_at: updateRes.rows[0].result_published_at,
+      student_count: studentsRes.rowCount,
+    });
+
+    // Fire-and-forget, one sendNotification call per student (unlike
+    // activity_shared's single shared-variables fan-out) because percentage
+    // is different per student — this is what gives "exactly one WhatsApp
+    // message per student" rather than one per subject.
+    Promise.all(
+      studentsRes.rows.map((s) => {
+        const totalMax = Number(s.total_max);
+        const percentage = totalMax > 0 ? Number(((Number(s.total_obtained) / totalMax) * 100).toFixed(1)) : null;
+        return sendNotification({
+          triggerEvent: 'exam_result',
+          schoolId,
+          recipients: [
+            { type: 'student', studentId: s.student_id },
+            { type: 'parent', studentId: s.student_id },
+          ],
+          variables: {
+            student_name: s.student_name,
+            exam_name: exam.name,
+            percentage: percentage === null ? 'N/A' : percentage,
+          },
+          batchKey: `exam_result:${id}`,
+        }).catch((err) => console.error(`exam_result notification failed for student ${s.student_id}:`, err.message));
+      })
+    ).catch(() => {});
+  } catch (err) {
+    console.error('Publish result error:', err);
+    res.status(500).json({ error: 'Failed to publish result' });
+  }
+});
+
 // GET /api/exams/:id/students/:studentId/report — everything needed to
 // render a report card PDF client-side (frontend follows the AdminReports.jsx
-// buildPDF pattern — this just supplies the data).
+// buildPDF pattern — this just supplies the data). Teacher/Principal only,
+// explicitly enforced below — students get their own scoped route in
+// studentPortal.js instead. (A student token happens to fail the teacher_id
+// check further down anyway, but that's incidental, not a real access
+// control guarantee, hence the explicit role check.)
 router.get('/:id/students/:studentId/report', requireAuth, async (req, res) => {
   const schoolId = req.user.school_id;
   const { id, studentId } = req.params;
+
+  if (!['teacher', 'principal'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Teacher or Principal role required' });
+  }
 
   try {
     const examRes = await pool.query(

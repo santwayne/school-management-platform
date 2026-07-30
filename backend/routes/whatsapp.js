@@ -1,7 +1,7 @@
 import express from 'express';
 import { webhookLimiter } from '../middleware/rateLimit.js';
 import pool from '../config/db.js';
-import { generateAIHint, tagDoubtChapter, extractCashSlip, extractDoubtImage } from '../services/aiService.js';
+import { generateAIHint, tagDoubtChapter, extractCashSlip, extractExpenseSlip, extractDoubtImage } from '../services/aiService.js';
 import { sendTextMessage, downloadMedia } from '../services/whatsappService.js';
 
 const router = express.Router();
@@ -34,15 +34,19 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
     const fromPhone = message.from;
 
     // Fee collector check runs first — a registered collector's number is
-    // never also a parent number, so this branch is exclusive.
+    // never also a parent number, so this branch is exclusive. The same
+    // registered number also doubles as the "registered staff number" for
+    // petty cash expense photos (Item 1 of the build spec) — a caption of
+    // "petty"/"expense" routes the photo there instead of fee cash intake,
+    // reusing this one photo-intake pipeline rather than building a second.
     const collectorRes = await pool.query(
-      'SELECT id, school_id FROM fee_collectors WHERE whatsapp_number = $1',
+      'SELECT id, school_id, name FROM fee_collectors WHERE whatsapp_number = $1',
       [fromPhone]
     );
     if (collectorRes.rowCount > 0) {
       const collector = collectorRes.rows[0];
       if (message.type !== 'image') {
-        await sendTextMessage(fromPhone, 'Please send a photo of the cash receipt slip.');
+        await sendTextMessage(fromPhone, 'Please send a photo of the cash receipt slip (or a petty cash expense receipt, captioned "petty").');
         return res.sendStatus(200);
       }
       const { buffer, mimeType } = await downloadMedia(message.image.id).catch(() => ({ buffer: null, mimeType: null }));
@@ -51,6 +55,24 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
         return res.sendStatus(200);
       }
       const base64Image = Buffer.from(buffer).toString('base64');
+      const caption = (message.image.caption || '').trim().toLowerCase();
+
+      if (caption.startsWith('petty') || caption.startsWith('expense')) {
+        const extraction = await extractExpenseSlip(base64Image, mimeType || 'image/jpeg');
+        await pool.query(
+          `INSERT INTO petty_cash (school_id, requested_by, amount, purpose, status, receipt_photo_url)
+           VALUES ($1, $2, $3, $4, 'PENDING', $5)`,
+          [collector.school_id, collector.name, extraction.amount || 0, extraction.purpose || null, base64Image]
+        );
+        await sendTextMessage(
+          fromPhone,
+          extraction.amount
+            ? `Got it — petty cash expense of ₹${extraction.amount}${extraction.purpose ? ` for ${extraction.purpose}` : ''} logged. Waiting for approval.`
+            : "Got the expense photo, but couldn't clearly read the amount — please tell the accountant to check and edit it before approving."
+        );
+        return res.sendStatus(200);
+      }
+
       const extraction = await extractCashSlip(base64Image, mimeType || 'image/jpeg');
 
       await pool.query(

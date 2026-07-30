@@ -330,6 +330,10 @@ function PettyCashTab() {
   const [nName, setNName] = useState('');
   const [nAmt, setNAmt] = useState('');
   const [nReason, setNReason] = useState('');
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [editRow, setEditRow] = useState(null);
+  const [eAmt, setEAmt] = useState('');
+  const [eReason, setEReason] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -351,6 +355,27 @@ function PettyCashTab() {
     setError('');
     try {
       await apiRequest(`/api/finance/petty-cash/approve/${id}`, { method: 'PATCH', body: { status } });
+      load();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const openEdit = (r) => {
+    setEditRow(r);
+    setEAmt(r.amount);
+    setEReason(r.purpose || '');
+  };
+
+  const saveEdit = async () => {
+    if (!editRow) return;
+    setError('');
+    try {
+      await apiRequest(`/api/finance/petty-cash/${editRow.id}`, {
+        method: 'PATCH',
+        body: { amount: Number(eAmt), purpose: eReason.trim() },
+      });
+      setEditRow(null);
       load();
     } catch (err) {
       setError(err.message);
@@ -396,7 +421,7 @@ function PettyCashTab() {
           <table className="w-full text-sm">
             <thead>
               <tr>
-                <Th>Staff</Th><Th>Amount</Th><Th>Reason</Th><Th>Date</Th><Th>Status</Th><Th className="text-right">Action</Th>
+                <Th>Staff</Th><Th>Amount</Th><Th>Reason</Th><Th>Receipt</Th><Th>Date</Th><Th>Status</Th><Th className="text-right">Action</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-cream-deep/60">
@@ -405,11 +430,25 @@ function PettyCashTab() {
                   <Td className="font-medium">{r.requested_by}</Td>
                   <Td>{INR(r.amount)}</Td>
                   <Td className="text-ink-soft max-w-md">{r.purpose}</Td>
+                  <Td>
+                    {r.receipt_photo_url ? (
+                      <button onClick={() => setPhotoPreview(r.receipt_photo_url)} className="block">
+                        <img
+                          src={`data:image/jpeg;base64,${r.receipt_photo_url}`}
+                          alt="Receipt"
+                          className="w-10 h-10 object-cover rounded-lg border border-cream-deep hover:opacity-80"
+                        />
+                      </button>
+                    ) : (
+                      <span className="text-ink-soft text-xs">—</span>
+                    )}
+                  </Td>
                   <Td className="text-ink-soft whitespace-nowrap">{new Date(r.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</Td>
                   <Td><StatusBadge status={r.status} /></Td>
                   <Td className="text-right">
                     {r.status === 'PENDING' && (
                       <div className="inline-flex items-center gap-2">
+                        <button onClick={() => openEdit(r)} className="p-1.5 text-ink-soft hover:text-terracotta-deep"><Pencil className="w-3.5 h-3.5" /></button>
                         <button onClick={() => decide(r.id, 'REJECTED')} className="text-xs px-3 py-1.5 rounded-lg border border-cream-deep text-ink-soft hover:bg-cream-deep/50">Reject</button>
                         <button onClick={() => decide(r.id, 'APPROVED')} className="text-xs font-medium px-3 py-1.5 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep">Approve</button>
                       </div>
@@ -443,6 +482,38 @@ function PettyCashTab() {
             <div className="px-5 py-3 border-t border-cream-deep/70 flex items-center justify-end gap-2">
               <button onClick={() => setNewOpen(false)} className="px-3 py-2 text-sm rounded-lg border border-cream-deep text-ink-soft hover:bg-cream-deep/50">Cancel</button>
               <button onClick={addRequest} className="px-4 py-2 text-sm font-medium rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep">Log request</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {photoPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/70" onClick={() => setPhotoPreview(null)}>
+          <img src={`data:image/jpeg;base64,${photoPreview}`} alt="Receipt full size" className="max-w-full max-h-full rounded-lg" />
+        </div>
+      )}
+
+      {editRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/40 backdrop-blur-sm" onClick={() => setEditRow(null)}>
+          <div className="bg-cream rounded-2xl border border-cream-deep w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between px-5 py-4 border-b border-cream-deep/70">
+              <h3 className="font-display text-lg text-ink">Edit petty cash request</h3>
+              <button onClick={() => setEditRow(null)} className="p-1 rounded hover:bg-cream-deep/60 text-ink-soft"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              {editRow.receipt_photo_url && (
+                <img src={`data:image/jpeg;base64,${editRow.receipt_photo_url}`} alt="Receipt" className="w-full max-h-48 object-contain rounded-lg border border-cream-deep" />
+              )}
+              <FormField label="Amount (₹)">
+                <input type="number" value={eAmt} onChange={(e) => setEAmt(e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg bg-white border border-cream-deep focus:outline-none focus:ring-2 focus:ring-terracotta/40" />
+              </FormField>
+              <FormField label="Reason">
+                <textarea value={eReason} onChange={(e) => setEReason(e.target.value)} rows={3} className="w-full px-3 py-2 text-sm rounded-lg bg-white border border-cream-deep focus:outline-none focus:ring-2 focus:ring-terracotta/40" />
+              </FormField>
+            </div>
+            <div className="px-5 py-3 border-t border-cream-deep/70 flex items-center justify-end gap-2">
+              <button onClick={() => setEditRow(null)} className="px-3 py-2 text-sm rounded-lg border border-cream-deep text-ink-soft hover:bg-cream-deep/50">Cancel</button>
+              <button onClick={saveEdit} className="px-4 py-2 text-sm font-medium rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep">Save</button>
             </div>
           </div>
         </div>

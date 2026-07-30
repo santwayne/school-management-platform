@@ -237,6 +237,26 @@ router.post('/petty-cash/request', requireAuth, async (req, res) => {
   }
 });
 
+// Lets Accountant/Principal correct the amount/purpose while a request is
+// still PENDING — needed for WhatsApp-photo-intake requests (routes/whatsapp.js)
+// where the AI extraction can misread a receipt (or the amount comes through
+// as 0 when nothing was legible at all).
+router.patch('/petty-cash/:id', requireAuth, requireFinance, async (req, res) => {
+  const { amount, purpose } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE petty_cash SET amount = COALESCE($1, amount), purpose = COALESCE($2, purpose)
+       WHERE id = $3 AND school_id = $4 AND status = 'PENDING' RETURNING *`,
+      [amount, purpose, req.params.id, req.user.school_id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Pending request not found for this school' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Petty cash edit error:', err);
+    res.status(500).json({ error: 'Failed to update request' });
+  }
+});
+
 // Principal or Accountant can approve/reject petty cash, enforced
 // server-side. An accountant can only approve requests at or under the
 // school's configured limit (school_settings.petty_cash_accountant_limit,

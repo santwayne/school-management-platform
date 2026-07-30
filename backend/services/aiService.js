@@ -70,6 +70,43 @@ export async function extractCashSlip(base64Image, mimeType) {
   }
 }
 
+// Reads a photographed petty cash expense receipt (e.g. a shopkeeper's bill
+// for chart paper, courier charges) and proposes an amount + purpose, the
+// same "AI proposes, human confirms" shape as extractCashSlip above — the
+// petty_cash row it lands in stays PENDING until Accountant/Principal approve.
+export async function extractExpenseSlip(base64Image, mimeType) {
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-5',
+      max_tokens: 300,
+      system:
+        'You read photos of receipts/bills for small school petty cash expenses. ' +
+        'Extract the total rupee amount and a short description of what it was for. ' +
+        'Respond ONLY as JSON: {"amount": <number or null>, "purpose": <string or null>, "confidence": "high"|"medium"|"low"}. ' +
+        'If the amount is not clearly legible, set amount to null rather than guessing.',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Image } },
+            { type: 'text', text: 'Extract the total amount and purpose from this expense receipt.' },
+          ],
+        },
+      ],
+    });
+    const textBlock = response.content.find((block) => block.type === 'text');
+    if (!textBlock) return { amount: null, purpose: null, confidence: 'low' };
+    try {
+      return JSON.parse(textBlock.text);
+    } catch {
+      return { amount: null, purpose: null, confidence: 'low' };
+    }
+  } catch (err) {
+    console.error('Expense slip extraction failed:', err.message);
+    return { amount: null, purpose: null, confidence: 'low' };
+  }
+}
+
 // Chapter tagging so recurring doubts can be surfaced to the teacher
 // (Section 4 of the spec: same doubt across many students => re-teach signal).
 export async function tagDoubtChapter(studentQuery, syllabusChapters = []) {

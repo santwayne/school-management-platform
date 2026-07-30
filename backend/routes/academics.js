@@ -190,8 +190,11 @@ router.post('/students/bulk', requireAuth, requirePrincipal, async (req, res) =>
         if (existingParent.rowCount > 0) {
           parentId = existingParent.rows[0].id;
         } else {
+          // opt_in_status = OPTED_IN here too — same principal-vouches rule as
+          // the standalone Add Parent form below, so bulk-imported families
+          // aren't silently stuck at the schema default of OPTED_OUT forever.
           const newParent = await client.query(
-            `INSERT INTO parents (school_id, name, phone) VALUES ($1, $2, $3) RETURNING id`,
+            `INSERT INTO parents (school_id, name, phone, opt_in_status) VALUES ($1, $2, $3, 'OPTED_IN') RETURNING id`,
             [schoolId, `Parent of ${student.name.trim()}`, phone]
           );
           parentId = newParent.rows[0].id;
@@ -242,6 +245,31 @@ router.get('/my-classes', requireAuth, async (req, res) => {
        JOIN subjects s ON cst.subject_id = s.id
        WHERE cst.teacher_id = $1 AND cst.school_id = $2`,
       [teacherId, schoolId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/academics/my-incharge-classes — which class(es), if any, this
+// teacher is the designated incharge of (classes.class_teacher_id). Separate
+// from my-classes above (that's subject-teaching assignments via
+// class_subject_teachers — a teacher can teach a class without being its
+// incharge, or vice versa). Drives the "My Class" section in
+// TeacherPortal.jsx (Item 4 of the build spec).
+router.get('/my-incharge-classes', requireAuth, async (req, res) => {
+  const teacherId = req.user.teacher_id;
+  const schoolId = req.user.school_id;
+
+  if (!teacherId) {
+    return res.status(403).json({ error: 'Teacher login required' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id AS class_id, name AS class_name FROM classes WHERE school_id = $1 AND class_teacher_id = $2 ORDER BY name`,
+      [schoolId, teacherId]
     );
     res.json(rows);
   } catch (err) {
@@ -386,9 +414,10 @@ router.delete('/students/:id', requireAuth, requirePrincipal, async (req, res) =
   }
 });
 
-// Parents — full CRUD. opt_in_status stays server-controlled at
-// 'OPTED_OUT' by default (the actual opt-in only happens through the real
-// WhatsApp consent flow, never just by being added here).
+// Parents — full CRUD. opt_in_status is set explicitly by the principal per
+// parent (matching how teacher WhatsApp numbers work in classNotes.js —
+// principal vouches, opt-in is immediate) rather than defaulting to
+// OPTED_OUT with no way to ever flip it.
 router.get('/parents', requireAuth, requirePrincipal, async (req, res) => {
   const { search } = req.query;
   try {
@@ -412,12 +441,15 @@ router.get('/parents', requireAuth, requirePrincipal, async (req, res) => {
 });
 
 router.post('/parents', requireAuth, requirePrincipal, async (req, res) => {
-  const { name, phone, preferred_language } = req.body;
+  const { name, phone, preferred_language, opt_in } = req.body;
   if (!name || !phone) return res.status(400).json({ error: 'name and phone are required' });
   try {
+    // opt_in defaults to true — the "Add parent" modal checkbox is checked by
+    // default, so a principal has to make an explicit choice to uncheck it.
+    const optInStatus = opt_in === false ? 'OPTED_OUT' : 'OPTED_IN';
     const result = await pool.query(
-      `INSERT INTO parents (school_id, name, phone, preferred_language) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [req.user.school_id, name, phone, preferred_language || 'hi']
+      `INSERT INTO parents (school_id, name, phone, preferred_language, opt_in_status) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [req.user.school_id, name, phone, preferred_language || 'hi', optInStatus]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -426,13 +458,15 @@ router.post('/parents', requireAuth, requirePrincipal, async (req, res) => {
 });
 
 router.patch('/parents/:id', requireAuth, requirePrincipal, async (req, res) => {
-  const { name, phone, preferred_language } = req.body;
+  const { name, phone, preferred_language, opt_in } = req.body;
+  const optInStatus = opt_in === undefined ? null : (opt_in ? 'OPTED_IN' : 'OPTED_OUT');
   try {
     const result = await pool.query(
       `UPDATE parents SET
-         name = COALESCE($1, name), phone = COALESCE($2, phone), preferred_language = COALESCE($3, preferred_language)
-       WHERE id = $4 AND school_id = $5 RETURNING *`,
-      [name, phone, preferred_language, req.params.id, req.user.school_id]
+         name = COALESCE($1, name), phone = COALESCE($2, phone), preferred_language = COALESCE($3, preferred_language),
+         opt_in_status = COALESCE($4, opt_in_status)
+       WHERE id = $5 AND school_id = $6 RETURNING *`,
+      [name, phone, preferred_language, optInStatus, req.params.id, req.user.school_id]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Parent not found' });
     res.json(result.rows[0]);
