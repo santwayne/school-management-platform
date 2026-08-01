@@ -5,7 +5,15 @@ import crypto from 'crypto';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
-import { sendTextMessage } from '../services/whatsappService.js';
+import { sendTemplateMessage } from '../services/whatsappService.js';
+
+// Meta requires an approved template for the first outbound message in a
+// conversation window — a brand-new number being verified here has no open
+// session, so a plain sendTextMessage() is guaranteed to be rejected by
+// Meta's API (this was the actual cause of the 502: this route correctly
+// catches the send failure and returns 502, but the send was always going
+// to fail given how it was calling the WhatsApp API).
+const OTP_TEMPLATE = process.env.WHATSAPP_OTP_TEMPLATE || 'verification_code';
 
 const router = express.Router();
 
@@ -84,7 +92,7 @@ router.patch('/whatsapp', requireAuth, requirePrincipal, async (req, res) => {
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
   try {
-    await sendTextMessage(whatsapp_business_number, `Your Waynur WhatsApp verification code is ${code}. It expires in 10 minutes.`);
+    await sendTemplateMessage(whatsapp_business_number, OTP_TEMPLATE, 'en', [code]);
   } catch (err) {
     console.error('WhatsApp verification send failed:', err.message);
     return res.status(502).json({ error: 'Could not send a verification message to that number. Check the number and try again.' });
