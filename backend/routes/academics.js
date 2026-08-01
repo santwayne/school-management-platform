@@ -335,12 +335,19 @@ router.post('/teachers', requireAuth, requirePrincipal, async (req, res) => {
 router.patch('/teachers/:id', requireAuth, requirePrincipal, async (req, res) => {
   const { name, phone } = req.body;
   try {
+    // No role restriction here — this route is already Principal-gated,
+    // and a Principal legitimately needs to edit Teacher, Accountant, and
+    // other Principal records from the same Staff tab. The role='teacher'
+    // guard on DELETE below exists for a real reason (stops the Principal's
+    // own account from being deleted through this generic endpoint), but
+    // editing a phone number carries none of that risk, so it shouldn't
+    // have been copied onto PATCH too.
     const result = await pool.query(
       `UPDATE teachers SET name = COALESCE($1, name), phone = COALESCE($2, phone)
-       WHERE id = $3 AND school_id = $4 AND role = 'teacher' RETURNING id, name, email, phone, role`,
+       WHERE id = $3 AND school_id = $4 RETURNING id, name, email, phone, role`,
       [name, phone, req.params.id, req.user.school_id]
     );
-    if (result.rowCount === 0) return res.status(404).json({ error: 'Teacher not found' });
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Staff member not found' });
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
