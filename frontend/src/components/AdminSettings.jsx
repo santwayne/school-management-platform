@@ -193,6 +193,13 @@ export default function AdminSettings() {
   };
 
   if (loading) return <p className="text-sm text-ink-soft">Loading…</p>;
+  if (!settings) {
+    return (
+      <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+        Couldn't load settings{error ? `: ${error}` : ''}. <button onClick={load} className="underline font-medium">Retry</button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

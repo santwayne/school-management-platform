@@ -122,31 +122,46 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, async () => {
-  console.log(`Core Backend running on port ${PORT}`);
+
+// Bootstrap MUST finish before the server accepts any requests — previously
+// this ran inside the app.listen() callback, meaning the process was
+// already accepting connections while schema.sql was still applying. On a
+// long-running server that window is negligible, but it's a real race and
+// makes any bootstrap failure much harder to reason about. Also logs
+// err.stack (not just err.message) since a swallowed schema.sql error was
+// showing up in production as a generic "relation does not exist" / 500 on
+// whichever route happened to touch the not-yet-created table, with no
+// obvious link back to the actual migration failure in the logs.
+async function start() {
   try {
     await runBootstrap();
   } catch (err) {
-    console.error('Bootstrap (migration + demo credentials) failed:', err.message);
+    console.error('Bootstrap (migration + demo credentials) failed — server starting anyway, but tables/columns added after this failure point will NOT exist:', err.stack || err.message);
   }
-  try {
-    await scheduleDailyGuidance();
-  } catch (err) {
-    console.error('Failed to schedule daily guidance job (is Redis running?):', err.message);
-  }
-  try {
-    await scheduleTeacherAttendanceAggregation();
-  } catch (err) {
-    console.error('Failed to schedule teacher attendance aggregation job (is Redis running?):', err.message);
-  }
-  try {
-    await scheduleGpsPolling();
-  } catch (err) {
-    console.error('Failed to schedule GPS polling job (is Redis running?):', err.message);
-  }
-  try {
-    await scheduleLibraryDigest();
-  } catch (err) {
-    console.error('Failed to schedule library digest job (is Redis running?):', err.message);
-  }
-});
+
+  app.listen(PORT, async () => {
+    console.log(`Core Backend running on port ${PORT}`);
+    try {
+      await scheduleDailyGuidance();
+    } catch (err) {
+      console.error('Failed to schedule daily guidance job (is Redis running?):', err.message);
+    }
+    try {
+      await scheduleTeacherAttendanceAggregation();
+    } catch (err) {
+      console.error('Failed to schedule teacher attendance aggregation job (is Redis running?):', err.message);
+    }
+    try {
+      await scheduleGpsPolling();
+    } catch (err) {
+      console.error('Failed to schedule GPS polling job (is Redis running?):', err.message);
+    }
+    try {
+      await scheduleLibraryDigest();
+    } catch (err) {
+      console.error('Failed to schedule library digest job (is Redis running?):', err.message);
+    }
+  });
+}
+
+start();

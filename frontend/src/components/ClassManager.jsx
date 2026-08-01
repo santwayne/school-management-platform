@@ -230,8 +230,7 @@ export default function ClassManager() {
             <div className="flex items-center gap-2 pb-2 border-b">
               <span className="text-sm text-ink-soft w-32 shrink-0">Class Incharge</span>
               <select
-                key={selectedClass}
-                defaultValue={classes.find((c) => String(c.id) === String(selectedClass))?.class_teacher_id || ''}
+                value={classes.find((c) => String(c.id) === String(selectedClass))?.class_teacher_id || ''}
                 onChange={(e) => handleSetClassTeacher(selectedClass, e.target.value)}
                 className="flex-1 p-1.5 border text-sm rounded bg-white"
               >
@@ -258,7 +257,7 @@ export default function ClassManager() {
                       <td className="py-2 font-medium text-ink">{subj.name}</td>
                       <td className="py-2">
                         <select
-                          defaultValue={existing?.teacher_id || ''}
+                          value={existing?.teacher_id || ''}
                           onChange={(e) => handleAssignTeacher(selectedClass, subj.id, e.target.value)}
                           className="p-1.5 border text-sm rounded bg-white w-56"
                         >
