@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { apiRequest, apiUpload } from '../api';
 import FeeCollectorsCard from './FeeCollectorsCard';
+import LibraryContactsCard from './LibraryContactsCard';
 
 function Toggle({ label, checked, onChange }) {
   return (
@@ -318,6 +319,10 @@ export default function AdminSettings() {
 
           <Card title="Fee Collectors">
             <FeeCollectorsCard />
+          </Card>
+
+          <Card title="Library Contacts">
+            <LibraryContactsCard />
           </Card>
 
           <Card title="Leaving Certificate">

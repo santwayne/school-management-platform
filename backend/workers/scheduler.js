@@ -1,4 +1,4 @@
-import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue } from '../config/queue.js';
+import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue } from '../config/queue.js';
 
 // The worker only reacts to jobs that land on GuidanceQueue — nothing put
 // any there before. This registers a repeatable job so it actually fires
@@ -29,6 +29,21 @@ export async function scheduleTeacherAttendanceAggregation() {
     }
   );
   console.log('Daily teacher attendance aggregation job scheduled.');
+}
+
+// Marks overdue books and sends a due/overdue WhatsApp digest to every
+// registered library contact — mirrors the daily guidance job's pattern.
+export async function scheduleLibraryDigest() {
+  await libraryQueue.add(
+    'dailyLibraryDigest',
+    {},
+    {
+      repeat: { pattern: process.env.LIBRARY_DIGEST_CRON || '0 8 * * *' }, // 8:00 AM daily
+      removeOnComplete: true,
+      jobId: 'daily-library-digest',
+    }
+  );
+  console.log('Daily library digest job scheduled.');
 }
 
 // Polls pull-based-vendor buses every 30s for their current location.

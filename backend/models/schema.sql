@@ -665,6 +665,17 @@ CREATE TABLE IF NOT EXISTS library_issues (
 CREATE INDEX IF NOT EXISTS idx_library_issues_school ON library_issues(school_id);
 CREATE INDEX IF NOT EXISTS idx_library_issues_book ON library_issues(book_id);
 
+-- Library contacts (librarian) — mirrors fee_collectors: no login, just a
+-- registered WhatsApp number that receives AI-generated due/overdue alerts.
+-- Registered by the Principal from the Library admin screen.
+CREATE TABLE IF NOT EXISTS library_contacts (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    whatsapp_number VARCHAR(20) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ---------- AI Tutor — Voice (Vapi) ----------
 -- Single global row: super admin wires up the Vapi account once here, then
 -- flips voice_tutor_enabled per school below as a plan feature — mirrors how

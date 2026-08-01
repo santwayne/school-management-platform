@@ -29,5 +29,8 @@ export const gpsPollQueue = new Queue('GpsPollQueue', { connection });
 // about the student and pushes it to the assigned teacher's WhatsApp
 export const studentNoteQueue = new Queue('StudentNoteQueue', { connection });
 
+// Library queue: daily "books due/overdue" digest to registered library contacts
+export const libraryQueue = new Queue('LibraryQueue', { connection });
+
 // How long to wait for a parent reply before escalating to a voice call (ms)
 export const ESCALATION_DELAY_MS = Number(process.env.ESCALATION_DELAY_MS || 2 * 60 * 60 * 1000); // default 2 hrs

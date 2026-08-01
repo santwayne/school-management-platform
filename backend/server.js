@@ -24,6 +24,7 @@ import reportsRoutes from './routes/reports.js';
 import gradingRoutes from './routes/grading.js';
 import studentPortalRoutes from './routes/studentPortal.js';
 import feeCollectorsRoutes from './routes/feeCollectors.js';
+import libraryContactsRoutes from './routes/libraryContacts.js';
 import feeIntakeRoutes from './routes/feeIntake.js';
 import paymentLinksRoutes from './routes/paymentLinks.js';
 import onboardingRoutes from './routes/onboarding.js';
@@ -50,7 +51,8 @@ import './workers/studentNoteWorker.js';
 // `worker.js` process once call/message volume grows (see README).
 import './workers/attendanceWorker.js';
 import './workers/dailyGuidanceWorker.js';
-import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling } from './workers/scheduler.js';
+import './workers/libraryDueDateWorker.js';
+import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest } from './workers/scheduler.js';
 import { runBootstrap } from './scripts/autoBootstrap.js';
 
 dotenv.config();
@@ -103,6 +105,7 @@ app.use('/api/timetable', timetableRoutes);
 app.use('/api', lessonPlansRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/library', libraryRoutes);
+app.use('/api/library-contacts', libraryContactsRoutes);
 app.use('/api/super-admin/ai-voice-tutor', aiVoiceTutorRoutes);
 app.use('/api/profiles', profilesRoutes);
 app.use('/api/notifications', notificationsRoutes);
@@ -140,5 +143,10 @@ app.listen(PORT, async () => {
     await scheduleGpsPolling();
   } catch (err) {
     console.error('Failed to schedule GPS polling job (is Redis running?):', err.message);
+  }
+  try {
+    await scheduleLibraryDigest();
+  } catch (err) {
+    console.error('Failed to schedule library digest job (is Redis running?):', err.message);
   }
 });
