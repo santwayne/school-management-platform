@@ -5,6 +5,7 @@ export default function ClassManager() {
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [teachers, setTeachers] = useState([]);
+  const [parents, setParents] = useState([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [roster, setRoster] = useState({ students: [], assignments: [] });
 
@@ -14,17 +15,23 @@ export default function ClassManager() {
   const [parentPhone, setParentPhone] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  // The PIN is only ever returned once, right at enrollment (only its bcrypt
+  // hash is stored after that) - shown here until dismissed so it isn't lost
+  // the moment the "Student enrolled" toast disappears.
+  const [provisionedStudents, setProvisionedStudents] = useState([]);
 
   const loadBaseData = async () => {
     try {
-      const [classesData, subjectsData, teachersData] = await Promise.all([
+      const [classesData, subjectsData, teachersData, parentsData] = await Promise.all([
         apiRequest('/api/academics/classes', { method: 'GET' }),
         apiRequest('/api/academics/subjects', { method: 'GET' }),
         apiRequest('/api/academics/teachers', { method: 'GET' }),
+        apiRequest('/api/academics/parents', { method: 'GET' }),
       ]);
       setClasses(classesData);
       setSubjects(subjectsData);
       setTeachers(teachersData);
+      setParents(parentsData);
       if (classesData.length > 0 && !selectedClass) {
         setSelectedClass(classesData[0].id);
       }
@@ -122,13 +129,14 @@ export default function ClassManager() {
     e.preventDefault();
     setError('');
     try {
-      await apiRequest('/api/academics/students/bulk', {
+      const res = await apiRequest('/api/academics/students/bulk', {
         method: 'POST',
         body: { class_id: selectedClass, students: [{ name: studentName, parent_phone: parentPhone }] },
       });
       setStudentName('');
       setParentPhone('');
       setMessage('Student enrolled.');
+      setProvisionedStudents(res.records || []);
       loadRoster();
     } catch (err) {
       setError(err.message);
@@ -154,6 +162,7 @@ export default function ClassManager() {
           body: { class_id: selectedClass, students: parsedStudents },
         });
         setMessage(`Enrolled ${res.inserted_count} students.`);
+        setProvisionedStudents(res.records || []);
         loadRoster();
       } catch (err) {
         setError(err.message);
@@ -163,11 +172,46 @@ export default function ClassManager() {
     e.target.value = '';
   };
 
+  const handleSetParent = async (studentId, parentId) => {
+    setError('');
+    try {
+      await apiRequest(`/api/academics/students/${studentId}`, {
+        method: 'PATCH',
+        body: { parent_id: parentId || null },
+      });
+      loadRoster();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-8">
       <h1 className="font-display text-3xl font-bold text-ink">Classes, Subjects & Assignments</h1>
       {message && <div className="p-3 bg-green-100 text-green-700 text-sm rounded">{message}</div>}
       {error && <div className="p-3 bg-red-100 text-destructive text-sm rounded">{error}</div>}
+
+      {provisionedStudents.length > 0 && (
+        <div className="p-4 bg-amber-50 border border-amber-300 rounded-lg space-y-2">
+          <div className="flex justify-between items-start">
+            <h3 className="text-sm font-semibold text-amber-900">
+              Login PIN{provisionedStudents.length > 1 ? 's' : ''} — write this down now, it won't be shown again
+            </h3>
+            <button onClick={() => setProvisionedStudents([])} className="text-xs text-amber-700 hover:text-amber-900">Dismiss ✕</button>
+          </div>
+          <table className="w-full text-sm">
+            <tbody className="divide-y divide-amber-200">
+              {provisionedStudents.map((s) => (
+                <tr key={s.id}>
+                  <td className="py-1 pr-4">{s.name}</td>
+                  <td className="py-1 pr-4 font-mono text-xs text-amber-800">{s.login_id}</td>
+                  <td className="py-1 font-mono text-base font-bold text-amber-900">{s.defaultPin}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="space-y-6">
@@ -279,6 +323,7 @@ export default function ClassManager() {
                 <tr className="text-left text-xs uppercase text-ink-soft border-b">
                   <th className="py-2">Name</th>
                   <th className="py-2">Login ID</th>
+                  <th className="py-2">Parent</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -286,6 +331,16 @@ export default function ClassManager() {
                   <tr key={s.id}>
                     <td className="py-2">{s.name}</td>
                     <td className="py-2 font-mono text-xs">{s.login_id}</td>
+                    <td className="py-2">
+                      <select
+                        value={s.parent_id || ''}
+                        onChange={(e) => handleSetParent(s.id, e.target.value)}
+                        className="p-1.5 border text-xs rounded bg-white w-48"
+                      >
+                        <option value="">— Not linked —</option>
+                        {parents.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.phone})</option>)}
+                      </select>
+                    </td>
                   </tr>
                 ))}
               </tbody>
