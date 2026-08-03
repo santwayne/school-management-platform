@@ -132,7 +132,10 @@ router.get('/class/:classId/roster', requireAuth, async (req, res) => {
 
   try {
     const studentsRes = await pool.query(
-      'SELECT id, name, login_id FROM students WHERE class_id = $1 AND school_id = $2 ORDER BY name ASC',
+      `SELECT s.id, s.name, s.login_id, s.parent_id, p.name AS parent_name
+       FROM students s
+       LEFT JOIN parents p ON p.id = s.parent_id
+       WHERE s.class_id = $1 AND s.school_id = $2 ORDER BY s.name ASC`,
       [classId, schoolId]
     );
 
