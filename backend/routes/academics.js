@@ -401,12 +401,21 @@ router.get('/students', requireAuth, requirePrincipal, async (req, res) => {
 
 router.patch('/students/:id', requireAuth, requirePrincipal, async (req, res) => {
   const { name, class_id, parent_id } = req.body;
+  // COALESCE can't tell "field omitted" from "field explicitly cleared" (both
+  // arrive as SQL NULL), so callers that send { parent_id: null } to unlink a
+  // parent — or { class_id: null } to unassign a class — need an explicit
+  // has-own-property check rather than relying on COALESCE's null-passthrough.
+  const hasName = Object.prototype.hasOwnProperty.call(req.body, 'name');
+  const hasClassId = Object.prototype.hasOwnProperty.call(req.body, 'class_id');
+  const hasParentId = Object.prototype.hasOwnProperty.call(req.body, 'parent_id');
   try {
     const result = await pool.query(
       `UPDATE students SET
-         name = COALESCE($1, name), class_id = COALESCE($2, class_id), parent_id = COALESCE($3, parent_id)
-       WHERE id = $4 AND school_id = $5 RETURNING id, name, class_id, parent_id`,
-      [name, class_id, parent_id, req.params.id, req.user.school_id]
+         name = CASE WHEN $1 THEN $2 ELSE name END,
+         class_id = CASE WHEN $3 THEN $4 ELSE class_id END,
+         parent_id = CASE WHEN $5 THEN $6 ELSE parent_id END
+       WHERE id = $7 AND school_id = $8 RETURNING id, name, class_id, parent_id`,
+      [hasName, name, hasClassId, class_id, hasParentId, parent_id, req.params.id, req.user.school_id]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Student not found' });
     res.json(result.rows[0]);
