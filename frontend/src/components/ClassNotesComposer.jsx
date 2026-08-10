@@ -45,7 +45,7 @@ export default function ClassNotesComposer() {
     setError('');
     try {
       const res = await apiRequest(`/api/class-notes/${id}/send`, { method: 'POST' });
-      setMessage(`Queued for ${res.queued_for} parents.`);
+      setMessage(`Sent to ${res.sent} parent${res.sent === 1 ? '' : 's'}.`);
       load();
     } catch (err) {
       setError(err.message);

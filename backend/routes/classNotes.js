@@ -1,7 +1,7 @@
 import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
-import { classNoteQueue } from '../config/queue.js';
+import { sendClassNoteNow } from '../services/classNoteService.js';
 import { sendTextMessage } from '../services/whatsappService.js';
 
 const router = express.Router();
@@ -71,8 +71,8 @@ router.post('/class-notes/:id/send', requireAuth, async (req, res) => {
       );
     }
 
-    await classNoteQueue.add('sendClassNote', { noteId: Number(id) });
-    res.status(202).json({ success: true, queued_for: parents.rowCount });
+    const result = await sendClassNoteNow(Number(id));
+    res.status(200).json({ success: true, ...result });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

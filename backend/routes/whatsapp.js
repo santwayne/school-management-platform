@@ -1,10 +1,42 @@
 import express from 'express';
+import crypto from 'crypto';
 import { webhookLimiter } from '../middleware/rateLimit.js';
 import pool from '../config/db.js';
 import { generateAIHint, tagDoubtChapter, extractCashSlip, extractExpenseSlip, extractDoubtImage } from '../services/aiService.js';
 import { sendTextMessage, downloadMedia } from '../services/whatsappService.js';
 
 const router = express.Router();
+
+// Verifies the `X-Hub-Signature-256` header Meta signs every webhook POST
+// with (HMAC-SHA256 over the exact raw request body, keyed with the Meta
+// App Secret — server.js's express.json() verify callback already captures
+// req.rawBody for this). Without this check the endpoint trusted any POST
+// body based on URL secrecy alone: anyone who found this URL could spoof a
+// message "from" a real parent's phone to mark an absence-alert REPLIED
+// (silently cancelling a real voice-call escalation), or "from" a
+// registered fee collector's number to inject fake cash-slip/petty-cash
+// records, plus burn paid AI API calls on demand.
+//
+// Fails closed if WHATSAPP_APP_SECRET isn't set, matching the same standard
+// this codebase already applies to the Razorpay webhook (see
+// routes/paymentLinks.js) rather than a weaker one for WhatsApp.
+function isValidMetaSignature(req) {
+  const secret = process.env.WHATSAPP_APP_SECRET;
+  if (!secret) {
+    console.error('[WhatsApp webhook] WHATSAPP_APP_SECRET not set — refusing to process webhook');
+    return false;
+  }
+
+  const signatureHeader = req.get('x-hub-signature-256') || '';
+  const [, providedHex] = signatureHeader.split('=');
+  if (!providedHex || !req.rawBody) return false;
+
+  const expectedHex = crypto.createHmac('sha256', secret).update(req.rawBody).digest('hex');
+  const expected = Buffer.from(expectedHex, 'hex');
+  const provided = Buffer.from(providedHex, 'hex');
+  if (expected.length !== provided.length) return false;
+  return crypto.timingSafeEqual(expected, provided);
+}
 
 // Meta webhook verification handshake (required once, when you register
 // the callback URL in the WhatsApp Business app dashboard).
@@ -24,6 +56,11 @@ router.get('/webhook', (req, res) => {
 // registered fee collector, gated by the same OPTED_IN-style checks used
 // everywhere else in the platform.
 router.post('/webhook', webhookLimiter, async (req, res) => {
+  if (!isValidMetaSignature(req)) {
+    console.warn('[WhatsApp webhook] Rejected POST with missing/invalid X-Hub-Signature-256.');
+    return res.sendStatus(401);
+  }
+
   try {
     const entry = req.body.entry?.[0];
     const change = entry?.changes?.[0]?.value;

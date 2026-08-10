@@ -3,7 +3,7 @@ import pool from '../config/db.js';
 import { gradeAnswerSheetWithAI, generateTestWithRubric } from '../services/ocrGradingService.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { requireAuth } from '../middleware/auth.js';
-import { studentNoteQueue } from '../config/queue.js';
+import { sendStudentNoteNow } from '../services/studentNoteService.js';
 
 const router = express.Router();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -88,10 +88,17 @@ router.post('/ocr/grade', requireAuth, async (req, res) => {
       [student_id, test_id, question_num, ocr_text, evaluation.score, evaluation.justification, maxMarks]
     );
 
-    // Fire-and-forget: generates an AI note about this student's performance
-    // and pushes it to the assigned teacher's WhatsApp — queued so grading
-    // stays fast even if the AI note / WhatsApp send is slow.
-    await studentNoteQueue.add('studentNote', { studentId: student_id, testId: test_id });
+    // Generates an AI note about this student's performance and pushes it to
+    // the assigned teacher's WhatsApp. Previously queued for a background
+    // worker — now awaited inline, since a serverless function isn't
+    // guaranteed to keep running after the response is sent, so a queued/
+    // unawaited job here would not reliably execute. Failure here must never
+    // fail the grading response itself.
+    try {
+      await sendStudentNoteNow({ studentId: student_id, testId: test_id });
+    } catch (err) {
+      console.error('sendStudentNoteNow failed (non-fatal):', err.message);
+    }
 
     res.status(200).json({ success: true, evaluation });
   } catch (err) {

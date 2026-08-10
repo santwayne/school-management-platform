@@ -2,7 +2,7 @@ import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
 import { gradeAnswerSheetImage } from '../services/ocrGradingService.js';
-import { studentNoteQueue } from '../config/queue.js';
+import { sendStudentNoteNow } from '../services/studentNoteService.js';
 
 const router = express.Router();
 
@@ -96,9 +96,15 @@ router.post('/submit', requireAuth, async (req, res) => {
       [student_id, test_id, question_num, evaluation.extractedText, evaluation.score, evaluation.justification, image_base64, maxMarks, evaluation.confidence]
     );
 
-    studentNoteQueue.add('studentNote', { studentId: student_id, testId: test_id }).catch((err) =>
-      console.error('studentNoteQueue enqueue failed (non-fatal):', err.message)
-    );
+    // Awaited (not fire-and-forget) — a serverless function can be frozen/torn
+    // down as soon as the response is sent, so anything not awaited before
+    // that point isn't guaranteed to actually run. Failure here must never
+    // fail the grading submission itself, so it's caught and logged only.
+    try {
+      await sendStudentNoteNow({ studentId: student_id, testId: test_id });
+    } catch (err) {
+      console.error('sendStudentNoteNow failed (non-fatal):', err.message);
+    }
 
     res.status(200).json({ success: true, submission_id: rows[0].id, evaluation });
   } catch (err) {

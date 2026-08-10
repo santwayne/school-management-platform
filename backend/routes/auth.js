@@ -54,7 +54,11 @@ router.post('/login', loginLimiter, async (req, res) => {
 
 // Student portal login — no email, just a short login_id (e.g. roll number)
 // plus a PIN, since students of any age need to be able to log in easily.
-router.post('/student-login', async (req, res) => {
+// loginLimiter applies here too (previously missing) — a short numeric PIN
+// is even lower-entropy than a real password, and login_ids based on roll
+// numbers are often sequential/guessable, so this endpoint needed the same
+// brute-force protection as /login, not less.
+router.post('/student-login', loginLimiter, async (req, res) => {
   const { login_id, pin } = req.body;
   if (!login_id || !pin) {
     return res.status(400).json({ error: 'login_id and pin are required' });
