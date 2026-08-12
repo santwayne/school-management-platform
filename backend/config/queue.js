@@ -18,16 +18,8 @@ export const guidanceQueue = new Queue('GuidanceQueue', { connection });
 // one present/absent/half_day row per teacher per day
 export const teacherAttendanceQueue = new Queue('TeacherAttendanceQueue', { connection });
 
-// Class notes: WhatsApp delivery to parents, queued so a class of 40 students
-// doesn't block the HTTP request that created the note
-export const classNoteQueue = new Queue('ClassNoteQueue', { connection });
-
 // GPS polling: fetches current location for every pull-based-vendor bus on an interval
 export const gpsPollQueue = new Queue('GpsPollQueue', { connection });
-
-// Student performance notes: after AI grades a submission, generates a note
-// about the student and pushes it to the assigned teacher's WhatsApp
-export const studentNoteQueue = new Queue('StudentNoteQueue', { connection });
 
 // Library queue: daily "books due/overdue" digest to registered library contacts
 export const libraryQueue = new Queue('LibraryQueue', { connection });
