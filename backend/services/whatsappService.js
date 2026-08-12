@@ -1,12 +1,14 @@
 import axios from 'axios';
 
 function client() {
-  const url = `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
-  console.log('[WhatsApp] URL:', url, '| Token set:', !!process.env.WHATSAPP_ACCESS_TOKEN, '| Token prefix:', (process.env.WHATSAPP_ACCESS_TOKEN || '').slice(0, 10));
+  const token = process.env.WHATSAPP_ACCESS_TOKEN || '';
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
+  const url = `https://graph.facebook.com/v21.0/${phoneId}/messages`;
+  console.log('[WhatsApp] phoneId:', phoneId, '| tokenLen:', token.length, '| tokenSuffix:', token.slice(-6));
   return axios.create({
     baseURL: url,
     headers: {
-      Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
     timeout: 10000,
@@ -29,8 +31,16 @@ export async function sendTemplateMessage(toPhone, templateName, languageCode, p
     },
   };
 
-  const { data } = await client().post('', payload);
-  return data;
+  try {
+    const { data } = await client().post('', payload);
+    console.log('[WhatsApp] send success:', JSON.stringify(data));
+    return data;
+  } catch (err) {
+    const metaError = err.response?.data;
+    console.error('[WhatsApp] send error status:', err.response?.status);
+    console.error('[WhatsApp] send error body:', JSON.stringify(metaError));
+    throw err;
+  }
 }
 
 // Sends a free-form text reply (only valid inside an open 24h conversation
