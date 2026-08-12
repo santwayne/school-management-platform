@@ -1,10 +1,9 @@
 import axios from 'axios';
 
-const GRAPH_URL = `https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
-
 function client() {
+  const url = `https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
   return axios.create({
-    baseURL: GRAPH_URL,
+    baseURL: url,
     headers: {
       Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
       'Content-Type': 'application/json',
