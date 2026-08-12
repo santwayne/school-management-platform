@@ -25,7 +25,7 @@ async function sendAbsentNotificationNow({ attendanceId, parent, studentId }) {
     await sendTemplateMessage(
       parent.phone,
       ABSENCE_TEMPLATE_NAME,
-      'en',
+      'en_US',
       [parent.student_name]
     );
   } catch (err) {
