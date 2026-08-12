@@ -9,7 +9,7 @@ const router = express.Router();
 // Meta requires an approved template for the first outbound message in a
 // conversation window — must match a template approved in WhatsApp Business
 // Manager for this number. Kept in sync with workers/attendanceWorker.js.
-const ABSENCE_TEMPLATE_NAME = process.env.WHATSAPP_ABSENCE_TEMPLATE || 'student_absence_alert';
+const ABSENCE_TEMPLATE_NAME = process.env.WHATSAPP_ABSENCE_TEMPLATE || 'hello_world';
 
 // Sends the absence WhatsApp message right now and logs the outcome.
 // Previously this was queued (attendanceQueue.add('sendAbsentNotification', ...))
@@ -25,8 +25,8 @@ async function sendAbsentNotificationNow({ attendanceId, parent, studentId }) {
     await sendTemplateMessage(
       parent.phone,
       ABSENCE_TEMPLATE_NAME,
-      'en',
-      [parent.student_name]
+      'en_US',
+      []
     );
   } catch (err) {
     console.error(`WhatsApp send failed for attendance ${attendanceId}:`, err.message);
