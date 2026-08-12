@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 function client() {
-  const url = `https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+  const url = `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
   return axios.create({
     baseURL: url,
     headers: {
