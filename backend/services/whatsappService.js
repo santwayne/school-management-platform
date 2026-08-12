@@ -2,7 +2,7 @@ import axios from 'axios';
 
 function client() {
   const url = `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
-  console.log('[WhatsApp] URL:', url, '| Phone ID env:', process.env.WHATSAPP_PHONE_NUMBER_ID);
+  console.log('[WhatsApp] URL:', url, '| Token set:', !!process.env.WHATSAPP_ACCESS_TOKEN, '| Token prefix:', (process.env.WHATSAPP_ACCESS_TOKEN || '').slice(0, 10));
   return axios.create({
     baseURL: url,
     headers: {
