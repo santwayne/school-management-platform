@@ -26,7 +26,7 @@ const attendanceWorker = new Worker(
 async function handleSendNotification({ attendanceId, parentId, parentPhone, parentLanguage, studentName }) {
   let status = 'SENT';
   try {
-    await sendTemplateMessage(parentPhone, ABSENCE_TEMPLATE_NAME, parentLanguage === 'pa' ? 'pa' : 'hi', [
+    await sendTemplateMessage(parentPhone, ABSENCE_TEMPLATE_NAME, 'en', [
       studentName,
     ]);
   } catch (err) {
