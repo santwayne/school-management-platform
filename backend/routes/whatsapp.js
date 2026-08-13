@@ -1,9 +1,10 @@
 import express from 'express';
 import crypto from 'crypto';
+import axios from 'axios';
 import { webhookLimiter } from '../middleware/rateLimit.js';
 import pool from '../config/db.js';
 import { generateAIHint, tagDoubtChapter, extractCashSlip, extractExpenseSlip, extractDoubtImage } from '../services/aiService.js';
-import { sendTextMessage, downloadMedia } from '../services/whatsappService.js';
+import { sendTextMessage, sendTemplateMessage, downloadMedia } from '../services/whatsappService.js';
 
 const router = express.Router();
 
@@ -37,6 +38,45 @@ function isValidMetaSignature(req) {
   if (expected.length !== provided.length) return false;
   return crypto.timingSafeEqual(expected, provided);
 }
+
+// Debug: list templates and their approval status for the current WABA.
+// Hit GET /api/whatsapp/debug-templates to see which templates are Active vs In Review.
+router.get('/debug-templates', async (req, res) => {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  if (!token || !phoneId) return res.status(500).json({ error: 'WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID not set' });
+
+  try {
+    // Resolve phone number → WABA id
+    const phoneRes = await axios.get(`https://graph.facebook.com/v21.0/${phoneId}`, {
+      params: { fields: 'name,verified_name,display_phone_number,status,quality_rating', access_token: token },
+    });
+    // List templates via the business account associated with the token
+    const wabaRes = await axios.get(`https://graph.facebook.com/v21.0/${phoneId}/message_templates`, {
+      params: { access_token: token, limit: 50 },
+    }).catch(() => null);
+
+    res.json({
+      phone_number_info: phoneRes.data,
+      templates: wabaRes ? wabaRes.data : 'Could not fetch templates (token may lack whatsapp_business_management permission)',
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data || err.message });
+  }
+});
+
+// Debug: send hello_world (always-approved) to a number to confirm the pipeline works.
+// POST /api/whatsapp/debug-send  { "to": "919876543210" }
+router.post('/debug-send', async (req, res) => {
+  const { to } = req.body;
+  if (!to) return res.status(400).json({ error: 'to is required' });
+  try {
+    const result = await sendTemplateMessage(to, 'hello_world', 'en_US', []);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data || err.message });
+  }
+});
 
 // Meta webhook verification handshake (required once, when you register
 // the callback URL in the WhatsApp Business app dashboard).
