@@ -1,6 +1,5 @@
 import express from 'express';
 import crypto from 'crypto';
-import axios from 'axios';
 import { webhookLimiter } from '../middleware/rateLimit.js';
 import pool from '../config/db.js';
 import { generateAIHint, tagDoubtChapter, extractCashSlip, extractExpenseSlip, extractDoubtImage } from '../services/aiService.js';
@@ -187,20 +186,5 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
   }
 });
 
-// ONE-TIME DEBUG: lists templates in the developer WABA + tries to create student_absence_alert
-router.get('/debug-waba', async (req, res) => {
-  const WABA_ID = '13368756818137863';
-  const token = process.env.WHATSAPP_ACCESS_TOKEN;
-  try {
-    // List existing templates
-    const listRes = await axios.get(
-      `https://graph.facebook.com/v21.0/${WABA_ID}/message_templates?limit=20`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    res.json({ waba_id: WABA_ID, templates: listRes.data });
-  } catch (err) {
-    res.json({ success: false, status: err.response?.status, error: err.response?.data });
-  }
-});
 
 export default router;
