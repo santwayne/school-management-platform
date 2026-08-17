@@ -142,7 +142,7 @@ function Audiences() {
       </div>
       <div className="mt-14 grid lg:grid-cols-2 gap-6">
         <article className="rounded-3xl overflow-hidden border border-cream-deep bg-white">
-          <img src={parentImg} alt="A parent smiling at her phone at home" loading="lazy" className="w-full h-72 object-cover" />
+          <img src={parentImg} alt="A parent smiling at her phone at home" loading="lazy" className="w-full aspect-[5/6] object-cover" />
           <div className="p-8">
             <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">For parents</p>
             <h3 className="mt-2 font-display text-2xl font-semibold text-ink">Never miss a moment of their day.</h3>
@@ -152,7 +152,7 @@ function Audiences() {
           </div>
         </article>
         <article className="rounded-3xl overflow-hidden border border-cream-deep bg-white">
-          <img src={schoolImg} alt="A principal standing in a bright school hallway" loading="lazy" className="w-full h-72 object-cover" />
+          <img src={schoolImg} alt="A principal standing in a bright school hallway" loading="lazy" className="w-full aspect-[900/986] object-cover" />
           <div className="p-8">
             <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">For schools</p>
             <h3 className="mt-2 font-display text-2xl font-semibold text-ink">Run your school with grace, not spreadsheets.</h3>
