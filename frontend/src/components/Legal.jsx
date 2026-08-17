@@ -24,6 +24,9 @@ function LegalSection({ section }) {
   return (
     <section id={section.id} className="scroll-mt-28 py-10 border-b border-cream-deep last:border-0">
       <h2 className="font-display text-2xl md:text-3xl font-semibold tracking-tight text-ink">{section.title}</h2>
+      {section.lastUpdated && (
+        <p className="mt-1 text-xs text-ink-soft/70 italic">Last updated: {section.lastUpdated}</p>
+      )}
       <div className="mt-6 space-y-8">
         {section.subsections.map((sub, i) => (
           <div key={i}>

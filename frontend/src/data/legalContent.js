@@ -5,6 +5,7 @@
 export const LEGAL_SECTIONS = [
   {
     "title": "1. Terms & Conditions",
+    "lastUpdated": "17 August 2026",
     "subsections": [
       {
         "title": "",
@@ -194,6 +195,7 @@ export const LEGAL_SECTIONS = [
   },
   {
     "title": "2. Privacy Policy",
+    "lastUpdated": "17 August 2026",
     "subsections": [
       {
         "title": "",
@@ -403,6 +405,7 @@ export const LEGAL_SECTIONS = [
   },
   {
     "title": "3. Refund & Cancellation Policy",
+    "lastUpdated": "17 August 2026",
     "subsections": [
       {
         "title": "3.1 Subscription Cancellation",
@@ -479,6 +482,7 @@ export const LEGAL_SECTIONS = [
   },
   {
     "title": "4. Cookie Policy",
+    "lastUpdated": "17 August 2026",
     "subsections": [
       {
         "title": "",
@@ -557,6 +561,7 @@ export const LEGAL_SECTIONS = [
   },
   {
     "title": "5. Acceptable Use Policy",
+    "lastUpdated": "17 August 2026",
     "subsections": [
       {
         "title": "",
@@ -644,6 +649,7 @@ export const LEGAL_SECTIONS = [
   },
   {
     "title": "6. SaaS Agreement (Summary Terms)",
+    "lastUpdated": "17 August 2026",
     "subsections": [
       {
         "title": "",
@@ -783,6 +789,7 @@ export const LEGAL_SECTIONS = [
   },
   {
     "title": "7. Contact & Grievance Information",
+    "lastUpdated": "17 August 2026",
     "subsections": [
       {
         "title": "",
@@ -800,7 +807,7 @@ export const LEGAL_SECTIONS = [
             "type": "ul",
             "items": [
               "Email: [support@wayneesolutions.com]",
-              "Phone: [+91-XXXXXXXXXX]",
+              "Phone: +91 83600 98455",
               "Hours: [Mon--Sat, 10 AM -- 7 PM IST]"
             ]
           }
