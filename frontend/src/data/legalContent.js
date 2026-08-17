@@ -823,15 +823,11 @@ export const LEGAL_SECTIONS = [
           {
             "type": "ul",
             "items": [
-              "Name: [Grievance Officer Name]",
-              "Designation[: [Title]]",
+              "Name: Pankaj Kumar",
+              "Designation: Founder & Director",
               "Email: [grievance@wayneesolutions.com]",
-              "Address: [[Registered Office Address, Ludhiana, Punjab,"
+              "Address: [Registered Office Address, Ludhiana, Punjab, India]"
             ]
-          },
-          {
-            "type": "p",
-            "text": "India]]"
           },
           {
             "type": "ul",
@@ -857,16 +853,7 @@ export const LEGAL_SECTIONS = [
             "type": "ul",
             "items": [
               "Company: Wayne E Solutions",
-              "Registered Address[: [Full Address, Ludhiana, Punjab,"
-            ]
-          },
-          {
-            "type": "p",
-            "text": "India]]"
-          },
-          {
-            "type": "ul",
-            "items": [
+              "Registered Address: [Full Address, Ludhiana, Punjab, India]",
               "GSTIN: [GSTIN if applicable]",
               "CIN/Business Registration No.: [If applicable]"
             ]
