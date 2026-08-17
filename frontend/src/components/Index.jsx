@@ -368,8 +368,8 @@ function Testimonial() {
 // role lines with real bios whenever you're ready.
 function Founders() {
   const team = [
-    { initials: 'PA', name: 'Pankaj Kumar', role: 'Founder & Director' },
-    { initials: 'PV', name: 'Pavnoor Kaur', role: 'Co-founder' },
+    { initials: 'PK', name: 'Pankaj Kumar', role: 'Founder & Director' },
+    { initials: 'PN', name: 'Pavnoor Kaur', role: 'Co-founder' },
   ];
   return (
     <section className="mx-auto max-w-7xl px-6 py-24">

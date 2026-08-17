@@ -6,11 +6,11 @@ import { LandingNav, LandingFooter } from './LandingLayout';
 // Real team, generic titles only — no fabricated career claims. Update the
 // role lines with real bios whenever you're ready.
 const TEAM = [
-  { initials: 'PA', name: 'Pankaj Kumar', role: 'Founder & Director' },
-  { initials: 'PV', name: 'Pavnoor Kaur', role: 'Co-founder' },
-  { initials: 'PI', name: 'Piyush Mehndiratta', role: 'Marketing Head' },
-  { initials: 'SU', name: 'Surbhi Mehndiratta', role: 'Graphic Designer' },
-  { initials: 'BA', name: 'Baljeet Kaur', role: 'Graphic Designer' },
+  { initials: 'PK', name: 'Pankaj Kumar', role: 'Founder & Director' },
+  { initials: 'PN', name: 'Pavnoor Kaur', role: 'Co-founder' },
+  { initials: 'PM', name: 'Piyush Mehndiratta', role: 'Marketing Head' },
+  { initials: 'SM', name: 'Surbhi Mehndiratta', role: 'Graphic Designer' },
+  { initials: 'BK', name: 'Baljeet Kaur', role: 'Graphic Designer' },
 ];
 
 export default function Team() {
