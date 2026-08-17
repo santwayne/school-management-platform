@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import heroImg from '../assets/hero-classroom.jpg';
 import parentImg from '../assets/parent.jpg';
-import schoolImg from '../assets/school.jpg';
+import schoolImg from '../assets/school-principal.jpg';
 import { LandingNav, LandingFooter } from './LandingLayout';
 
 function Hero() {
@@ -370,7 +370,7 @@ function Founders() {
   const team = [
     { initials: 'PT', name: 'Pankaj', role: 'Founder & Director' },
     { initials: 'N', name: 'Noor', role: 'Co-founder' },
-    { initials: 'S', name: 'Sant', role: 'Engineering' },
+    { initials: 'A', name: 'Arpan', role: 'Engineering' },
   ];
   return (
     <section className="mx-auto max-w-7xl px-6 py-24">
@@ -384,6 +384,9 @@ function Founders() {
             We're building the school system we wish our own children had — warm, WhatsApp-first,
             and quietly powered by AI.
           </p>
+          <Link to="/team" className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-terracotta hover:text-terracotta-deep transition">
+            Meet the full team <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
         <div className="grid sm:grid-cols-3 gap-4">
           {team.map((m) => (
