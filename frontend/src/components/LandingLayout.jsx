@@ -1,6 +1,5 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import logoMark from '../assets/waynur-mark.png';
 import logoFull from '../assets/waynur-logo.png';
 
 export function LandingNav() {
@@ -8,8 +7,7 @@ export function LandingNav() {
     <header className="sticky top-0 z-30 bg-cream/85 backdrop-blur border-b border-cream-deep/60">
       <div className="mx-auto max-w-7xl px-6 h-16 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2">
-          <img src={logoMark} alt="Waynur logo" className="h-9 w-9 object-contain" />
-          <span className="font-display text-lg font-semibold text-ink">Waynur</span>
+          <img src={logoFull} alt="Waynur" className="h-10 w-auto object-contain" />
         </Link>
         <nav className="hidden md:flex items-center gap-8 text-sm text-ink-soft">
           <a href="/#features" target="_blank" rel="noopener noreferrer" className="hover:text-ink transition">Features</a>
