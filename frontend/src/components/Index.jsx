@@ -368,9 +368,8 @@ function Testimonial() {
 // role lines with real bios whenever you're ready.
 function Founders() {
   const team = [
-    { initials: 'PT', name: 'Pankaj', role: 'Founder & Director' },
-    { initials: 'N', name: 'Noor', role: 'Co-founder' },
-    { initials: 'A', name: 'Arpan', role: 'Engineering' },
+    { initials: 'PA', name: 'Pankaj Kumar', role: 'Founder & Director' },
+    { initials: 'PV', name: 'Pavnoor Kaur', role: 'Co-founder' },
   ];
   return (
     <section className="mx-auto max-w-7xl px-6 py-24">
@@ -388,7 +387,7 @@ function Founders() {
             Meet the full team <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
-        <div className="grid sm:grid-cols-3 gap-4">
+        <div className="grid sm:grid-cols-2 gap-4">
           {team.map((m) => (
             <div key={m.name} className="rounded-3xl border border-cream-deep bg-white p-6 text-center">
               <div className="mx-auto h-16 w-16 rounded-full bg-gradient-to-br from-terracotta to-terracotta-deep grid place-items-center text-white font-display text-xl font-semibold">
