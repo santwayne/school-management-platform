@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import heroImg from '../assets/hero-classroom.jpg';
 import parentImg from '../assets/parent.jpg';
-import schoolImg from '../assets/school.jpg';
+import schoolImg from '../assets/school-principal.jpg';
 import { LandingNav, LandingFooter } from './LandingLayout';
 
 function Hero() {
@@ -142,7 +142,7 @@ function Audiences() {
       </div>
       <div className="mt-14 grid lg:grid-cols-2 gap-6">
         <article className="rounded-3xl overflow-hidden border border-cream-deep bg-white">
-          <img src={parentImg} alt="A parent smiling at her phone at home" loading="lazy" className="w-full h-72 object-cover" />
+          <img src={parentImg} alt="A parent smiling at her phone at home" loading="lazy" className="w-full aspect-[5/6] object-cover" />
           <div className="p-8">
             <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">For parents</p>
             <h3 className="mt-2 font-display text-2xl font-semibold text-ink">Never miss a moment of their day.</h3>
@@ -152,7 +152,7 @@ function Audiences() {
           </div>
         </article>
         <article className="rounded-3xl overflow-hidden border border-cream-deep bg-white">
-          <img src={schoolImg} alt="A principal standing in a bright school hallway" loading="lazy" className="w-full h-72 object-cover" />
+          <img src={schoolImg} alt="A principal standing in a bright school hallway" loading="lazy" className="w-full aspect-[900/986] object-cover" />
           <div className="p-8">
             <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">For schools</p>
             <h3 className="mt-2 font-display text-2xl font-semibold text-ink">Run your school with grace, not spreadsheets.</h3>
@@ -370,7 +370,7 @@ function Founders() {
   const team = [
     { initials: 'PT', name: 'Pankaj', role: 'Founder & Director' },
     { initials: 'N', name: 'Noor', role: 'Co-founder' },
-    { initials: 'S', name: 'Sant', role: 'Engineering' },
+    { initials: 'A', name: 'Arpan', role: 'Engineering' },
   ];
   return (
     <section className="mx-auto max-w-7xl px-6 py-24">
@@ -384,6 +384,9 @@ function Founders() {
             We're building the school system we wish our own children had — warm, WhatsApp-first,
             and quietly powered by AI.
           </p>
+          <Link to="/team" className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-terracotta hover:text-terracotta-deep transition">
+            Meet the full team <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
         <div className="grid sm:grid-cols-3 gap-4">
           {team.map((m) => (

@@ -17,6 +17,8 @@ import SyllabusManager from './components/SyllabusManager';
 import ManageSchool from './components/ManageSchool';
 import Onboarding from './components/Onboarding';
 import Index from './components/Index';
+import Team from './components/Team';
+import Legal from './components/Legal';
 import TeacherWhatsAppDemo from './components/TeacherWhatsAppDemo';
 import SuperAdminBilling from './components/SuperAdminBilling';
 import AdminAttendance from './components/AdminAttendance';
@@ -92,6 +94,8 @@ function AppRoutes() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Index />} />
+        <Route path="/team" element={<Team />} />
+        <Route path="/legal" element={<Legal />} />
         <Route path="/demo/teacher-whatsapp" element={<TeacherWhatsAppDemo />} />
         <Route path="/login" element={<Login />} />
         <Route path="/onboarding" element={<Onboarding />} />
