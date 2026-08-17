@@ -19,6 +19,9 @@ import Onboarding from './components/Onboarding';
 import Index from './components/Index';
 import Team from './components/Team';
 import Legal from './components/Legal';
+import Features from './components/Features';
+import Pricing from './components/Pricing';
+import Faq from './components/Faq';
 import TeacherWhatsAppDemo from './components/TeacherWhatsAppDemo';
 import SuperAdminBilling from './components/SuperAdminBilling';
 import AdminAttendance from './components/AdminAttendance';
@@ -96,6 +99,9 @@ function AppRoutes() {
         <Route path="/" element={<Index />} />
         <Route path="/team" element={<Team />} />
         <Route path="/legal" element={<Legal />} />
+        <Route path="/features" element={<Features />} />
+        <Route path="/pricing" element={<Pricing />} />
+        <Route path="/faq" element={<Faq />} />
         <Route path="/demo/teacher-whatsapp" element={<TeacherWhatsAppDemo />} />
         <Route path="/login" element={<Login />} />
         <Route path="/onboarding" element={<Onboarding />} />

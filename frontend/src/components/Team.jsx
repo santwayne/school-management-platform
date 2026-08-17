@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { LandingNav, LandingFooter } from './LandingLayout';
 
 // Real team, generic titles only — no fabricated career claims. Update the
@@ -50,9 +51,9 @@ export default function Team() {
         <div className="mt-14 rounded-[2rem] bg-gradient-to-br from-terracotta to-terracotta-deep text-white p-10 md:p-14 text-center">
           <h2 className="font-display text-3xl md:text-4xl font-semibold tracking-tight">Want to talk to us directly?</h2>
           <p className="mt-3 text-white/85 max-w-xl mx-auto">We're happy to walk you through Waynur, plan by plan.</p>
-          <a href="/#pricing" target="_blank" rel="noopener noreferrer" className="mt-7 inline-flex items-center gap-2 rounded-full bg-white text-terracotta-deep px-6 py-3.5 text-sm font-semibold shadow-md hover:scale-[1.03] transition-transform">
+          <Link to="/pricing" className="mt-7 inline-flex items-center gap-2 rounded-full bg-white text-terracotta-deep px-6 py-3.5 text-sm font-semibold shadow-md hover:scale-[1.03] transition-transform">
             See pricing <ArrowRight className="h-4 w-4" />
-          </a>
+          </Link>
         </div>
       </section>
       <LandingFooter />
