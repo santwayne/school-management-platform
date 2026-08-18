@@ -1482,3 +1482,58 @@ SELECT NULL, 'staff_leave_pending_reminder', 'both', 'Staff Leave Pending Remind
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'staff_leave_pending_reminder'
 );
+
+-- ---------- Automated "what am I teaching next" reminder for teachers ----------
+-- NOTE: there is already a workers/dailyGuidanceWorker.js + GuidanceQueue
+-- ("daily what to teach today nudge") — but reading it closely, it is NOT
+-- what this feature needs and appears to be effectively dead in practice
+-- today: it joins class_subject_teachers.subject_id (an INT, the real
+-- subjects.id) to syllabus_calendar.subject_id (a free-text curriculum
+-- code like "MATH101" — see SyllabusManager.jsx's own CSV template) via
+-- `cst.subject_id::text = sc.subject_id`, which only matches if a school
+-- happens to type the literal numeric subjects.id into that free-text
+-- field instead of a code, which the UI itself doesn't ask for or expect.
+-- That's a pre-existing bug found while reading this code for this
+-- feature, left as-is (not what was asked here — flagged in SUMMARY.md).
+-- It's also daily, not period-aware, so it wouldn't meet "reminded before
+-- MY period starts" even if the join worked.
+--
+-- Rather than route through syllabus_calendar's unreliable identity, this
+-- feature is built on the two properly-typed data sources: timetable_slots
+-- (real subjects.id, real start_time/day_of_week) for WHEN + WHAT CLASS,
+-- and lesson_plans (also real subjects.id, has plan_date and an optional
+-- timetable_slot_id link) for the topic, when a teacher has actually
+-- logged one for today. There is no reliable "current chapter" pointer
+-- anywhere in this schema that's safe to join automatically — see the
+-- syllabus_calendar note above — so when no matching lesson plan exists,
+-- the reminder is scoped down to just class + subject + time, with no
+-- fabricated chapter name. A real "current chapter per class+subject"
+-- pointer (settable by the teacher/principal, keyed on the real
+-- subjects.id) is the natural follow-up once this data model gap is
+-- addressed on purpose rather than worked around.
+--
+-- One row per (teacher, timetable_slot, day) so a period only ever
+-- triggers one reminder, even though the worker's poll window (next 15
+-- min) overlaps across consecutive 10-minute poll runs by design.
+CREATE TABLE IF NOT EXISTS teaching_reminder_log (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    timetable_slot_id INT NOT NULL REFERENCES timetable_slots(id) ON DELETE CASCADE,
+    class_date DATE NOT NULL,
+    notified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (teacher_id, timetable_slot_id, class_date)
+);
+CREATE INDEX IF NOT EXISTS idx_teaching_reminder_log_school ON teaching_reminder_log(school_id);
+
+-- Teachers already receive automated WhatsApp via the shared
+-- NotificationService's 'staff' recipient type (teachers.whatsapp_number /
+-- whatsapp_opt_in_status — same channel used for petty_cash_pending_reminder
+-- and payroll alerts), so this reuses it rather than assuming a new channel.
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'upcoming_class_reminder', 'both', 'Upcoming Class Reminder',
+       'upcoming_class_alert', '["class_name","subject_name","topic"]'::jsonb,
+       'Upcoming class', '{{class_name}} — {{subject_name}} starting soon. {{topic}}', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'upcoming_class_reminder'
+);

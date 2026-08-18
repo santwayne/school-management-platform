@@ -1,4 +1,4 @@
-import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue } from '../config/queue.js';
+import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue } from '../config/queue.js';
 
 // The worker only reacts to jobs that land on GuidanceQueue — nothing put
 // any there before. This registers a repeatable job so it actually fires
@@ -88,6 +88,24 @@ export async function scheduleStaffLeaveReminders() {
     }
   );
   console.log('Daily staff leave reminder job scheduled.');
+}
+
+// Polls every ~10 min for timetable periods about to start and reminds the
+// assigned teacher — see workers/teachingReminderWorker.js for why this
+// polls timetable_slots/lesson_plans instead of extending the existing
+// (daily, not period-aware, and — per schema.sql's note — effectively
+// broken today) GuidanceQueue/dailyGuidanceWorker.js.
+export async function scheduleTeachingReminders() {
+  await teachingReminderQueue.add(
+    'checkUpcomingClasses',
+    {},
+    {
+      repeat: { every: 10 * 60 * 1000 },
+      removeOnComplete: true,
+      jobId: 'teaching-reminder-poll',
+    }
+  );
+  console.log('Upcoming-class teacher reminder polling job scheduled.');
 }
 
 // Polls pull-based-vendor buses every 30s for their current location.

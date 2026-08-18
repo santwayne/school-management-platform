@@ -38,5 +38,10 @@ export const pettyCashReminderQueue = new Queue('PettyCashReminderQueue', { conn
 // nudge to the principal when a leave request has sat pending too long.
 export const staffLeaveReminderQueue = new Queue('StaffLeaveReminderQueue', { connection });
 
+// Teaching reminder queue: polls every ~10 min for periods about to start
+// and reminds the assigned teacher (class + subject + today's lesson plan
+// topic, if logged) — see workers/teachingReminderWorker.js.
+export const teachingReminderQueue = new Queue('TeachingReminderQueue', { connection });
+
 // How long to wait for a parent reply before escalating to a voice call (ms)
 export const ESCALATION_DELAY_MS = Number(process.env.ESCALATION_DELAY_MS || 2 * 60 * 60 * 1000); // default 2 hrs
