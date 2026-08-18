@@ -310,17 +310,17 @@ router.delete('/classes/:id', requireAuth, requirePrincipal, async (req, res) =>
   }
 });
 
-// Teachers/Accountants — create with a real login (email + password), edit,
-// delete. role defaults to 'teacher'; 'accountant' is also allowed since
-// this is the only place staff accounts get created. Deliberately does NOT
-// allow creating role='principal' through this endpoint — that's a higher-
-// trust action than adding regular staff.
+// Teachers/Accountants/Librarians — create with a real login (email +
+// password), edit, delete. role defaults to 'teacher'; 'accountant' and
+// 'librarian' are also allowed since this is the only place staff accounts
+// get created. Deliberately does NOT allow creating role='principal' through
+// this endpoint — that's a higher-trust action than adding regular staff.
 router.post('/teachers', requireAuth, requirePrincipal, async (req, res) => {
   const { name, email, phone, password, role } = req.body;
   if (!name || !email || !phone || !password) {
     return res.status(400).json({ error: 'name, email, phone and password are all required' });
   }
-  const finalRole = role === 'accountant' ? 'accountant' : 'teacher';
+  const finalRole = ['accountant', 'librarian'].includes(role) ? role : 'teacher';
   try {
     const password_hash = await bcrypt.hash(password, 10);
     const result = await pool.query(

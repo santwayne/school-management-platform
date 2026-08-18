@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS teachers (
     email VARCHAR(255) UNIQUE NOT NULL,
     phone VARCHAR(20) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(20) NOT NULL DEFAULT 'teacher', -- 'teacher' | 'principal'
+    role VARCHAR(20) NOT NULL DEFAULT 'teacher', -- 'teacher' | 'principal' | 'accountant' | 'librarian'
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

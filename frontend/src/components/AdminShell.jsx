@@ -139,6 +139,15 @@ function NotificationBell() {
   );
 }
 
+// Librarian accounts are principal-created staff scoped to just the Library
+// (see requireLibrary in backend/middleware/auth.js) — every other item
+// below sits behind principalOnly/teacherOrPrincipalOnly route guards a
+// librarian can't pass, so showing the full admin NAV to them would just be
+// a sidebar full of dead links.
+const LIBRARIAN_NAV = [
+  { label: 'Library', icon: BookOpen, to: '/admin/library' },
+];
+
 const NAV = [
   { label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
   { label: 'Attendance', icon: CalendarCheck2, to: '/admin/attendance' },
@@ -182,6 +191,7 @@ export default function AdminShell({ children }) {
   }, []);
 
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const navItems = user?.role === 'librarian' ? LIBRARIAN_NAV : NAV;
 
   return (
     <div className="flex min-h-screen bg-cream text-ink font-sans">
@@ -191,7 +201,7 @@ export default function AdminShell({ children }) {
           <span className="font-display text-xl text-ink">Waynur</span>
         </div>
         <nav className="sidebar-scroll flex flex-col gap-1 flex-1 overflow-y-auto pr-1">
-          {NAV.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.to;
             return (

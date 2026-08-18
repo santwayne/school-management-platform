@@ -83,6 +83,7 @@ function homeFor(role) {
   if (role === 'student') return '/student';
   if (role === 'super_admin') return '/super-admin';
   if (role === 'accountant') return '/accountant';
+  if (role === 'librarian') return '/admin/library';
   return '/teacher';
 }
 
@@ -131,7 +132,7 @@ function AppRoutes() {
         <Route path="/admin/timetable" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminTimetable)}</ProtectedRoute>} />
         <Route path="/admin/lesson-plans" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminLessonPlans)}</ProtectedRoute>} />
         <Route path="/admin/events" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminEventCalendar)}</ProtectedRoute>} />
-        <Route path="/admin/library" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminLibrary)}</ProtectedRoute>} />
+        <Route path="/admin/library" element={<ProtectedRoute libraryOnly>{inShell(AdminShell, AdminLibrary)}</ProtectedRoute>} />
         <Route path="/admin/students/:studentId/profile" element={<ProtectedRoute teacherOrPrincipalOnly>{inShell(AdminShell, StudentProfile)}</ProtectedRoute>} />
         <Route path="/admin/transport/payouts" element={<ProtectedRoute principalOnly>{inShell(AdminShell, TransportPayouts)}</ProtectedRoute>} />
         <Route path="/admin/activities" element={<ProtectedRoute teacherOrPrincipalOnly>{inShell(AdminShell, AdminActivities)}</ProtectedRoute>} />

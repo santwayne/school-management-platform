@@ -79,3 +79,14 @@ export function requireFinance(req, res, next) {
   }
   next();
 }
+
+// Restricts a route to principal OR librarian — same shape as requireFinance,
+// used by the library routes (routes/library.js) now that a dedicated
+// Librarian role exists instead of every catalog/issue/return action needing
+// the Principal's own credentials.
+export function requireLibrary(req, res, next) {
+  if (!req.user || (req.user.role !== 'principal' && req.user.role !== 'librarian')) {
+    return res.status(403).json({ error: 'Principal or Librarian role required' });
+  }
+  next();
+}

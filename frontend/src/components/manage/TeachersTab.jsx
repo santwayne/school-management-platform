@@ -131,6 +131,7 @@ export default function TeachersTab() {
                 <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-cream-deep text-sm">
                   <option value="teacher">Teacher</option>
                   <option value="accountant">Accountant</option>
+                  <option value="librarian">Librarian</option>
                 </select>
               )}
               {modal === 'add' && (
