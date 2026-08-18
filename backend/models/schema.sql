@@ -1537,3 +1537,23 @@ SELECT NULL, 'upcoming_class_reminder', 'both', 'Upcoming Class Reminder',
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'upcoming_class_reminder'
 );
+
+-- ---------- Staff-leave decision notification (audit candidate #1, built) ----------
+-- routes/staffLeave.js's PUT /requests/:id (approve/reject) sent no
+-- notification to the requesting teacher in either direction before this
+-- — confirmed by reading the route, not assumed. One trigger_event for
+-- both outcomes (status is a template variable) rather than two separate
+-- events, matching the same "one event, vary content via variables"
+-- pattern as library_book_reminder's status_label — DECISION MADE WITHOUT
+-- ASKING (see SUMMARY.md's "Decisions made without asking" section): kept
+-- as one event instead of splitting into staff_leave_approved /
+-- staff_leave_rejected, since a school customizing notification copy would
+-- otherwise have to configure two near-identical template rows for what
+-- is really one event with two outcomes.
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'staff_leave_decision', 'both', 'Staff Leave Decision',
+       'staff_leave_decision_alert', '["leave_type","status","start_date","end_date"]'::jsonb,
+       'Leave request {{status}}', 'Your {{leave_type}} leave request ({{start_date}} to {{end_date}}) has been {{status}}.', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'staff_leave_decision'
+);

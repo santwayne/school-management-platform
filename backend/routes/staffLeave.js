@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
+import { send as sendNotification } from '../services/notificationService.js';
 
 const router = express.Router();
 
@@ -166,6 +167,26 @@ router.put('/requests/:id', requireAuth, requirePrincipal, async (req, res) => {
 
     await client.query('COMMIT');
     res.json(updated[0]);
+
+    // Fire-and-forget, after commit — same "respond first, notify after"
+    // shape as paymentLinks.js's webhook, so a slow/failed WhatsApp send
+    // never risks the approval/rejection transaction itself. Neither
+    // direction notified the teacher at all before this (found while
+    // auditing this file for the pending-reminder worker) — this closes
+    // that gap for the decision itself.
+    sendNotification({
+      triggerEvent: 'staff_leave_decision',
+      schoolId: req.user.school_id,
+      recipients: [{ type: 'staff', teacherId: leaveReq.teacher_id }],
+      variables: {
+        status: status === 'APPROVED' ? 'approved' : 'rejected',
+        leave_type: leaveReq.leave_type,
+        start_date: leaveReq.start_date instanceof Date ? leaveReq.start_date.toISOString().slice(0, 10) : String(leaveReq.start_date),
+        end_date: leaveReq.end_date instanceof Date ? leaveReq.end_date.toISOString().slice(0, 10) : String(leaveReq.end_date),
+      },
+    }).catch((notifyErr) => {
+      console.error('staff_leave_decision notification failed:', notifyErr.message);
+    });
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
