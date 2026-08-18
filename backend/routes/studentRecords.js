@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
 import { send as sendNotification } from '../services/notificationService.js';
+import { normalizePhone } from '../utils/phone.js';
 
 const router = express.Router();
 
@@ -63,25 +64,35 @@ router.post('/bulk-upsert', requireAuth, requirePrincipal, async (req, res) => {
     }
 
     try {
-      // Resolve/attach a parent record if phone was supplied.
+      // Resolve/attach a parent record if phone was supplied. An
+      // unrecognizable phone (see utils/phone.js) doesn't fail the row —
+      // the student still gets created, just without a parent linked, and
+      // it's flagged with a warning so the admin can go fix the source data
+      // rather than the phone silently getting stored wrong (and WhatsApp
+      // sends to it silently failing later).
       let parentId = null;
+      let phoneWarning = null;
       if (row.parent_phone) {
-        const phone = String(row.parent_phone).trim();
-        const existingParent = await pool.query(
-          'SELECT id FROM parents WHERE school_id = $1 AND phone = $2',
-          [schoolId, phone]
-        );
-        if (existingParent.rowCount > 0) {
-          parentId = existingParent.rows[0].id;
-          if (row.parent_name) {
-            await pool.query('UPDATE parents SET name = $1 WHERE id = $2', [row.parent_name.trim(), parentId]);
-          }
+        const phone = normalizePhone(row.parent_phone);
+        if (!phone) {
+          phoneWarning = `Could not recognize parent_phone "${row.parent_phone}" as a valid number — no parent was linked.`;
         } else {
-          const newParent = await pool.query(
-            `INSERT INTO parents (school_id, name, phone) VALUES ($1, $2, $3) RETURNING id`,
-            [schoolId, (row.parent_name || `Parent of ${name}`).trim(), phone]
+          const existingParent = await pool.query(
+            'SELECT id FROM parents WHERE school_id = $1 AND phone = $2',
+            [schoolId, phone]
           );
-          parentId = newParent.rows[0].id;
+          if (existingParent.rowCount > 0) {
+            parentId = existingParent.rows[0].id;
+            if (row.parent_name) {
+              await pool.query('UPDATE parents SET name = $1 WHERE id = $2', [row.parent_name.trim(), parentId]);
+            }
+          } else {
+            const newParent = await pool.query(
+              `INSERT INTO parents (school_id, name, phone) VALUES ($1, $2, $3) RETURNING id`,
+              [schoolId, (row.parent_name || `Parent of ${name}`).trim(), phone]
+            );
+            parentId = newParent.rows[0].id;
+          }
         }
       }
 
@@ -125,7 +136,7 @@ router.post('/bulk-upsert', requireAuth, requirePrincipal, async (req, res) => {
           [name, classId, row.grade || null, parentId, existing.id, schoolId]
         );
         updated++;
-        results.push({ row_number: rowNumber, status: 'updated', student: updateRes.rows[0] });
+        results.push({ row_number: rowNumber, status: 'updated', student: updateRes.rows[0], warning: phoneWarning || undefined });
       } else {
         const randHex = Math.random().toString(36).substring(2, 6).toUpperCase();
         const loginId = `STD-${schoolId}-${randHex}`;
@@ -138,7 +149,7 @@ router.post('/bulk-upsert', requireAuth, requirePrincipal, async (req, res) => {
           [schoolId, classId, name, row.grade || null, loginId, pinHash, parentId]
         );
         created++;
-        results.push({ row_number: rowNumber, status: 'created', student: { ...insertRes.rows[0], defaultPin } });
+        results.push({ row_number: rowNumber, status: 'created', student: { ...insertRes.rows[0], defaultPin }, warning: phoneWarning || undefined });
 
         // Parents have no web login (see schema.sql's Unified Notification
         // Service comment) — WhatsApp is the only way they ever see their

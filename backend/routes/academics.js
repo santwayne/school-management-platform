@@ -2,6 +2,7 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
+import { normalizePhone } from '../utils/phone.js';
 
 const router = express.Router();
 
@@ -182,8 +183,11 @@ router.post('/students/bulk', requireAuth, requirePrincipal, async (req, res) =>
       if (!student.name || student.name.trim() === '') continue;
 
       let parentId = null;
-      if (student.parent_phone) {
-        const phone = student.parent_phone.trim();
+      // Invalid/unrecognizable phone (see utils/phone.js) doesn't fail the
+      // whole row — the student still gets created, just without a parent
+      // linked, same as if parent_phone had been left blank.
+      const phone = student.parent_phone ? normalizePhone(student.parent_phone) : null;
+      if (phone) {
         // parents has no unique constraint on (school_id, phone) and name is
         // NOT NULL, so look up first rather than relying on ON CONFLICT.
         const existingParent = await client.query(
@@ -320,13 +324,17 @@ router.post('/teachers', requireAuth, requirePrincipal, async (req, res) => {
   if (!name || !email || !phone || !password) {
     return res.status(400).json({ error: 'name, email, phone and password are all required' });
   }
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) {
+    return res.status(400).json({ error: 'phone must be a valid Indian mobile number (10 digits, optionally with +91)' });
+  }
   const finalRole = ['accountant', 'librarian'].includes(role) ? role : 'teacher';
   try {
     const password_hash = await bcrypt.hash(password, 10);
     const result = await pool.query(
       `INSERT INTO teachers (school_id, name, email, phone, password_hash, role)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, email, phone, role, created_at`,
-      [req.user.school_id, name, email, phone, password_hash, finalRole]
+      [req.user.school_id, name, email, normalizedPhone, password_hash, finalRole]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -337,6 +345,17 @@ router.post('/teachers', requireAuth, requirePrincipal, async (req, res) => {
 
 router.patch('/teachers/:id', requireAuth, requirePrincipal, async (req, res) => {
   const { name, phone } = req.body;
+  // Only normalize/validate when phone was actually provided — leave it
+  // COALESCE'd to the existing value otherwise. A provided-but-unparseable
+  // phone is rejected outright rather than silently falling back to
+  // COALESCE's "keep the old value", which would look like a no-op save.
+  let normalizedPhone;
+  if (phone !== undefined) {
+    normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone) {
+      return res.status(400).json({ error: 'phone must be a valid Indian mobile number (10 digits, optionally with +91)' });
+    }
+  }
   try {
     // No role restriction here — this route is already Principal-gated,
     // and a Principal legitimately needs to edit Teacher, Accountant, and
@@ -348,7 +367,7 @@ router.patch('/teachers/:id', requireAuth, requirePrincipal, async (req, res) =>
     const result = await pool.query(
       `UPDATE teachers SET name = COALESCE($1, name), phone = COALESCE($2, phone)
        WHERE id = $3 AND school_id = $4 RETURNING id, name, email, phone, role`,
-      [name, phone, req.params.id, req.user.school_id]
+      [name, normalizedPhone, req.params.id, req.user.school_id]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Staff member not found' });
     res.json(result.rows[0]);
@@ -462,13 +481,17 @@ router.get('/parents', requireAuth, requirePrincipal, async (req, res) => {
 router.post('/parents', requireAuth, requirePrincipal, async (req, res) => {
   const { name, phone, preferred_language, opt_in } = req.body;
   if (!name || !phone) return res.status(400).json({ error: 'name and phone are required' });
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) {
+    return res.status(400).json({ error: 'phone must be a valid Indian mobile number (10 digits, optionally with +91)' });
+  }
   try {
     // opt_in defaults to true — the "Add parent" modal checkbox is checked by
     // default, so a principal has to make an explicit choice to uncheck it.
     const optInStatus = opt_in === false ? 'OPTED_OUT' : 'OPTED_IN';
     const result = await pool.query(
       `INSERT INTO parents (school_id, name, phone, preferred_language, opt_in_status) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [req.user.school_id, name, phone, preferred_language || 'hi', optInStatus]
+      [req.user.school_id, name, normalizedPhone, preferred_language || 'hi', optInStatus]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -479,13 +502,23 @@ router.post('/parents', requireAuth, requirePrincipal, async (req, res) => {
 router.patch('/parents/:id', requireAuth, requirePrincipal, async (req, res) => {
   const { name, phone, preferred_language, opt_in } = req.body;
   const optInStatus = opt_in === undefined ? null : (opt_in ? 'OPTED_IN' : 'OPTED_OUT');
+  // Same rule as PATCH /teachers/:id — only validate when phone was actually
+  // provided; reject outright rather than silently COALESCE-ing back to the
+  // old value on an unparseable one.
+  let normalizedPhone;
+  if (phone !== undefined) {
+    normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone) {
+      return res.status(400).json({ error: 'phone must be a valid Indian mobile number (10 digits, optionally with +91)' });
+    }
+  }
   try {
     const result = await pool.query(
       `UPDATE parents SET
          name = COALESCE($1, name), phone = COALESCE($2, phone), preferred_language = COALESCE($3, preferred_language),
          opt_in_status = COALESCE($4, opt_in_status)
        WHERE id = $5 AND school_id = $6 RETURNING *`,
-      [name, phone, preferred_language, optInStatus, req.params.id, req.user.school_id]
+      [name, normalizedPhone, preferred_language, optInStatus, req.params.id, req.user.school_id]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Parent not found' });
     res.json(result.rows[0]);

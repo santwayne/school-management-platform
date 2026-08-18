@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Search, Plus, Pencil, Trash2, X } from 'lucide-react';
 import { apiRequest } from '../../api';
+import { normalizePhone } from '../../lib/phone';
 
 export default function TeachersTab() {
   const [teachers, setTeachers] = useState([]);
@@ -36,11 +37,16 @@ export default function TeachersTab() {
 
   const save = async () => {
     setError('');
+    const normalized = normalizePhone(form.phone);
+    if (!normalized) {
+      setError('Enter a valid phone number (10 digits, optionally with +91).');
+      return;
+    }
     try {
       if (modal === 'add') {
-        await apiRequest('/api/academics/teachers', { method: 'POST', body: form });
+        await apiRequest('/api/academics/teachers', { method: 'POST', body: { ...form, phone: normalized } });
       } else {
-        await apiRequest(`/api/academics/teachers/${modal.id}`, { method: 'PATCH', body: { name: form.name, phone: form.phone } });
+        await apiRequest(`/api/academics/teachers/${modal.id}`, { method: 'PATCH', body: { name: form.name, phone: normalized } });
       }
       setModal(null);
       load();

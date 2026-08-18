@@ -220,6 +220,7 @@ export default function AdminBulkUpload() {
                       <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-2 bg-cream-deep/40">Name</th>
                       <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-2 bg-cream-deep/40">Login ID</th>
                       <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-2 bg-cream-deep/40">Status</th>
+                      <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-2 bg-cream-deep/40">Note</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-cream-deep/60">
@@ -229,6 +230,7 @@ export default function AdminBulkUpload() {
                         <td className="px-4 py-2">{r.student?.name}</td>
                         <td className="px-4 py-2 font-mono text-xs">{r.student?.login_id}</td>
                         <td className="px-4 py-2"><StatusBadge status={r.status} /></td>
+                        <td className="px-4 py-2 text-xs text-amber-700">{r.warning || ''}</td>
                       </tr>
                     ))}
                   </tbody>

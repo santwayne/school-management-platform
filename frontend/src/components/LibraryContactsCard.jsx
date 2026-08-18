@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { apiRequest } from '../api';
+import { normalizePhone } from '../lib/phone';
 
 export default function LibraryContactsCard() {
   const [contacts, setContacts] = useState([]);
@@ -27,8 +28,13 @@ export default function LibraryContactsCard() {
   const add = async () => {
     if (!name.trim() || !number.trim()) return;
     setError('');
+    const normalized = normalizePhone(number);
+    if (!normalized) {
+      setError('Enter a valid WhatsApp number (10 digits, optionally with +91).');
+      return;
+    }
     try {
-      await apiRequest('/api/library-contacts', { method: 'POST', body: { name: name.trim(), whatsapp_number: number.trim() } });
+      await apiRequest('/api/library-contacts', { method: 'POST', body: { name: name.trim(), whatsapp_number: normalized } });
       setName('');
       setNumber('');
       load();
