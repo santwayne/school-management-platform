@@ -1,10 +1,13 @@
 import express from 'express';
+import Anthropic from '@anthropic-ai/sdk';
 import pool from '../config/db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sendTextMessage } from '../services/whatsappService.js';
 import { send as sendNotification } from '../services/notificationService.js';
 
 const router = express.Router();
+
+const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 
 // Only 'class:<id>' and 'student:<id>' audiences represent an addressable,
 // re-visitable thread (a class or a family) — 'all_parents'/'all_staff' stay
@@ -146,6 +149,47 @@ router.get('/threads/:threadKey', requireAuth, async (req, res) => {
 // 'all_parents' | 'all_staff' | 'class:<id>' | 'student:<id>'.
 // Resolves the actual recipient list server-side — the frontend only ever
 // picks a category, it never sends a raw phone number list.
+// AI roadmap #3: drafts WhatsApp broadcast copy from a short prompt — the
+// principal/teacher still reviews and edits before /send actually fires,
+// same as before this existed. This is intentionally the only piece of
+// the broadcast flow that changed: automating WHAT the message says was
+// never the ask (see communications.js's own note on why this composer
+// is intentionally manual) — automating the TYPING is. Nothing here sends
+// anything; it only returns text for the existing composer's textarea.
+router.post('/draft', requireAuth, async (req, res) => {
+  const { prompt, audience_label } = req.body;
+  if (!prompt || !prompt.trim()) {
+    return res.status(400).json({ error: 'prompt is required' });
+  }
+  if (!anthropic) {
+    return res.status(503).json({ error: 'AI drafting is not configured (ANTHROPIC_API_KEY missing) — write the message directly instead.' });
+  }
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-5',
+      max_tokens: 300,
+      system:
+        'You draft short WhatsApp broadcast messages from an Indian school to parents/staff, from a brief instruction. ' +
+        'Keep it under 4 sentences, plain and warm, no emoji spam (at most one), no markdown formatting (this goes ' +
+        'out as plain WhatsApp text). State only what the instruction actually says — never invent a date, time, ' +
+        'location, or detail that was not given; if the instruction is missing something essential, write the ' +
+        'message with a placeholder like [date/time] rather than guessing one. Output ONLY the message text, nothing else.',
+      messages: [
+        {
+          role: 'user',
+          content: `Audience: ${audience_label || 'parents'}\nInstruction: ${prompt.trim()}`,
+        },
+      ],
+    });
+    const textBlock = response.content.find((b) => b.type === 'text');
+    res.json({ draft: textBlock?.text?.trim() || '' });
+  } catch (err) {
+    console.error('Broadcast draft generation failed:', err.message);
+    res.status(502).json({ error: 'Could not generate a draft right now — write the message directly instead.' });
+  }
+});
+
 router.post('/send', requireAuth, async (req, res) => {
   const school_id = req.user.school_id;
   const { audience, audience_label, message } = req.body;
