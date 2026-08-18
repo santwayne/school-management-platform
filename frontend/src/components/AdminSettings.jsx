@@ -37,6 +37,7 @@ export default function AdminSettings() {
   const [verifyCode, setVerifyCode] = useState('');
   const [awaitingCode, setAwaitingCode] = useState(false);
   const [limit, setLimit] = useState('5000');
+  const [proximityRadius, setProximityRadius] = useState('500');
   const [letterhead, setLetterhead] = useState('');
   const [signatoryName, setSignatoryName] = useState('');
   const [signatoryDesignation, setSignatoryDesignation] = useState('');
@@ -52,6 +53,7 @@ export default function AdminSettings() {
       setSettings(s);
       setWhatsappNumber(s.whatsapp_business_number || '');
       setLimit(String(s.petty_cash_accountant_limit ?? 5000));
+      setProximityRadius(String(s.proximity_alert_radius_meters ?? 500));
       setLogoUrl(s.logo_url || '');
       setLogoPreview(s.logo_url || '');
       setLetterhead(s.leaving_cert_letterhead_text || '');
@@ -192,6 +194,20 @@ export default function AdminSettings() {
     }
   };
 
+  // Item 18
+  const saveProximityRadius = async () => {
+    setError('');
+    const n = Number(proximityRadius);
+    if (isNaN(n) || n <= 0) return setError('Enter a valid radius in meters.');
+    try {
+      const s = await apiRequest('/api/settings/proximity-alert-radius', { method: 'PATCH', body: { radius_meters: n } });
+      setSettings(s);
+      flash('Bus proximity radius saved.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   if (loading) return <p className="text-sm text-ink-soft">Loading…</p>;
   if (!settings) {
     return (
@@ -319,6 +335,25 @@ export default function AdminSettings() {
                 className="w-40 px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
               />
               <button onClick={saveLimit} className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
+                Save
+              </button>
+            </div>
+          </Card>
+
+          <Card title="Bus Proximity Alerts">
+            <p className="text-xs text-ink-soft mb-3">
+              How close a school bus needs to get to a student's saved home location before their parent gets a
+              WhatsApp alert. Set a student's home location from Manage School → Students.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={proximityRadius}
+                onChange={(e) => setProximityRadius(e.target.value)}
+                className="w-40 px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
+              />
+              <span className="text-sm text-ink-soft">meters</span>
+              <button onClick={saveProximityRadius} className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
                 Save
               </button>
             </div>

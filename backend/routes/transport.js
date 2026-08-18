@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal, requireFinance } from '../middleware/auth.js';
 import { getAdapter, getVendorConfig } from '../services/gpsAdapters/index.js';
+import { checkBusProximityAndNotify } from '../services/busProximityService.js';
 import {
   computeKmFromGPS, logManualKm, generatePayout, updatePayoutStatus,
   collectTransportFee, getRouteProfitability,
@@ -179,6 +180,13 @@ router.post('/webhook/:vendor', async (req, res) => {
     await pool.query(`UPDATE buses SET last_poll_status = 'ok', last_poll_error = NULL, last_poll_at = NOW() WHERE id = $1`, [bus.id]);
 
     res.status(200).json({ success: true });
+
+    // Item 18 — after responding: the vendor just wants a quick 200, and a
+    // slow/failed proximity check must never hold up or fail the webhook
+    // ack (same fire-after-respond pattern as paymentLinks.js's webhook).
+    checkBusProximityAndNotify(bus, { latitude, longitude }).catch((err) => {
+      console.error(`[transport webhook] Proximity check failed for bus ${bus.id}:`, err.message);
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

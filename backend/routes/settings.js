@@ -203,6 +203,32 @@ router.patch('/petty-cash-limit', requireAuth, requirePrincipal, async (req, res
   }
 });
 
+// Item 18: how close (in meters) a bus needs to get to a student's saved
+// home location before services/busProximityService.js fires a WhatsApp
+// alert — same config pattern as petty-cash-limit above.
+router.patch('/proximity-alert-radius', requireAuth, requirePrincipal, async (req, res) => {
+  const school_id = req.user.school_id;
+  const { radius_meters } = req.body;
+  if (radius_meters === undefined || isNaN(radius_meters) || radius_meters <= 0) {
+    return res.status(400).json({ error: 'A valid positive radius (in meters) is required' });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO school_settings (school_id, proximity_alert_radius_meters)
+       VALUES ($1, $2)
+       ON CONFLICT (school_id) DO UPDATE SET
+         proximity_alert_radius_meters = EXCLUDED.proximity_alert_radius_meters,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [school_id, radius_meters]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Proximity alert radius update error:', err);
+    res.status(500).json({ error: 'Failed to update proximity alert radius' });
+  }
+});
+
 // Leaving-certificate letterhead/signatory text (feature 4.3) — lets the
 // principal edit the PDF's per-school text without a code deploy. The PDF
 // layout itself stays generic/shared; only this text is per-tenant.
