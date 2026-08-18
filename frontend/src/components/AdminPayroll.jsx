@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Play, CheckCircle2, Pencil, Plus, X, Info } from 'lucide-react';
 import { apiRequest } from '../api';
+import { useAuth } from '../AuthContext';
 
 const INR = (n) => '₹' + Number(n).toLocaleString('en-IN');
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -357,6 +358,7 @@ function StatusBadge({ status }) {
 }
 
 function PettyCashTab() {
+  const { user } = useAuth();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -368,6 +370,13 @@ function PettyCashTab() {
   const [editRow, setEditRow] = useState(null);
   const [eAmt, setEAmt] = useState('');
   const [eReason, setEReason] = useState('');
+  // Item 15: "Approvals from the Principal" was misleading — the accountant
+  // genuinely has approve/reject rights up to school_settings
+  // .petty_cash_accountant_limit (backend/routes/finance.js's
+  // /petty-cash/approve/:id enforces this; the principal configures it via
+  // /api/settings/petty-cash-limit, see AdminSettings.jsx). Pull the real
+  // configured limit instead of hardcoding the ₹5,000 default in the copy.
+  const [accountantLimit, setAccountantLimit] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -384,6 +393,15 @@ function PettyCashTab() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    // Principal's own approvals aren't limit-gated (finance.js only checks
+    // the limit for role === 'accountant') — no need to fetch or show it.
+    if (user?.role !== 'accountant') return;
+    apiRequest('/api/settings')
+      .then((s) => setAccountantLimit(Number(s.petty_cash_accountant_limit ?? 5000)))
+      .catch(() => setAccountantLimit(5000)); // same fallback finance.js's approval check itself uses
+  }, [user?.role]);
 
   const decide = async (id, status) => {
     setError('');
@@ -439,7 +457,13 @@ function PettyCashTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-ink-soft">Approvals from the Principal.</p>
+        <p className="text-xs text-ink-soft">
+          {user?.role === 'accountant'
+            ? accountantLimit !== null
+              ? `You can approve requests up to ${INR(accountantLimit)} — above that, the Principal approves.`
+              : 'Approvals up to the school’s configured limit — above that, the Principal approves.'
+            : 'Approve or reject petty cash requests raised by staff.'}
+        </p>
         <button
           onClick={() => setNewOpen(true)}
           className="inline-flex items-center gap-1.5 text-sm font-medium px-3.5 py-2 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep transition"
