@@ -58,7 +58,8 @@ import './workers/lowAttendanceAlertWorker.js';
 import './workers/eventReminderWorker.js';
 import './workers/performanceDriftWorker.js';
 import './workers/weeklyProgressSummaryWorker.js';
-import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest, scheduleFeeReminders, schedulePettyCashReminders, scheduleStaffLeaveReminders, scheduleTeachingReminders, scheduleLowAttendanceAlerts, scheduleEventReminders, schedulePerformanceDrift, scheduleWeeklyProgressSummaries } from './workers/scheduler.js';
+import './workers/recurringDoubtWorker.js';
+import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest, scheduleFeeReminders, schedulePettyCashReminders, scheduleStaffLeaveReminders, scheduleTeachingReminders, scheduleLowAttendanceAlerts, scheduleEventReminders, schedulePerformanceDrift, scheduleWeeklyProgressSummaries, scheduleRecurringDoubtCheck } from './workers/scheduler.js';
 import { runBootstrap } from './scripts/autoBootstrap.js';
 
 dotenv.config();
@@ -206,6 +207,11 @@ async function start() {
       await scheduleWeeklyProgressSummaries();
     } catch (err) {
       console.error('Failed to schedule weekly progress summary job (is Redis running?):', err.message);
+    }
+    try {
+      await scheduleRecurringDoubtCheck();
+    } catch (err) {
+      console.error('Failed to schedule recurring-doubt check job (is Redis running?):', err.message);
     }
   });
 }

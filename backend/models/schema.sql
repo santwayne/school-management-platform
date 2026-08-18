@@ -1715,3 +1715,36 @@ WHERE NOT EXISTS (
 -- student-level going forward — see performanceDriftWorker.js).
 ALTER TABLE performance_snapshots ADD COLUMN IF NOT EXISTS student_id INT REFERENCES students(id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS idx_performance_snapshots_student ON performance_snapshots(student_id);
+
+-- ---------- Recurring-doubt push notification to teachers (AI roadmap #2, revised) ----------
+-- The first pass only surfaced recurring doubts on a dashboard card a
+-- teacher has to remember to check (a pull, not a push). Follow-up spec
+-- explicitly asked to "reuse whatever notification channel teachers
+-- already get" — so this adds a real notification on top of (not instead
+-- of) that card, via the same 'staff' NotificationService channel used
+-- for staff_leave_pending_reminder/upcoming_class_reminder.
+--
+-- Notifies every teacher assigned to the class (via class_subject_teachers,
+-- any subject) rather than trying to pinpoint one exact subject teacher —
+-- chapter_tag is a plain chapter name matched from syllabus_calendar,
+-- which (per the dailyGuidanceWorker.js fix earlier in this branch) has no
+-- reliably-populated real subject link for most rows yet, so guessing a
+-- single "the" subject teacher from it would mean guessing, not reading.
+-- Documented simplification, not silently narrowed.
+CREATE TABLE IF NOT EXISTS recurring_doubt_notification_log (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    chapter_tag VARCHAR(255) NOT NULL,
+    period VARCHAR(20) NOT NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (class_id, chapter_tag, period)
+);
+
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'recurring_doubt_signal', 'both', 'Recurring Doubt Signal',
+       'recurring_doubt_signal_alert', '["chapter_tag","class_name","student_count"]'::jsonb,
+       'Recurring doubt: {{chapter_tag}}', '{{student_count}} students in {{class_name}} asked about {{chapter_tag}} this week — worth a quick re-cap.', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'recurring_doubt_signal'
+);

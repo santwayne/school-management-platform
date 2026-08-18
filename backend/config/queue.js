@@ -60,5 +60,9 @@ export const performanceDriftQueue = new Queue('PerformanceDriftQueue', { connec
 // workers/weeklyProgressSummaryWorker.js.
 export const weeklyProgressSummaryQueue = new Queue('WeeklyProgressSummaryQueue', { connection });
 
+// Recurring-doubt push notification queue — see
+// workers/recurringDoubtWorker.js.
+export const recurringDoubtQueue = new Queue('RecurringDoubtQueue', { connection });
+
 // How long to wait for a parent reply before escalating to a voice call (ms)
 export const ESCALATION_DELAY_MS = Number(process.env.ESCALATION_DELAY_MS || 2 * 60 * 60 * 1000); // default 2 hrs

@@ -1,4 +1,4 @@
-import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue, weeklyProgressSummaryQueue } from '../config/queue.js';
+import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue, weeklyProgressSummaryQueue, recurringDoubtQueue } from '../config/queue.js';
 
 // The worker only reacts to jobs that land on GuidanceQueue — nothing put
 // any there before. This registers a repeatable job so it actually fires
@@ -167,6 +167,22 @@ export async function scheduleWeeklyProgressSummaries() {
     }
   );
   console.log('Weekly class-progress summary job scheduled.');
+}
+
+// Recurring-doubt notification — Monday 11:00 AM, spaced away from the
+// other morning jobs (9:00/9:30/10:00) so a school's WhatsApp sends don't
+// all cluster in one window.
+export async function scheduleRecurringDoubtCheck() {
+  await recurringDoubtQueue.add(
+    'weeklyRecurringDoubtCheck',
+    {},
+    {
+      repeat: { pattern: process.env.RECURRING_DOUBT_CRON || '0 11 * * 1' }, // Monday 11:00 AM
+      removeOnComplete: true,
+      jobId: 'weekly-recurring-doubt-check',
+    }
+  );
+  console.log('Weekly recurring-doubt check job scheduled.');
 }
 
 // Polls pull-based-vendor buses every 30s for their current location.
