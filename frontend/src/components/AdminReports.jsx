@@ -107,10 +107,10 @@ function buildPDF(type, data, rangeLabel) {
   } else if (type === 'strength') {
     autoTable(doc, {
       startY: 31,
-      head: [['Class', 'Grade', 'Students']],
-      body: data.rows.map((r) => [r.class_name, r.grade, r.student_count]),
+      head: [['Class', 'Students']],
+      body: data.rows.map((r) => [r.class_name, r.student_count]),
       styles: { fontSize: 9 },
-      foot: [['Total', '', data.total]],
+      foot: [['Total', data.total]],
     });
   }
 
@@ -167,7 +167,6 @@ function buildExcel(type, data) {
     const ws = XLSX.utils.json_to_sheet(
       data.rows.map((r) => ({
         Class: r.class_name,
-        Grade: r.grade,
         Students: Number(r.student_count),
       }))
     );
@@ -459,17 +458,16 @@ function StrengthReport() {
           <div className="rounded-2xl bg-white border border-cream-deep/70 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead><tr><Th>Class</Th><Th>Grade</Th><Th>Students</Th></tr></thead>
+                <thead><tr><Th>Class</Th><Th>Students</Th></tr></thead>
                 <tbody className="divide-y divide-cream-deep/60">
                   {data.rows.map((r, i) => (
                     <tr key={i} className="hover:bg-cream-deep/20">
                       <Td className="font-medium">{r.class_name}</Td>
-                      <Td>{r.grade}</Td>
                       <Td>{r.student_count}</Td>
                     </tr>
                   ))}
                   {data.rows.length === 0 && (
-                    <tr><Td className="text-ink-soft" colSpan={3}>No students enrolled for this filter.</Td></tr>
+                    <tr><Td className="text-ink-soft" colSpan={2}>No students enrolled for this filter.</Td></tr>
                   )}
                 </tbody>
               </table>

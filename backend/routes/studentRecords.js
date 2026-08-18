@@ -232,14 +232,26 @@ router.get('/strength-report', requireAuth, requirePrincipal, async (req, res) =
       yearFilter = `AND EXTRACT(YEAR FROM s.created_at) = $${params.length}`;
     }
 
+    // Item 12 of the QA fix list — confirmed root cause: grade is free text
+    // on the student row, never FK'd to class_id (see schema.sql). Grouping
+    // by s.grade alongside c.id/c.name meant any student whose grade value
+    // didn't exactly match their classmates' (a typo, "Class 8" vs "8",
+    // blank, ...) spawned its own phantom row for the same real class —
+    // duplicate/garbled rows, including literal class-name strings showing
+    // up in what should've been a numeric Grade column. Grouping by the
+    // real class_id/class_name only (dropping grade from GROUP BY and the
+    // output entirely — there's no single reliable "grade" value left to
+    // show per class once it's not part of the grouping key) fixes this
+    // structurally; see scripts/backfillStudentGrade.js for a one-off
+    // cleanup of the underlying bad grade data.
     const byClass = await pool.query(
       `SELECT c.id AS class_id, COALESCE(c.name, 'Unassigned') AS class_name,
-              COALESCE(s.grade, '—') AS grade, COUNT(*) AS student_count
+              COUNT(*) AS student_count
        FROM students s
        LEFT JOIN classes c ON c.id = s.class_id
        WHERE s.school_id = $1 ${yearFilter}
-       GROUP BY c.id, c.name, s.grade
-       ORDER BY c.name NULLS LAST, s.grade`,
+       GROUP BY c.id, c.name
+       ORDER BY c.name NULLS LAST`,
       params
     );
 
