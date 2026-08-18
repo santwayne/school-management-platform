@@ -1306,3 +1306,60 @@ CREATE INDEX IF NOT EXISTS idx_fee_structures_school ON fee_structures(school_id
 -- teacher's real name server-side, never hand-typed) so every existing
 -- reader of petty_cash.requested_by keeps working unchanged.
 ALTER TABLE petty_cash ADD COLUMN IF NOT EXISTS requested_by_teacher_id INT REFERENCES teachers(id) ON DELETE SET NULL;
+
+-- ---------- Bus proximity alerts (Item 18 — new feature, not a bug fix) ----------
+-- "Notify parent by WhatsApp when the bus is near home." Nullable — most
+-- families won't set this immediately, and a student with no home location
+-- (or no bus assignment) is simply never checked, never an error.
+ALTER TABLE students ADD COLUMN IF NOT EXISTS home_latitude NUMERIC(9,6);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS home_longitude NUMERIC(9,6);
+
+-- School-level default "how close counts as near" — same config pattern as
+-- petty_cash_accountant_limit above. No per-route override in this MVP
+-- (routes/buses have no distinct identity beyond the bus itself — see the
+-- direction note on bus_proximity_alerts below).
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS proximity_alert_radius_meters INT NOT NULL DEFAULT 500;
+
+-- Dedup/state table so a lingering-nearby bus doesn't re-notify a parent on
+-- every ~30s GPS poll. One row per (bus, student, day, direction) —
+-- inserted the first time that combination crosses into radius; a second
+-- crossing on the same day+direction hits the UNIQUE constraint and is
+-- silently skipped (checkBusProximityAndNotify treats "no row inserted" as
+-- "already notified").
+--
+-- NOTE on `direction`: this schema has no trip/route/session entity at all
+-- (checked buses, bus_location_log, student_transport_fees, transport.js,
+-- AdminTransport.jsx) — one `buses` row is one physical vehicle with a
+-- single free-text route_name, and it does BOTH the morning pickup and
+-- afternoon drop-off run; bus_location_log is one continuous GPS stream per
+-- bus with no trip-boundary markers. Rather than bolt a static direction
+-- onto `buses` (wrong — a bus isn't only ever "pickup" or only "dropoff")
+-- or duplicate bus rows per direction (fragments the one real GPS stream
+-- across two logical records and touches every existing buses/
+-- bus_location_log consumer), direction is derived per GPS ping from time
+-- of day (see services/busProximityService.js) and recorded here, on the
+-- event/notification record, rather than on the bus. A real production
+-- version should replace the time-of-day heuristic with actual configured
+-- pickup/drop-off windows once this schema has a real trip concept.
+CREATE TABLE IF NOT EXISTS bus_proximity_alerts (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    bus_id INT NOT NULL REFERENCES buses(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    trip_date DATE NOT NULL,
+    direction VARCHAR(10) NOT NULL, -- 'pickup' | 'dropoff'
+    notified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (bus_id, student_id, trip_date, direction)
+);
+CREATE INDEX IF NOT EXISTS idx_bus_proximity_alerts_school ON bus_proximity_alerts(school_id);
+
+-- New trigger_event for the shared NotificationService (see notification_templates
+-- further up this file) — fired by services/busProximityService.js when a
+-- bus first crosses into a student's home radius for a given day+direction.
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'bus_approaching', 'both', 'Bus Approaching Home',
+       'bus_approaching_alert', '["student_name","direction_label"]'::jsonb,
+       'Bus approaching', '{{student_name}}''s school bus is near home for {{direction_label}}.', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'bus_approaching'
+);
