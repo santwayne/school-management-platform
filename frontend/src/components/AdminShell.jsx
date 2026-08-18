@@ -19,7 +19,16 @@ import { apiRequest } from '../api';
 // app still relies on. New event sources (e.g. new_message from the
 // Messages page, activity_shared) only need to call notificationService's
 // send() — no frontend change required, they show up here for free.
-function NotificationBell() {
+//
+// Item 9 of the QA fix list: both /api/finance/petty-cash and
+// /api/fee-intake/pending are requireFinance-gated (principal or
+// accountant) on the backend, but this bell fired both unconditionally for
+// every role AdminShell renders under — including plain Teacher (reachable
+// via teacherOrPrincipalOnly routes like /admin/messages), who got a 403 on
+// both every 60s. AdminShell never renders for an Accountant (they get
+// AccountantShell instead, with its own bell), so the only roles that
+// actually land here are principal and teacher — gate on principal.
+function NotificationBell({ canSeeFinance }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState(null);
   const [error, setError] = useState('');
@@ -27,8 +36,8 @@ function NotificationBell() {
   const load = async () => {
     try {
       const [pettyCash, waQueue, feed] = await Promise.all([
-        apiRequest('/api/finance/petty-cash').catch(() => []),
-        apiRequest('/api/fee-intake/pending').catch(() => []),
+        canSeeFinance ? apiRequest('/api/finance/petty-cash').catch(() => []) : Promise.resolve([]),
+        canSeeFinance ? apiRequest('/api/fee-intake/pending').catch(() => []) : Promise.resolve([]),
         apiRequest('/api/notifications').catch(() => ({ notifications: [], unread_count: 0 })),
       ]);
 
@@ -236,7 +245,7 @@ export default function AdminShell({ children }) {
             <span>{today}</span>
           </div>
           <div className="ml-auto flex items-center gap-3">
-            <NotificationBell />
+            <NotificationBell canSeeFinance={user?.role === 'principal'} />
 <button onClick={logout} className="p-2 rounded-lg hover:bg-cream-deep/60 transition text-ink-soft hover:text-terracotta-deep" aria-label="Log out">
               <LogOut className="w-5 h-5" />
             </button>
