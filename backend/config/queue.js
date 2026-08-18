@@ -30,5 +30,9 @@ export const libraryQueue = new Queue('LibraryQueue', { connection });
 // thousands of students instead of needing one click per student.
 export const feeReminderQueue = new Queue('FeeReminderQueue', { connection });
 
+// Petty cash reminder queue: daily one-time nudge to the principal when a
+// request has sat pending too long — there was no reminder at all before.
+export const pettyCashReminderQueue = new Queue('PettyCashReminderQueue', { connection });
+
 // How long to wait for a parent reply before escalating to a voice call (ms)
 export const ESCALATION_DELAY_MS = Number(process.env.ESCALATION_DELAY_MS || 2 * 60 * 60 * 1000); // default 2 hrs

@@ -51,7 +51,8 @@ import './workers/attendanceWorker.js';
 import './workers/dailyGuidanceWorker.js';
 import './workers/libraryDueDateWorker.js';
 import './workers/feeReminderWorker.js';
-import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest, scheduleFeeReminders } from './workers/scheduler.js';
+import './workers/pettyCashReminderWorker.js';
+import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest, scheduleFeeReminders, schedulePettyCashReminders } from './workers/scheduler.js';
 import { runBootstrap } from './scripts/autoBootstrap.js';
 
 dotenv.config();
@@ -164,6 +165,11 @@ async function start() {
       await scheduleFeeReminders();
     } catch (err) {
       console.error('Failed to schedule fee reminder job (is Redis running?):', err.message);
+    }
+    try {
+      await schedulePettyCashReminders();
+    } catch (err) {
+      console.error('Failed to schedule petty cash reminder job (is Redis running?):', err.message);
     }
   });
 }

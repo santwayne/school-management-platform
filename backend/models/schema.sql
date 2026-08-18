@@ -1411,3 +1411,22 @@ SELECT NULL, 'fee_payment_reminder', 'both', 'Fee Payment Reminder',
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'fee_payment_reminder'
 );
+
+-- ---------- Automated petty-cash pending reminders ----------
+-- Second finding from the same automated-parent-notifications audit:
+-- unlike fee reminders, there was no reminder AT ALL (manual or automatic)
+-- when a petty cash request sat pending — a principal/accountant only ever
+-- found out by opening the Petty Cash tab. Lower volume than fee reminders
+-- (one request, not one per student) and self-resolving once seen, so a
+-- single one-time nudge is enough — no repeat-spacing log table needed,
+-- just a timestamp on the row itself so it's never sent twice.
+ALTER TABLE petty_cash ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS petty_cash_reminder_days INT NOT NULL DEFAULT 2;
+
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'petty_cash_pending_reminder', 'both', 'Petty Cash Pending Reminder',
+       'petty_cash_pending_reminder_alert', '["requested_by","amount"]'::jsonb,
+       'Petty cash awaiting approval', 'A ₹{{amount}} petty cash request from {{requested_by}} has been pending for a few days.', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'petty_cash_pending_reminder'
+);
