@@ -1268,3 +1268,31 @@ CREATE TABLE IF NOT EXISTS exam_marks (
 );
 CREATE INDEX IF NOT EXISTS idx_exam_marks_exam ON exam_marks(exam_id);
 CREATE INDEX IF NOT EXISTS idx_exam_marks_student ON exam_marks(student_id);
+
+-- ---------- Fee Structure (Item 5 of the QA fix list) ----------
+-- Fixes the Fee Dashboard always showing Rs 0 Expected/Unpaid: student_payment
+-- .amount_due (above) is never written by any real route — there was simply
+-- no screen to configure an expected fee amount anywhere. This is
+-- deliberately ONE amount per class (no per-term/fee-type breakdown), same
+-- level of simplicity as student_payment itself (see its "no itemized
+-- fee_type breakdown anywhere in the platform yet" comment further up this
+-- file) — a real school does have per-term fee schedules, but adding that
+-- here would mean inventing an academic-year/term concept this schema
+-- doesn't have anywhere else (the closest precedent, exams.term, is just a
+-- free-text label, not a structural concept queries rely on). If per-term
+-- amounts are needed later, this table is the natural place to add a
+-- nullable `term` column.
+-- amount_due is intentionally NOT backfilled into student_payment from this
+-- table — finance.js's dashboard query joins fee_structures live instead, so
+-- the numbers never go stale when a fee amount changes or a student moves
+-- classes. amount_due itself is dead going forward but left in place since
+-- dropping a column is riskier than just not writing to it.
+CREATE TABLE IF NOT EXISTS fee_structures (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (school_id, class_id)
+);
+CREATE INDEX IF NOT EXISTS idx_fee_structures_school ON fee_structures(school_id);

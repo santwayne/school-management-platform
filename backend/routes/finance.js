@@ -44,6 +44,56 @@ router.post('/fee/collect', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/finance/fee-structure — every class in this school with whatever
+// expected fee amount is currently configured (null if never set). Backs the
+// Fee Structure config screen (Item 5 of the QA fix list) — the fix for the
+// Fee Dashboard's Expected/Unpaid always showing Rs 0, since nothing wrote
+// amount_due before this existed.
+router.get('/fee-structure', requireAuth, requireFinance, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT c.id AS class_id, c.name AS class_name, fs.amount, fs.updated_at
+       FROM classes c
+       LEFT JOIN fee_structures fs ON fs.class_id = c.id AND fs.school_id = c.school_id
+       WHERE c.school_id = $1
+       ORDER BY c.name`,
+      [req.user.school_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Fee structure list error:', err);
+    res.status(500).json({ error: 'Failed to load fee structure' });
+  }
+});
+
+// PUT /api/finance/fee-structure/:classId — set (or update) the expected fee
+// amount for one class. Upsert on (school_id, class_id).
+router.put('/fee-structure/:classId', requireAuth, requireFinance, async (req, res) => {
+  const { amount } = req.body;
+  if (amount === undefined || amount === null || isNaN(Number(amount)) || Number(amount) < 0) {
+    return res.status(400).json({ error: 'A non-negative amount is required' });
+  }
+  try {
+    const classCheck = await pool.query(
+      'SELECT id FROM classes WHERE id = $1 AND school_id = $2',
+      [req.params.classId, req.user.school_id]
+    );
+    if (classCheck.rowCount === 0) return res.status(404).json({ error: 'Class not found for this school' });
+
+    const { rows } = await pool.query(
+      `INSERT INTO fee_structures (school_id, class_id, amount)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (school_id, class_id) DO UPDATE SET amount = EXCLUDED.amount, updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [req.user.school_id, req.params.classId, amount]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Fee structure update error:', err);
+    res.status(500).json({ error: 'Failed to update fee structure' });
+  }
+});
+
 // GET /api/finance/petty-cash — list requests for this school (most recent first)
 router.get('/petty-cash', requireAuth, requireFinance, async (req, res) => {
   try {
@@ -120,17 +170,27 @@ router.get('/fee/dashboard', requireAuth, requireFinance, async (req, res) => {
   const offset = (page - 1) * pageSize;
 
   try {
+    // total_expected is computed live from fee_structures (Item 5 of the QA
+    // fix list) rather than read from student_payment.amount_due, which no
+    // real route has ever written — see the fee_structures comment in
+    // schema.sql. Computing live (student's class -> that class's configured
+    // amount) means it's always correct even after a fee amount changes or a
+    // student moves classes, with nothing to keep in sync.
     const summaryRes = await pool.query(
-      `SELECT COALESCE(SUM(amount_due), 0) AS total_expected,
-              COALESCE(SUM(amount_paid), 0) AS total_paid
-       FROM student_payment WHERE school_id = $1`,
+      `SELECT COALESCE(SUM(fs.amount), 0) AS total_expected
+       FROM students s
+       LEFT JOIN fee_structures fs ON fs.school_id = s.school_id AND fs.class_id = s.class_id
+       WHERE s.school_id = $1`,
+      [school_id]
+    );
+    const totalPaidRes = await pool.query(
+      `SELECT COALESCE(SUM(amount_paid), 0) AS total_paid FROM student_payment WHERE school_id = $1`,
       [school_id]
     );
     const totalExpected = parseFloat(summaryRes.rows[0].total_expected);
-    const totalPaid = parseFloat(summaryRes.rows[0].total_paid);
-    // amount_due is never set by any route today (no fee-structure feature
-    // yet), so total_expected is realistically 0 for most schools — clamp
-    // unpaid at 0 instead of showing a negative number in that case.
+    const totalPaid = parseFloat(totalPaidRes.rows[0].total_paid);
+    // Expected is 0 for any class with no fee_structures amount configured
+    // yet — clamp unpaid at 0 instead of showing a negative number in that case.
     const totalUnpaid = Math.max(totalExpected - totalPaid, 0);
 
     const collectedByClassRes = await pool.query(
@@ -147,9 +207,10 @@ router.get('/fee/dashboard', requireAuth, requireFinance, async (req, res) => {
 
     const dueByClassRes = await pool.query(
       `SELECT COALESCE(c.name, 'Unassigned') AS class_name,
-              GREATEST(COALESCE(SUM(sp.amount_due), 0) - COALESCE(SUM(sp.amount_paid), 0), 0) AS unpaid
+              GREATEST(COALESCE(SUM(fs.amount), 0) - COALESCE(SUM(sp.amount_paid), 0), 0) AS unpaid
        FROM students s
        LEFT JOIN classes c ON c.id = s.class_id
+       LEFT JOIN fee_structures fs ON fs.school_id = s.school_id AND fs.class_id = s.class_id
        LEFT JOIN student_payment sp ON sp.student_id = s.id AND sp.school_id = s.school_id
        WHERE s.school_id = $1
        GROUP BY c.name
