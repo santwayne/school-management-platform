@@ -41,6 +41,7 @@ router.post('/bulk-upsert', requireAuth, requirePrincipal, async (req, res) => {
   let created = 0;
   let updated = 0;
   let failed = 0;
+  let possibleDuplicates = 0;
 
   for (const row of rows) {
     const rowNumber = row.row_number ?? results.length + 1;
@@ -138,6 +139,34 @@ router.post('/bulk-upsert', requireAuth, requirePrincipal, async (req, res) => {
         updated++;
         results.push({ row_number: rowNumber, status: 'updated', student: updateRes.rows[0], warning: phoneWarning || undefined });
       } else {
+        // Item 8 of the QA fix list: creation was unconditional whenever no
+        // login_id/student_id was supplied — no same-name+class check, so a
+        // re-upload of the same sheet (or a typo'd login_id that fell
+        // through to "new enrollment") silently produced a second student
+        // record for the same kid with a different login_id. Same
+        // name+class can legitimately happen (twins, common names), so this
+        // doesn't block outright — it comes back as a distinct
+        // 'possible_duplicate' status requiring an explicit
+        // confirm_duplicate: true on retry to actually create it.
+        if (!row.confirm_duplicate) {
+          const dupCheck = await pool.query(
+            `SELECT id, name, login_id FROM students
+             WHERE school_id = $1 AND LOWER(name) = LOWER($2) AND class_id IS NOT DISTINCT FROM $3`,
+            [schoolId, name, classId]
+          );
+          if (dupCheck.rowCount > 0) {
+            possibleDuplicates++;
+            results.push({
+              row_number: rowNumber,
+              status: 'possible_duplicate',
+              message: `A student named "${name}" already exists in this class (login_id ${dupCheck.rows[0].login_id}). Resubmit this row with confirm_duplicate: true to create anyway.`,
+              existing_student: dupCheck.rows[0],
+              input: row,
+            });
+            continue;
+          }
+        }
+
         const randHex = Math.random().toString(36).substring(2, 6).toUpperCase();
         const loginId = `STD-${schoolId}-${randHex}`;
         const defaultPin = String(Math.floor(1000 + Math.random() * 9000));
@@ -178,7 +207,7 @@ router.post('/bulk-upsert', requireAuth, requirePrincipal, async (req, res) => {
 
   res.status(207).json({
     success: true,
-    summary: { total: rows.length, created, updated, failed },
+    summary: { total: rows.length, created, updated, failed, possible_duplicates: possibleDuplicates },
     results,
   });
 });

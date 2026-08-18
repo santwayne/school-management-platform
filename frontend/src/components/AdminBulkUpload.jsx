@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { UploadCloud, Download, CheckCircle2, XCircle, FileSpreadsheet } from 'lucide-react';
+import { UploadCloud, Download, CheckCircle2, XCircle, FileSpreadsheet, AlertTriangle } from 'lucide-react';
 import { apiRequest } from '../api';
 
 // Bulk upload/update student data (feature 4.1). CSV/Excel is parsed
@@ -54,6 +54,7 @@ function StatusBadge({ status }) {
     created: { cls: 'bg-emerald-500/10 text-emerald-700', label: 'Created' },
     updated: { cls: 'bg-terracotta/10 text-terracotta-deep', label: 'Updated' },
     error: { cls: 'bg-destructive/10 text-destructive', label: 'Error' },
+    possible_duplicate: { cls: 'bg-amber-500/15 text-amber-700', label: 'Possible duplicate' },
   };
   const m = map[status] || { cls: 'bg-cream-deep text-ink-soft', label: status };
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${m.cls}`}>{m.label}</span>;
@@ -107,7 +108,35 @@ export default function AdminBulkUpload() {
     setResult(null);
   };
 
+  // Item 8: a possible_duplicate row wasn't created — the admin confirms it's
+  // really a new enrollment (twins, common names) by resubmitting just that
+  // one row with confirm_duplicate: true, rather than re-uploading the whole
+  // file.
+  const createDuplicateAnyway = async (dup) => {
+    setError('');
+    try {
+      const res = await apiRequest('/api/student-records/bulk-upsert', {
+        method: 'POST',
+        body: { rows: [{ ...dup.input, confirm_duplicate: true }] },
+      });
+      const updatedRow = res.results[0];
+      setResult((prev) => ({
+        ...prev,
+        summary: {
+          ...prev.summary,
+          created: prev.summary.created + (updatedRow.status === 'created' ? 1 : 0),
+          failed: prev.summary.failed + (updatedRow.status === 'error' ? 1 : 0),
+          possible_duplicates: Math.max(0, (prev.summary.possible_duplicates || 0) - 1),
+        },
+        results: prev.results.map((r) => (r.row_number === dup.row_number ? updatedRow : r)),
+      }));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const failures = result?.results.filter((r) => r.status === 'error') || [];
+  const duplicates = result?.results.filter((r) => r.status === 'possible_duplicate') || [];
 
   return (
     <div className="space-y-4">
@@ -164,12 +193,50 @@ export default function AdminBulkUpload() {
 
       {result && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <SummaryTile label="Total rows" value={result.summary.total} />
             <SummaryTile label="Created" value={result.summary.created} tone="emerald" />
             <SummaryTile label="Updated" value={result.summary.updated} tone="terracotta" />
+            <SummaryTile label="Possible duplicates" value={result.summary.possible_duplicates || 0} tone={(result.summary.possible_duplicates || 0) > 0 ? 'amber' : undefined} />
             <SummaryTile label="Failed" value={result.summary.failed} tone={result.summary.failed > 0 ? 'destructive' : undefined} />
           </div>
+
+          {duplicates.length > 0 && (
+            <div className="rounded-2xl bg-white border border-amber-500/30 overflow-hidden">
+              <div className="px-4 py-3 border-b border-cream-deep/60 flex items-center gap-2 text-sm font-medium text-amber-700">
+                <AlertTriangle className="w-4 h-4" /> {duplicates.length} row{duplicates.length === 1 ? '' : 's'} look like possible duplicates — not created yet
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr>
+                      <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-2 bg-cream-deep/40">Row</th>
+                      <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-2 bg-cream-deep/40">Name</th>
+                      <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-2 bg-cream-deep/40">Why</th>
+                      <th className="px-4 py-2 bg-cream-deep/40" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-cream-deep/60">
+                    {duplicates.map((d) => (
+                      <tr key={d.row_number}>
+                        <td className="px-4 py-2 font-mono text-xs">{d.row_number}</td>
+                        <td className="px-4 py-2">{d.input?.name || '—'}</td>
+                        <td className="px-4 py-2 text-amber-700">{d.message}</td>
+                        <td className="px-4 py-2 text-right">
+                          <button
+                            onClick={() => createDuplicateAnyway(d)}
+                            className="text-xs font-medium px-3 py-1.5 rounded-lg border border-amber-500/40 text-amber-700 bg-amber-500/5 hover:bg-amber-500/15 transition whitespace-nowrap"
+                          >
+                            Create anyway
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {failures.length > 0 && (
             <div className="rounded-2xl bg-white border border-destructive/30 overflow-hidden">
@@ -207,7 +274,7 @@ export default function AdminBulkUpload() {
             </div>
           )}
 
-          {result.results.some((r) => r.status !== 'error') && (
+          {result.results.some((r) => r.status !== 'error' && r.status !== 'possible_duplicate') && (
             <div className="rounded-2xl bg-white border border-cream-deep/70 overflow-hidden">
               <div className="px-4 py-3 border-b border-cream-deep/60 flex items-center gap-2 text-sm font-medium text-emerald-700">
                 <CheckCircle2 className="w-4 h-4" /> Applied successfully
@@ -224,7 +291,7 @@ export default function AdminBulkUpload() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-cream-deep/60">
-                    {result.results.filter((r) => r.status !== 'error').map((r) => (
+                    {result.results.filter((r) => r.status !== 'error' && r.status !== 'possible_duplicate').map((r) => (
                       <tr key={r.row_number}>
                         <td className="px-4 py-2 font-mono text-xs">{r.row_number}</td>
                         <td className="px-4 py-2">{r.student?.name}</td>
@@ -256,6 +323,7 @@ function SummaryTile({ label, value, tone }) {
     emerald: 'text-emerald-700',
     terracotta: 'text-terracotta-deep',
     destructive: 'text-destructive',
+    amber: 'text-amber-700',
   }[tone] || 'text-ink';
   return (
     <div className="rounded-2xl bg-white border border-cream-deep/70 p-4">
