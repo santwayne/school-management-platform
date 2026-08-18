@@ -1430,3 +1430,32 @@ SELECT NULL, 'petty_cash_pending_reminder', 'both', 'Petty Cash Pending Reminder
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'petty_cash_pending_reminder'
 );
+
+-- ---------- Automated per-student library due-date reminders ----------
+-- workers/libraryDueDateWorker.js already ran daily and already sent
+-- WhatsApp — but only an AGGREGATE COUNT digest ("3 due soon, 1 overdue")
+-- to library_contacts (librarian/staff numbers registered in Settings).
+-- No parent and no student ever learned WHICH book, or that it was THEIR
+-- child/themselves at all — the per-recipient piece was simply missing,
+-- not just unwired. That digest is left as-is (still useful for staff
+-- awareness) and this adds the actual per-loan notification on top of it,
+-- reusing the same shared NotificationService + dashboard_notifications
+-- pattern as every other automated reminder in this file (fee/petty-cash/
+-- bus-proximity) — 'student' recipients land in the student portal's
+-- existing notification bell (frontend/src/components/StudentShell.jsx's
+-- StudentNotificationBell, GET /api/notifications) with zero frontend
+-- changes needed, since that feed is already generic.
+--
+-- last_reminder_sent_at is per-LOAN (not per-day) dedup: a book due
+-- tomorrow gets exactly one "due soon" nudge, and once overdue gets nudged
+-- again no more than every 3 days (checked in the worker) rather than once
+-- for every daily digest run it happens to still be overdue for.
+ALTER TABLE library_issues ADD COLUMN IF NOT EXISTS last_reminder_sent_at TIMESTAMP;
+
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'library_book_reminder', 'both', 'Library Book Due/Overdue',
+       'library_book_reminder_alert', '["book_title","status_label","due_date"]'::jsonb,
+       'Library book {{status_label}}', '"{{book_title}}" is {{status_label}} (due {{due_date}}).', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'library_book_reminder'
+);
