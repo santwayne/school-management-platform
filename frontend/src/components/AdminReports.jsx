@@ -20,12 +20,25 @@ function Td({ children, className = '' }) {
   return <td className={`px-4 py-3 align-middle ${className}`}>{children}</td>;
 }
 
+// Item 10 of the QA fix list: these used to go through .toISOString(),
+// which renders in UTC. For any browser set to a timezone ahead of UTC
+// (IST, this app's only real market — see utils/phone.js's India-only
+// normalizePhone default), .toISOString().slice(0, 10) silently rolls the
+// date back — new Date(y, m, 1) at local midnight becomes 18:30 UTC on the
+// LAST DAY OF THE PREVIOUS MONTH, not the 1st of this one, every single
+// time. That mismatched the from/to sent to /api/reports/attendance
+// against where the actual attendance data lives, on top of the LEFT JOIN
+// COUNT(*) bug fixed in reports.js. localDateStr formats the Date's own
+// local year/month/day directly instead of round-tripping through UTC.
+function localDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 function firstOfMonth() {
   const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  return localDateStr(new Date(d.getFullYear(), d.getMonth(), 1));
 }
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateStr(new Date());
 }
 
 function fmtDate(iso) {
