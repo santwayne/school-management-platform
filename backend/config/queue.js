@@ -24,5 +24,11 @@ export const gpsPollQueue = new Queue('GpsPollQueue', { connection });
 // Library queue: daily "books due/overdue" digest to registered library contacts
 export const libraryQueue = new Queue('LibraryQueue', { connection });
 
+// Fee reminder queue: daily automatic "you have an unpaid balance" WhatsApp
+// nudge (with a fresh payment link) — converts the previously-manual
+// "Send payment link" flow into something that scales to a school with
+// thousands of students instead of needing one click per student.
+export const feeReminderQueue = new Queue('FeeReminderQueue', { connection });
+
 // How long to wait for a parent reply before escalating to a voice call (ms)
 export const ESCALATION_DELAY_MS = Number(process.env.ESCALATION_DELAY_MS || 2 * 60 * 60 * 1000); // default 2 hrs

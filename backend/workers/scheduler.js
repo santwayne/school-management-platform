@@ -1,4 +1,4 @@
-import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue } from '../config/queue.js';
+import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue } from '../config/queue.js';
 
 // The worker only reacts to jobs that land on GuidanceQueue — nothing put
 // any there before. This registers a repeatable job so it actually fires
@@ -44,6 +44,22 @@ export async function scheduleLibraryDigest() {
     }
   );
   console.log('Daily library digest job scheduled.');
+}
+
+// Automatic fee-payment reminders — mirrors the daily library digest job's
+// pattern. 9:00 AM (after the library digest at 8:00) so a school's morning
+// WhatsApp sends don't all land in the exact same minute.
+export async function scheduleFeeReminders() {
+  await feeReminderQueue.add(
+    'dailyFeeReminders',
+    {},
+    {
+      repeat: { pattern: process.env.FEE_REMINDER_CRON || '0 9 * * *' }, // 9:00 AM daily
+      removeOnComplete: true,
+      jobId: 'daily-fee-reminders',
+    }
+  );
+  console.log('Daily fee reminder job scheduled.');
 }
 
 // Polls pull-based-vendor buses every 30s for their current location.

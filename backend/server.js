@@ -50,7 +50,8 @@ import './workers/teacherAttendanceAggregationWorker.js';
 import './workers/attendanceWorker.js';
 import './workers/dailyGuidanceWorker.js';
 import './workers/libraryDueDateWorker.js';
-import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest } from './workers/scheduler.js';
+import './workers/feeReminderWorker.js';
+import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest, scheduleFeeReminders } from './workers/scheduler.js';
 import { runBootstrap } from './scripts/autoBootstrap.js';
 
 dotenv.config();
@@ -158,6 +159,11 @@ async function start() {
       await scheduleLibraryDigest();
     } catch (err) {
       console.error('Failed to schedule library digest job (is Redis running?):', err.message);
+    }
+    try {
+      await scheduleFeeReminders();
+    } catch (err) {
+      console.error('Failed to schedule fee reminder job (is Redis running?):', err.message);
     }
   });
 }
