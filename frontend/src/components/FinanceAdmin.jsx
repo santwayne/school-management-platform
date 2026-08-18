@@ -53,7 +53,7 @@ function PaymentHistory({ refreshKey }) {
   );
 }
 
-function StudentPicker({ selected, onSelect }) {
+export function StudentPicker({ selected, onSelect }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);

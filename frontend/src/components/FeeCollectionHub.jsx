@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../api';
-import FinanceAdmin from './FinanceAdmin';
+import FinanceAdmin, { StudentPicker } from './FinanceAdmin';
 
 const INR = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
 const TABS = [
@@ -181,7 +181,7 @@ function OnlinePayments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showSend, setShowSend] = useState(false);
-  const [studentId, setStudentId] = useState('');
+  const [student, setStudent] = useState(null);
   const [amount, setAmount] = useState('');
   const [sending, setSending] = useState(false);
 
@@ -202,13 +202,13 @@ function OnlinePayments() {
   }, []);
 
   const send = async () => {
-    if (!studentId || !amount) return;
+    if (!student || !amount) return;
     setSending(true);
     setError('');
     try {
-      await apiRequest('/api/payment-links', { method: 'POST', body: { student_id: Number(studentId), amount: Number(amount) } });
+      await apiRequest('/api/payment-links', { method: 'POST', body: { student_id: student.id, amount: Number(amount) } });
       setShowSend(false);
-      setStudentId('');
+      setStudent(null);
       setAmount('');
       load();
     } catch (err) {
@@ -230,18 +230,18 @@ function OnlinePayments() {
 
       {showSend && (
         <div className="rounded-2xl bg-white border border-cream-deep/70 p-4 flex flex-wrap items-end gap-3">
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-ink-soft mb-1">Student ID</span>
-            <input type="number" value={studentId} onChange={(e) => setStudentId(e.target.value)} className="w-32 px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm" />
+          <label className="text-sm w-64">
+            <span className="block text-xs font-medium text-ink-soft mb-1">Student</span>
+            <StudentPicker selected={student} onSelect={setStudent} />
           </label>
           <label className="text-sm">
             <span className="block text-xs font-medium text-ink-soft mb-1">Amount (₹)</span>
             <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-32 px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm" />
           </label>
-          <button onClick={send} disabled={sending} className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition disabled:opacity-50">
+          <button onClick={send} disabled={sending || !student} className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition disabled:opacity-50">
             {sending ? 'Sending…' : 'Create & send on WhatsApp'}
           </button>
-          <button onClick={() => setShowSend(false)} className="px-3 py-2 text-sm text-ink-soft">Cancel</button>
+          <button onClick={() => { setShowSend(false); setStudent(null); setAmount(''); }} className="px-3 py-2 text-sm text-ink-soft">Cancel</button>
         </div>
       )}
 
