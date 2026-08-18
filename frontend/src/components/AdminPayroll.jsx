@@ -76,6 +76,13 @@ function PayrollTab() {
   const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Item 6 of the QA fix list: POST /api/payroll/run only ever SELECTs FROM
+  // teacher_salary, so a teacher with no salary row at all is silently
+  // excluded with zero trace — no error, no mention in generated_count.
+  // /api/payroll/salary already LEFT JOINs every teacher against
+  // teacher_salary, so a null monthly_amount there is exactly "no salary
+  // set" — reused here instead of adding a second endpoint for the same data.
+  const [missingSalary, setMissingSalary] = useState([]);
 
   const period = `${year}-${String(month + 1).padStart(2, '0')}`;
 
@@ -92,10 +99,24 @@ function PayrollTab() {
     }
   };
 
+  const loadMissingSalary = async () => {
+    try {
+      const salaries = await apiRequest('/api/payroll/salary');
+      setMissingSalary(salaries.filter((s) => !s.monthly_amount));
+    } catch {
+      // Non-critical — the warning just won't show if this fails.
+      setMissingSalary([]);
+    }
+  };
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
+
+  useEffect(() => {
+    loadMissingSalary();
+  }, []);
 
   function shift(delta) {
     let m = month + delta;
@@ -113,6 +134,13 @@ function PayrollTab() {
   }
 
   const runPayroll = async () => {
+    if (missingSalary.length > 0) {
+      const names = missingSalary.map((s) => s.name).join(', ');
+      const proceed = confirm(
+        `${missingSalary.length} staff member${missingSalary.length > 1 ? 's have' : ' has'} no salary set and will be skipped by this run:\n\n${names}\n\nSet their salary on the Salaries tab first, or continue and run payroll for everyone else?`
+      );
+      if (!proceed) return;
+    }
     setError('');
     try {
       await apiRequest('/api/payroll/run', { method: 'POST', body: { period } });
@@ -156,6 +184,12 @@ function PayrollTab() {
       </div>
 
       {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
+
+      {missingSalary.length > 0 && (
+        <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-sm text-amber-800">
+          <span className="font-medium">{missingSalary.length} staff member{missingSalary.length > 1 ? 's have' : ' has'} no salary set</span> and will be skipped by "Run payroll": {missingSalary.map((s) => s.name).join(', ')}. Set it on the Salaries tab.
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm text-ink-soft">Loading…</p>
