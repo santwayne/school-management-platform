@@ -1604,3 +1604,39 @@ SELECT NULL, 'low_attendance_alert', 'both', 'Low Attendance Alert',
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'low_attendance_alert'
 );
+
+-- ---------- Upcoming events/exams reminder to parents (audit candidate #3, built) ----------
+-- school_events already has an `audience` field ('all'|'staff'|'students'
+-- |'parents') and routes/events.js, but sent nothing on creation or
+-- beforehand — confirmed by reading the whole file. Decisions made
+-- without asking (see SUMMARY.md):
+--   - Default 2 days before event_date — enough notice for a PTM/exam
+--     without feeling like spam for a same-week reminder.
+--   - Every student in the school is a recipient when audience is 'all'
+--     or 'parents' — school_events has no class/grade targeting at all
+--     (checked: no class_id column), so "every family" is the only
+--     correct scope without inventing a targeting concept that doesn't
+--     exist. audience='staff'/'students' events are skipped for this
+--     parent-facing reminder — no channel is being built for those here.
+--   - Reminds once, before the event's start (event_date) only — a
+--     multi-day event's end_date does not get a second reminder, to keep
+--     this to one reminder per event rather than a full run-up campaign.
+-- One row per event ever sent, not per-day, since this fires once and is
+-- done — no repeat-spacing needed, unlike the reminders above.
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS event_reminder_days_before INT NOT NULL DEFAULT 2;
+
+CREATE TABLE IF NOT EXISTS event_reminder_log (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    event_id INT NOT NULL REFERENCES school_events(id) ON DELETE CASCADE,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (event_id)
+);
+
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'upcoming_event_reminder', 'both', 'Upcoming Event Reminder',
+       'upcoming_event_reminder_alert', '["event_title","event_date","days_before"]'::jsonb,
+       'Upcoming: {{event_title}}', '{{event_title}} is coming up on {{event_date}} ({{days_before}} day(s) from now).', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'upcoming_event_reminder'
+);

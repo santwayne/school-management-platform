@@ -42,6 +42,7 @@ export default function AdminSettings() {
   const [feeReminderIntervalDays, setFeeReminderIntervalDays] = useState('7');
   const [lowAttendanceThreshold, setLowAttendanceThreshold] = useState('75');
   const [lowAttendanceWindowDays, setLowAttendanceWindowDays] = useState('30');
+  const [eventReminderDaysBefore, setEventReminderDaysBefore] = useState('2');
   const [letterhead, setLetterhead] = useState('');
   const [signatoryName, setSignatoryName] = useState('');
   const [signatoryDesignation, setSignatoryDesignation] = useState('');
@@ -62,6 +63,7 @@ export default function AdminSettings() {
       setFeeReminderIntervalDays(String(s.fee_reminder_interval_days ?? 7));
       setLowAttendanceThreshold(String(s.low_attendance_threshold_percent ?? 75));
       setLowAttendanceWindowDays(String(s.low_attendance_window_days ?? 30));
+      setEventReminderDaysBefore(String(s.event_reminder_days_before ?? 2));
       setLogoUrl(s.logo_url || '');
       setLogoPreview(s.logo_url || '');
       setLetterhead(s.leaving_cert_letterhead_text || '');
@@ -247,6 +249,22 @@ export default function AdminSettings() {
       });
       setSettings(s);
       flash('Low attendance alert timing saved.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const saveEventReminderTiming = async () => {
+    setError('');
+    const days = Number(eventReminderDaysBefore);
+    if (isNaN(days) || days < 0) return setError('Enter a valid number of days.');
+    try {
+      const s = await apiRequest('/api/settings/event-reminder-timing', {
+        method: 'PATCH',
+        body: { days_before: days },
+      });
+      setSettings(s);
+      flash('Event reminder timing saved.');
     } catch (err) {
       setError(err.message);
     }
@@ -461,6 +479,25 @@ export default function AdminSettings() {
             <button onClick={saveLowAttendanceAlertTiming} className="mt-3 px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
               Save
             </button>
+          </Card>
+
+          <Card title="Upcoming Event Reminders">
+            <p className="text-xs text-ink-soft mb-3">
+              Parents get an automatic WhatsApp reminder this many days before a school event (holiday, exam, PTM,
+              etc. — events marked for "all" or "parents" audiences only).
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={eventReminderDaysBefore}
+                onChange={(e) => setEventReminderDaysBefore(e.target.value)}
+                className="w-40 px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
+              />
+              <span className="text-sm text-ink-soft">days before</span>
+              <button onClick={saveEventReminderTiming} className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
+                Save
+              </button>
+            </div>
           </Card>
 
           <Card title="Fee Collectors">

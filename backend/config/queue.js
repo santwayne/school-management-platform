@@ -47,5 +47,9 @@ export const teachingReminderQueue = new Queue('TeachingReminderQueue', { connec
 // workers/lowAttendanceAlertWorker.js for the threshold/window decisions.
 export const lowAttendanceAlertQueue = new Queue('LowAttendanceAlertQueue', { connection });
 
+// Event reminder queue: daily check for events starting in N days that
+// haven't been reminded yet — see workers/eventReminderWorker.js.
+export const eventReminderQueue = new Queue('EventReminderQueue', { connection });
+
 // How long to wait for a parent reply before escalating to a voice call (ms)
 export const ESCALATION_DELAY_MS = Number(process.env.ESCALATION_DELAY_MS || 2 * 60 * 60 * 1000); // default 2 hrs

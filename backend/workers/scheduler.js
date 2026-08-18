@@ -1,4 +1,4 @@
-import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue } from '../config/queue.js';
+import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue, eventReminderQueue } from '../config/queue.js';
 
 // The worker only reacts to jobs that land on GuidanceQueue — nothing put
 // any there before. This registers a repeatable job so it actually fires
@@ -122,6 +122,20 @@ export async function scheduleLowAttendanceAlerts() {
     }
   );
   console.log('Weekly low-attendance alert job scheduled.');
+}
+
+// Upcoming-event parent reminder — daily, 8:45 AM (after the other morning jobs).
+export async function scheduleEventReminders() {
+  await eventReminderQueue.add(
+    'dailyEventReminders',
+    {},
+    {
+      repeat: { pattern: process.env.EVENT_REMINDER_CRON || '45 8 * * *' }, // 8:45 AM daily
+      removeOnComplete: true,
+      jobId: 'daily-event-reminders',
+    }
+  );
+  console.log('Daily event reminder job scheduled.');
 }
 
 // Polls pull-based-vendor buses every 30s for their current location.

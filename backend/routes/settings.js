@@ -289,6 +289,31 @@ router.patch('/low-attendance-alert-timing', requireAuth, requirePrincipal, asyn
   }
 });
 
+// Upcoming-event parent reminder lead time — same shape as the other
+// reminder-timing routes above.
+router.patch('/event-reminder-timing', requireAuth, requirePrincipal, async (req, res) => {
+  const school_id = req.user.school_id;
+  const { days_before } = req.body;
+  if (days_before === undefined || isNaN(days_before) || days_before < 0) {
+    return res.status(400).json({ error: 'A valid non-negative days_before is required' });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO school_settings (school_id, event_reminder_days_before)
+       VALUES ($1, $2)
+       ON CONFLICT (school_id) DO UPDATE SET
+         event_reminder_days_before = EXCLUDED.event_reminder_days_before,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [school_id, days_before]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Event reminder timing update error:', err);
+    res.status(500).json({ error: 'Failed to update event reminder timing' });
+  }
+});
+
 // Leaving-certificate letterhead/signatory text (feature 4.3) — lets the
 // principal edit the PDF's per-school text without a code deploy. The PDF
 // layout itself stays generic/shared; only this text is per-tenant.

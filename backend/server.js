@@ -55,7 +55,8 @@ import './workers/pettyCashReminderWorker.js';
 import './workers/staffLeaveReminderWorker.js';
 import './workers/teachingReminderWorker.js';
 import './workers/lowAttendanceAlertWorker.js';
-import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest, scheduleFeeReminders, schedulePettyCashReminders, scheduleStaffLeaveReminders, scheduleTeachingReminders, scheduleLowAttendanceAlerts } from './workers/scheduler.js';
+import './workers/eventReminderWorker.js';
+import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest, scheduleFeeReminders, schedulePettyCashReminders, scheduleStaffLeaveReminders, scheduleTeachingReminders, scheduleLowAttendanceAlerts, scheduleEventReminders } from './workers/scheduler.js';
 import { runBootstrap } from './scripts/autoBootstrap.js';
 
 dotenv.config();
@@ -188,6 +189,11 @@ async function start() {
       await scheduleLowAttendanceAlerts();
     } catch (err) {
       console.error('Failed to schedule low-attendance alert job (is Redis running?):', err.message);
+    }
+    try {
+      await scheduleEventReminders();
+    } catch (err) {
+      console.error('Failed to schedule event reminder job (is Redis running?):', err.message);
     }
   });
 }
