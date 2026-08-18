@@ -46,6 +46,14 @@ export default function AdminCommunications() {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState(null);
+  // Item 14: the WhatsApp preview hardcoded the literal string "Waynur
+  // School" as the sender name — always wrong for every real tenant, and
+  // it never self-corrected since it wasn't reading real settings at all.
+  // Same fetch AdminShell.jsx uses for its header school name; no shared
+  // context/hook exists yet for this in the app (every shell fetches
+  // /api/settings independently), so this matches the existing convention
+  // rather than introducing a new one.
+  const [schoolName, setSchoolName] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -60,6 +68,9 @@ export default function AdminCommunications() {
   };
 
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    apiRequest('/api/settings').then((s) => setSchoolName(s.school_name || '')).catch(() => {});
+  }, []);
 
   const send = async () => {
     if (!message.trim()) return;
@@ -279,7 +290,7 @@ export default function AdminCommunications() {
                   <span className="text-white text-xs font-bold">W</span>
                 </div>
                 <div>
-                  <div className="text-xs font-semibold text-ink">Waynur School</div>
+                  <div className="text-xs font-semibold text-ink">{schoolName || 'Your school'}</div>
                   <div className="text-[10px] text-ink-soft">via WhatsApp</div>
                 </div>
               </div>
