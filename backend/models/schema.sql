@@ -1557,3 +1557,50 @@ SELECT NULL, 'staff_leave_decision', 'both', 'Staff Leave Decision',
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'staff_leave_decision'
 );
+
+-- ---------- Low-attendance rolling-threshold parent alert (audit candidate #2, built) ----------
+-- The existing attendanceWorker.js alert is same-day-absence-only — no
+-- rolling "below X% over the last N days" concept existed anywhere before
+-- this. The original audit table listed this as needing "a real product
+-- decision on the threshold/window" before building. Per the new standing
+-- rule (decide sensibly, document, don't block), the following were
+-- picked without asking — see SUMMARY.md's "Decisions made without
+-- asking":
+--   - Default threshold 75% — the common minimum-attendance bar used by
+--     Indian CBSE/state-board schools for exam eligibility, so it reads as
+--     a real school policy number rather than an arbitrary pick.
+--   - Default rolling window 30 days — long enough to smooth over a
+--     single bad week (a cold going around a class) without waiting a
+--     full term to flag a real pattern.
+--   - Minimum 5 recorded attendance days before a student is even
+--     considered — a brand-new enrollment with 1-2 days on record
+--     shouldn't get flagged off a tiny sample.
+--   - Re-notify no more than every half the window (15 days by default)
+--     while still below threshold — same "space it out, don't spam"
+--     shape as every other reminder built in this round, tuned to the
+--     window instead of a fixed separately-configurable interval to keep
+--     the settings UI to one card, two numbers.
+-- Both the threshold and window are configurable per school in Settings,
+-- same pattern as every other reminder timing added this round. Reuses
+-- the EXISTING notify_attendance toggle (already wired for the same-day
+-- absence alert) rather than adding a second toggle for what is still
+-- conceptually "attendance notifications."
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS low_attendance_threshold_percent INT NOT NULL DEFAULT 75;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS low_attendance_window_days INT NOT NULL DEFAULT 30;
+
+CREATE TABLE IF NOT EXISTS low_attendance_alert_log (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    attendance_percent NUMERIC(5,1) NOT NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_low_attendance_alert_log_student ON low_attendance_alert_log(student_id, sent_at DESC);
+
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'low_attendance_alert', 'both', 'Low Attendance Alert',
+       'low_attendance_alert', '["student_name","attendance_percent","window_days"]'::jsonb,
+       'Low attendance', '{{student_name}}''s attendance over the last {{window_days}} days is {{attendance_percent}}% — below the school''s minimum.', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'low_attendance_alert'
+);

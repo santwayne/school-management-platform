@@ -259,6 +259,36 @@ router.patch('/fee-reminder-timing', requireAuth, requirePrincipal, async (req, 
   }
 });
 
+// Low-attendance rolling-threshold alert config — same shape as
+// fee-reminder-timing above. Defaults (75%, 30 days) are documented
+// decisions in schema.sql, not hardcoded guesses a school is stuck with.
+router.patch('/low-attendance-alert-timing', requireAuth, requirePrincipal, async (req, res) => {
+  const school_id = req.user.school_id;
+  const { threshold_percent, window_days } = req.body;
+  if (threshold_percent === undefined || isNaN(threshold_percent) || threshold_percent <= 0 || threshold_percent > 100) {
+    return res.status(400).json({ error: 'A valid threshold_percent between 1 and 100 is required' });
+  }
+  if (window_days === undefined || isNaN(window_days) || window_days < 1) {
+    return res.status(400).json({ error: 'A valid window_days of at least 1 is required' });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO school_settings (school_id, low_attendance_threshold_percent, low_attendance_window_days)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (school_id) DO UPDATE SET
+         low_attendance_threshold_percent = EXCLUDED.low_attendance_threshold_percent,
+         low_attendance_window_days = EXCLUDED.low_attendance_window_days,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [school_id, threshold_percent, window_days]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Low attendance alert timing update error:', err);
+    res.status(500).json({ error: 'Failed to update low attendance alert timing' });
+  }
+});
+
 // Leaving-certificate letterhead/signatory text (feature 4.3) — lets the
 // principal edit the PDF's per-school text without a code deploy. The PDF
 // layout itself stays generic/shared; only this text is per-tenant.

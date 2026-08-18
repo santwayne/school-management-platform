@@ -1,4 +1,4 @@
-import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue } from '../config/queue.js';
+import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue } from '../config/queue.js';
 
 // The worker only reacts to jobs that land on GuidanceQueue — nothing put
 // any there before. This registers a repeatable job so it actually fires
@@ -106,6 +106,22 @@ export async function scheduleTeachingReminders() {
     }
   );
   console.log('Upcoming-class teacher reminder polling job scheduled.');
+}
+
+// Low-attendance rolling-threshold check — weekly (Monday morning) rather
+// than daily, since the underlying percentage barely moves day to day and
+// a daily check would just be re-querying the same slow-moving number.
+export async function scheduleLowAttendanceAlerts() {
+  await lowAttendanceAlertQueue.add(
+    'weeklyLowAttendanceCheck',
+    {},
+    {
+      repeat: { pattern: process.env.LOW_ATTENDANCE_ALERT_CRON || '15 8 * * 1' }, // Monday 8:15 AM
+      removeOnComplete: true,
+      jobId: 'weekly-low-attendance-check',
+    }
+  );
+  console.log('Weekly low-attendance alert job scheduled.');
 }
 
 // Polls pull-based-vendor buses every 30s for their current location.

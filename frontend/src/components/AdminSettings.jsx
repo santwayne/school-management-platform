@@ -40,6 +40,8 @@ export default function AdminSettings() {
   const [proximityRadius, setProximityRadius] = useState('500');
   const [feeReminderGraceDays, setFeeReminderGraceDays] = useState('7');
   const [feeReminderIntervalDays, setFeeReminderIntervalDays] = useState('7');
+  const [lowAttendanceThreshold, setLowAttendanceThreshold] = useState('75');
+  const [lowAttendanceWindowDays, setLowAttendanceWindowDays] = useState('30');
   const [letterhead, setLetterhead] = useState('');
   const [signatoryName, setSignatoryName] = useState('');
   const [signatoryDesignation, setSignatoryDesignation] = useState('');
@@ -58,6 +60,8 @@ export default function AdminSettings() {
       setProximityRadius(String(s.proximity_alert_radius_meters ?? 500));
       setFeeReminderGraceDays(String(s.fee_reminder_grace_days ?? 7));
       setFeeReminderIntervalDays(String(s.fee_reminder_interval_days ?? 7));
+      setLowAttendanceThreshold(String(s.low_attendance_threshold_percent ?? 75));
+      setLowAttendanceWindowDays(String(s.low_attendance_window_days ?? 30));
       setLogoUrl(s.logo_url || '');
       setLogoPreview(s.logo_url || '');
       setLetterhead(s.leaving_cert_letterhead_text || '');
@@ -225,6 +229,24 @@ export default function AdminSettings() {
       });
       setSettings(s);
       flash('Fee reminder timing saved.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const saveLowAttendanceAlertTiming = async () => {
+    setError('');
+    const threshold = Number(lowAttendanceThreshold);
+    const window = Number(lowAttendanceWindowDays);
+    if (isNaN(threshold) || threshold <= 0 || threshold > 100) return setError('Enter a valid attendance threshold (1-100%).');
+    if (isNaN(window) || window < 1) return setError('Enter a valid rolling window of at least 1 day.');
+    try {
+      const s = await apiRequest('/api/settings/low-attendance-alert-timing', {
+        method: 'PATCH',
+        body: { threshold_percent: threshold, window_days: window },
+      });
+      setSettings(s);
+      flash('Low attendance alert timing saved.');
     } catch (err) {
       setError(err.message);
     }
@@ -407,6 +429,36 @@ export default function AdminSettings() {
               </label>
             </div>
             <button onClick={saveFeeReminderTiming} className="mt-3 px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
+              Save
+            </button>
+          </Card>
+
+          <Card title="Low Attendance Alerts">
+            <p className="text-xs text-ink-soft mb-3">
+              Once a week, parents of students whose attendance over the rolling window below falls under the
+              threshold get an automatic WhatsApp alert. Controlled by the "Attendance alerts" toggle above.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-xs font-medium text-ink-soft">Minimum attendance (%)</span>
+                <input
+                  type="number"
+                  value={lowAttendanceThreshold}
+                  onChange={(e) => setLowAttendanceThreshold(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-ink-soft">Rolling window (days)</span>
+                <input
+                  type="number"
+                  value={lowAttendanceWindowDays}
+                  onChange={(e) => setLowAttendanceWindowDays(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
+                />
+              </label>
+            </div>
+            <button onClick={saveLowAttendanceAlertTiming} className="mt-3 px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
               Save
             </button>
           </Card>
