@@ -229,6 +229,36 @@ router.patch('/proximity-alert-radius', requireAuth, requirePrincipal, async (re
   }
 });
 
+// Automated fee-reminder timing (workers/feeReminderWorker.js) — how many
+// days of grace a newly-enrolled student gets before reminders start, and
+// how many days apart repeat reminders are spaced.
+router.patch('/fee-reminder-timing', requireAuth, requirePrincipal, async (req, res) => {
+  const school_id = req.user.school_id;
+  const { grace_days, interval_days } = req.body;
+  if (grace_days === undefined || isNaN(grace_days) || grace_days < 0) {
+    return res.status(400).json({ error: 'A valid non-negative grace_days is required' });
+  }
+  if (interval_days === undefined || isNaN(interval_days) || interval_days < 1) {
+    return res.status(400).json({ error: 'A valid interval_days of at least 1 is required' });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO school_settings (school_id, fee_reminder_grace_days, fee_reminder_interval_days)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (school_id) DO UPDATE SET
+         fee_reminder_grace_days = EXCLUDED.fee_reminder_grace_days,
+         fee_reminder_interval_days = EXCLUDED.fee_reminder_interval_days,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [school_id, grace_days, interval_days]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Fee reminder timing update error:', err);
+    res.status(500).json({ error: 'Failed to update fee reminder timing' });
+  }
+});
+
 // Leaving-certificate letterhead/signatory text (feature 4.3) — lets the
 // principal edit the PDF's per-school text without a code deploy. The PDF
 // layout itself stays generic/shared; only this text is per-tenant.

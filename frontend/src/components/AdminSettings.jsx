@@ -38,6 +38,8 @@ export default function AdminSettings() {
   const [awaitingCode, setAwaitingCode] = useState(false);
   const [limit, setLimit] = useState('5000');
   const [proximityRadius, setProximityRadius] = useState('500');
+  const [feeReminderGraceDays, setFeeReminderGraceDays] = useState('7');
+  const [feeReminderIntervalDays, setFeeReminderIntervalDays] = useState('7');
   const [letterhead, setLetterhead] = useState('');
   const [signatoryName, setSignatoryName] = useState('');
   const [signatoryDesignation, setSignatoryDesignation] = useState('');
@@ -54,6 +56,8 @@ export default function AdminSettings() {
       setWhatsappNumber(s.whatsapp_business_number || '');
       setLimit(String(s.petty_cash_accountant_limit ?? 5000));
       setProximityRadius(String(s.proximity_alert_radius_meters ?? 500));
+      setFeeReminderGraceDays(String(s.fee_reminder_grace_days ?? 7));
+      setFeeReminderIntervalDays(String(s.fee_reminder_interval_days ?? 7));
       setLogoUrl(s.logo_url || '');
       setLogoPreview(s.logo_url || '');
       setLetterhead(s.leaving_cert_letterhead_text || '');
@@ -208,6 +212,24 @@ export default function AdminSettings() {
     }
   };
 
+  const saveFeeReminderTiming = async () => {
+    setError('');
+    const grace = Number(feeReminderGraceDays);
+    const interval = Number(feeReminderIntervalDays);
+    if (isNaN(grace) || grace < 0) return setError('Enter a valid grace period (days).');
+    if (isNaN(interval) || interval < 1) return setError('Enter a valid reminder interval of at least 1 day.');
+    try {
+      const s = await apiRequest('/api/settings/fee-reminder-timing', {
+        method: 'PATCH',
+        body: { grace_days: grace, interval_days: interval },
+      });
+      setSettings(s);
+      flash('Fee reminder timing saved.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   if (loading) return <p className="text-sm text-ink-soft">Loading…</p>;
   if (!settings) {
     return (
@@ -357,6 +379,36 @@ export default function AdminSettings() {
                 Save
               </button>
             </div>
+          </Card>
+
+          <Card title="Automatic Fee Reminders">
+            <p className="text-xs text-ink-soft mb-3">
+              Every day, parents of students with an unpaid balance get an automatic WhatsApp reminder with a fresh
+              payment link — no accountant has to send it by hand. Controlled by the "Fee reminders" toggle above.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-xs font-medium text-ink-soft">Grace period after enrollment (days)</span>
+                <input
+                  type="number"
+                  value={feeReminderGraceDays}
+                  onChange={(e) => setFeeReminderGraceDays(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-ink-soft">Days between repeat reminders</span>
+                <input
+                  type="number"
+                  value={feeReminderIntervalDays}
+                  onChange={(e) => setFeeReminderIntervalDays(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
+                />
+              </label>
+            </div>
+            <button onClick={saveFeeReminderTiming} className="mt-3 px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
+              Save
+            </button>
           </Card>
 
           <Card title="Fee Collectors">
