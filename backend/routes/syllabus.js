@@ -43,14 +43,20 @@ router.post('/upload', requireAuth, requirePrincipal, async (req, res) => {
       }
 
       try {
+        // subject_ref_id is optional (nullable FK to the real subjects.id —
+        // see schema.sql's note on why subject_id alone, a free-text
+        // curriculum code, can't be safely joined against elsewhere). Not
+        // required so the existing CSV import format keeps working
+        // unchanged for anyone not using it yet.
         await client.query(
           `INSERT INTO syllabus_calendar
-             (school_id, class_id, subject_id, chapter_id, chapter_name, target_start_date, target_end_date)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+             (school_id, class_id, subject_id, subject_ref_id, chapter_id, chapter_name, target_start_date, target_end_date)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [
             schoolId,
             row.class_id,
             row.subject_id,
+            row.subject_ref_id || null,
             row.chapter_id,
             row.chapter_name.trim(),
             row.target_start_date,
@@ -83,21 +89,25 @@ router.get('/', requireAuth, async (req, res) => {
   const schoolId = req.user.school_id;
   const { class_id, subject_id } = req.query;
 
-  const conditions = ['school_id = $1'];
+  const conditions = ['sc.school_id = $1'];
   const params = [schoolId];
 
   if (class_id) {
     params.push(class_id);
-    conditions.push(`class_id = $${params.length}`);
+    conditions.push(`sc.class_id = $${params.length}`);
   }
   if (subject_id) {
     params.push(subject_id);
-    conditions.push(`subject_id = $${params.length}`);
+    conditions.push(`sc.subject_id = $${params.length}`);
   }
 
   try {
     const { rows } = await pool.query(
-      `SELECT * FROM syllabus_calendar WHERE ${conditions.join(' AND ')} ORDER BY target_start_date ASC`,
+      `SELECT sc.*, sub.name AS subject_ref_name
+       FROM syllabus_calendar sc
+       LEFT JOIN subjects sub ON sub.id = sc.subject_ref_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY sc.target_start_date ASC`,
       params
     );
     res.json(rows);
@@ -106,11 +116,20 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
-// PATCH /api/syllabus/:id — edit dates/teacher assignment
+// PATCH /api/syllabus/:id — edit dates/teacher assignment/real-subject link
 router.patch('/:id', requireAuth, requirePrincipal, async (req, res) => {
   const { id } = req.params;
   const schoolId = req.user.school_id;
-  const { target_start_date, target_end_date, teacher_id, chapter_name } = req.body;
+  const { target_start_date, target_end_date, teacher_id, chapter_name, subject_ref_id } = req.body;
+
+  // has-own-property check (same pattern used elsewhere in this codebase,
+  // e.g. academics.js's PATCH /students/:id) rather than COALESCE, since
+  // COALESCE can never distinguish "clear this row's link" (explicit null)
+  // from "leave it as-is" (omitted) — both look identical to a plain
+  // `subject_ref_id || null`, and a principal re-tagging a row to the
+  // correct subject after picking the wrong one needs to be able to clear
+  // it, not just set it once.
+  const hasSubjectRef = Object.prototype.hasOwnProperty.call(req.body, 'subject_ref_id');
 
   try {
     const result = await pool.query(
@@ -118,10 +137,11 @@ router.patch('/:id', requireAuth, requirePrincipal, async (req, res) => {
          target_start_date = COALESCE($1, target_start_date),
          target_end_date = COALESCE($2, target_end_date),
          teacher_id = COALESCE($3, teacher_id),
-         chapter_name = COALESCE($4, chapter_name)
+         chapter_name = COALESCE($4, chapter_name),
+         subject_ref_id = CASE WHEN $7 THEN $8 ELSE subject_ref_id END
        WHERE id = $5 AND school_id = $6
        RETURNING *`,
-      [target_start_date || null, target_end_date || null, teacher_id || null, chapter_name || null, id, schoolId]
+      [target_start_date || null, target_end_date || null, teacher_id || null, chapter_name || null, id, schoolId, hasSubjectRef, subject_ref_id || null]
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Syllabus row not found' });

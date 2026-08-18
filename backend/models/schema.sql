@@ -1640,3 +1640,26 @@ SELECT NULL, 'upcoming_event_reminder', 'both', 'Upcoming Event Reminder',
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'upcoming_event_reminder'
 );
+
+-- ---------- Fix dailyGuidanceWorker.js's dead join (found while building the above) ----------
+-- syllabus_calendar.subject_id is a free-text curriculum code (e.g.
+-- "MATH101" — see SyllabusManager.jsx's own CSV template), not the real
+-- integer subjects.id used everywhere else in this schema
+-- (class_subject_teachers, timetable_slots, lesson_plans, exam_marks).
+-- workers/dailyGuidanceWorker.js's join
+-- (`cst.subject_id::text = sc.subject_id`) compares those two different
+-- identity systems and only ever matches by coincidence, making that
+-- worker's "what to teach today" nudge effectively dead in practice.
+--
+-- Fix: add a nullable, properly-typed FK alongside the existing free-text
+-- code rather than replacing it — subject_id stays as the display/import
+-- value (so the existing CSV import format keeps working unchanged), and
+-- subject_ref_id is the new reliable join target once a row is tagged
+-- with a real subject. Additive and non-destructive: existing rows get
+-- subject_ref_id = NULL and simply don't match the guidance worker's join
+-- (the same "doesn't match" behavior they have today) until someone
+-- re-saves them via the updated SyllabusManager.jsx form, which now lets
+-- a principal optionally pick the real subject. This does NOT retroactively
+-- fix historical data — only rows tagged going forward will actually
+-- trigger the daily guidance nudge.
+ALTER TABLE syllabus_calendar ADD COLUMN IF NOT EXISTS subject_ref_id INT REFERENCES subjects(id) ON DELETE SET NULL;
