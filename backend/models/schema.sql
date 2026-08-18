@@ -1663,3 +1663,42 @@ WHERE NOT EXISTS (
 -- fix historical data — only rows tagged going forward will actually
 -- trigger the daily guidance nudge.
 ALTER TABLE syllabus_calendar ADD COLUMN IF NOT EXISTS subject_ref_id INT REFERENCES subjects(id) ON DELETE SET NULL;
+
+-- ---------- Weekly class-progress summary for parents (AI roadmap #4, built) ----------
+-- Nothing like this existed before — every parent-facing notification in
+-- this codebase is single-event (one homework, one exam, one absence),
+-- never a rolled-up digest. Decisions made without asking (see SUMMARY.md):
+--   - CLASS-level, not per-student — "summarize a class's weekly
+--     progress" (the actual ask) reads as one summary per class, and it's
+--     far more scalable: one Claude call per class per week instead of
+--     one per student (a school with 2,000 students is 2,000 calls/week
+--     under a per-student design, ~60-100 under a per-class one). A
+--     personalized per-student version is a natural follow-up, not what
+--     was asked here.
+--   - New notify_weekly_summary toggle, not reusing notify_homework —
+--     this covers attendance + homework + exam performance together, not
+--     just homework, so folding it into an existing single-domain toggle
+--     would be misleading about what it controls.
+--   - Sent identically to every parent in the class (same content, not
+--     personalized) — same "one message, many recipients" shape as the
+--     existing library digest / broadcast composer, not a new pattern.
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS notify_weekly_summary BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- One row per class per week actually sent — prevents a re-run of the
+-- same week's job (e.g. after a crash/restart) from sending twice.
+CREATE TABLE IF NOT EXISTS weekly_progress_summary_log (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    period VARCHAR(20) NOT NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (class_id, period)
+);
+
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'weekly_class_progress_summary', 'both', 'Weekly Class Progress Summary',
+       'weekly_progress_summary_alert', '["class_name","summary_text"]'::jsonb,
+       'This week in {{class_name}}', '{{summary_text}}', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'weekly_class_progress_summary'
+);

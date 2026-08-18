@@ -1,4 +1,4 @@
-import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue } from '../config/queue.js';
+import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue, weeklyProgressSummaryQueue } from '../config/queue.js';
 
 // The worker only reacts to jobs that land on GuidanceQueue — nothing put
 // any there before. This registers a repeatable job so it actually fires
@@ -151,6 +151,22 @@ export async function schedulePerformanceDrift() {
     }
   );
   console.log('Weekly performance drift snapshot job scheduled.');
+}
+
+// Weekly class-progress summary to parents — Sunday 8:30 PM, after the
+// performance drift job (they share some of the same underlying data,
+// running back-to-back keeps both reads close to the same week boundary).
+export async function scheduleWeeklyProgressSummaries() {
+  await weeklyProgressSummaryQueue.add(
+    'weeklyClassSummaries',
+    {},
+    {
+      repeat: { pattern: process.env.WEEKLY_SUMMARY_CRON || '30 20 * * 0' }, // Sunday 8:30 PM
+      removeOnComplete: true,
+      jobId: 'weekly-class-progress-summaries',
+    }
+  );
+  console.log('Weekly class-progress summary job scheduled.');
 }
 
 // Polls pull-based-vendor buses every 30s for their current location.

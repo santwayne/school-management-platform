@@ -157,19 +157,20 @@ router.post('/whatsapp/verify', requireAuth, requirePrincipal, async (req, res) 
 // Update notification toggles.
 router.patch('/notifications', requireAuth, requirePrincipal, async (req, res) => {
   const school_id = req.user.school_id;
-  const { notify_attendance, notify_homework, notify_fees, notify_payroll } = req.body;
+  const { notify_attendance, notify_homework, notify_fees, notify_payroll, notify_weekly_summary } = req.body;
   try {
     const result = await pool.query(
-      `INSERT INTO school_settings (school_id, notify_attendance, notify_homework, notify_fees, notify_payroll)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO school_settings (school_id, notify_attendance, notify_homework, notify_fees, notify_payroll, notify_weekly_summary)
+       VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (school_id) DO UPDATE SET
          notify_attendance = COALESCE(EXCLUDED.notify_attendance, school_settings.notify_attendance),
          notify_homework = COALESCE(EXCLUDED.notify_homework, school_settings.notify_homework),
          notify_fees = COALESCE(EXCLUDED.notify_fees, school_settings.notify_fees),
          notify_payroll = COALESCE(EXCLUDED.notify_payroll, school_settings.notify_payroll),
+         notify_weekly_summary = COALESCE(EXCLUDED.notify_weekly_summary, school_settings.notify_weekly_summary),
          updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
-      [school_id, notify_attendance, notify_homework, notify_fees, notify_payroll]
+      [school_id, notify_attendance, notify_homework, notify_fees, notify_payroll, notify_weekly_summary]
     );
     res.json(result.rows[0]);
   } catch (err) {

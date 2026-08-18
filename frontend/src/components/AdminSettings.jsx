@@ -384,6 +384,7 @@ export default function AdminSettings() {
             <Toggle label="Homework posted alerts" checked={settings.notify_homework} onChange={(v) => toggleNotif('notify_homework', v)} />
             <Toggle label="Fee reminders" checked={settings.notify_fees} onChange={(v) => toggleNotif('notify_fees', v)} />
             <Toggle label="Payroll processed alerts" checked={settings.notify_payroll} onChange={(v) => toggleNotif('notify_payroll', v)} />
+            <Toggle label="Weekly class progress summary" checked={settings.notify_weekly_summary} onChange={(v) => toggleNotif('notify_weekly_summary', v)} />
           </Card>
 
           <Card title="Accountant approval limit">
