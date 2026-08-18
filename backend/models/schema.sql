@@ -1363,3 +1363,51 @@ SELECT NULL, 'bus_approaching', 'both', 'Bus Approaching Home',
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'bus_approaching'
 );
+
+-- ---------- Automated fee-payment reminders ----------
+-- Converts the "Send payment link" flow (routes/paymentLinks.js,
+-- FeeCollectionHub.jsx) from something an accountant has to manually
+-- trigger per student into a daily automatic reminder — see the audit in
+-- workers/feeReminderWorker.js's header comment for why this was the
+-- clearest "should become automatic" candidate at scale (a school can have
+-- thousands of students; one accountant clicking Send per unpaid student
+-- doesn't scale).
+--
+-- DEPENDS ON the fee_structures table from the QA fix list's Item 5 (Fee
+-- Structure config) — that fix made "expected amount per class" a real,
+-- populated value for the first time (previously nothing ever wrote
+-- student_payment.amount_due, so there was no reliable source of "what is
+-- this student expected to pay" to build an automatic reminder against).
+-- This migration only adds new columns/tables of its own; it does not
+-- re-create fee_structures — apply the Item 5 migration first if these two
+-- pieces of work land in a database separately from each other.
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS fee_reminder_grace_days INT NOT NULL DEFAULT 7;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS fee_reminder_interval_days INT NOT NULL DEFAULT 7;
+
+-- One row per reminder actually sent — lets the worker space reminders out
+-- (fee_reminder_interval_days apart) instead of re-messaging the same
+-- parent every single day. "Stop once paid" needs no separate flag here:
+-- the worker's candidate query re-checks the real outstanding balance
+-- live on every run, so a student who's paid simply stops matching and
+-- naturally drops out — no explicit unsent/cancelled state to manage.
+CREATE TABLE IF NOT EXISTS fee_reminder_log (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    payment_link_id INT REFERENCES fee_payment_links(id) ON DELETE SET NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_fee_reminder_log_student ON fee_reminder_log(student_id, sent_at DESC);
+
+-- New trigger_event for the shared NotificationService — a worker-driven
+-- send (no human composing anything) so it goes through sendTemplateMessage
+-- (an approved Meta template), not the free-form sendTextMessage the manual
+-- "Send payment link" flow uses today, since a worker can't assume it's
+-- inside an open 24h WhatsApp conversation window with that parent.
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'fee_payment_reminder', 'both', 'Fee Payment Reminder',
+       'fee_payment_reminder_alert', '["student_name","amount","link_url"]'::jsonb,
+       'Fee payment reminder', 'A payment of ₹{{amount}} is due for {{student_name}}. Pay here: {{link_url}}', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'fee_payment_reminder'
+);

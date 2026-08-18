@@ -24,6 +24,57 @@ function razorpayClient() {
   });
 }
 
+// Core "create a Razorpay payment link for one student's fee" logic — pulled
+// out of the POST / route below so the automatic fee-reminder worker
+// (workers/feeReminderWorker.js) can reuse the exact same link-creation path
+// instead of duplicating it. Does NOT send anything itself — sending is the
+// caller's job, since the manual route (free-form sendTextMessage, only
+// valid inside an open 24h WhatsApp window) and the worker (sendTemplateMessage
+// via notificationService, since a worker can't assume that window is open)
+// need different send mechanics. Throws on any failure; errors carry a
+// `.statusCode` so the route can map them to the right HTTP response.
+export async function createPaymentLinkRecord(schoolId, studentId, amount, createdByTeacherId) {
+  const studentRes = await pool.query(
+    `SELECT s.name, p.phone, p.name AS parent_name
+     FROM students s LEFT JOIN parents p ON p.id = s.parent_id
+     WHERE s.id = $1 AND s.school_id = $2`,
+    [studentId, schoolId]
+  );
+  if (studentRes.rowCount === 0) {
+    const err = new Error('Student not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  const student = studentRes.rows[0];
+  if (!student.phone) {
+    const err = new Error('This student has no parent phone number on file');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const referenceId = `waynur-${schoolId}-${studentId}-${Date.now()}`;
+
+  const razorRes = await razorpayClient().post('/payment_links', {
+    amount: Math.round(Number(amount) * 100), // paise
+    currency: 'INR',
+    reference_id: referenceId,
+    description: `Fee payment for ${student.name}`,
+    customer: { name: student.parent_name || 'Parent', contact: student.phone },
+    notify: { sms: false, email: false }, // we send it via WhatsApp ourselves, not Razorpay's own channels
+    callback_method: 'get',
+  });
+
+  const link = razorRes.data;
+
+  const result = await pool.query(
+    `INSERT INTO fee_payment_links (school_id, student_id, amount, reference_id, razorpay_link_id, razorpay_link_url, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [schoolId, studentId, amount, referenceId, link.id, link.short_url, createdByTeacherId || null]
+  );
+
+  return { link: result.rows[0], student };
+}
+
 // Create a payment link for one student's fee, and WhatsApp it to the parent.
 // The reference_id is what makes reconciliation automatic — Razorpay echoes
 // it back on the webhook, so we always know exactly which student paid even
@@ -36,43 +87,16 @@ router.post('/', requireAuth, requireFinance, async (req, res) => {
   }
 
   try {
-    const studentRes = await pool.query(
-      `SELECT s.name, p.phone, p.name AS parent_name
-       FROM students s LEFT JOIN parents p ON p.id = s.parent_id
-       WHERE s.id = $1 AND s.school_id = $2`,
-      [student_id, school_id]
-    );
-    if (studentRes.rowCount === 0) return res.status(404).json({ error: 'Student not found' });
-    const student = studentRes.rows[0];
-    if (!student.phone) return res.status(400).json({ error: 'This student has no parent phone number on file' });
-
-    const referenceId = `waynur-${school_id}-${student_id}-${Date.now()}`;
-
-    const razorRes = await razorpayClient().post('/payment_links', {
-      amount: Math.round(Number(amount) * 100), // paise
-      currency: 'INR',
-      reference_id: referenceId,
-      description: `Fee payment for ${student.name}`,
-      customer: { name: student.parent_name || 'Parent', contact: student.phone },
-      notify: { sms: false, email: false }, // we send it via WhatsApp ourselves, not Razorpay's own channels
-      callback_method: 'get',
-    });
-
-    const link = razorRes.data;
-
-    const result = await pool.query(
-      `INSERT INTO fee_payment_links (school_id, student_id, amount, reference_id, razorpay_link_id, razorpay_link_url, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [school_id, student_id, amount, referenceId, link.id, link.short_url, req.user.teacher_id || null]
-    );
+    const { link, student } = await createPaymentLinkRecord(school_id, student_id, amount, req.user.teacher_id);
 
     await sendTextMessage(
       student.phone,
-      `Fee payment due for ${student.name}: ₹${amount}. Pay securely here: ${link.short_url}`
+      `Fee payment due for ${student.name}: ₹${amount}. Pay securely here: ${link.razorpay_link_url}`
     ).catch((err) => console.error('Payment link WhatsApp send failed (link was still created):', err.message));
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(link);
   } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     console.error('Payment link creation error:', err.response?.data || err.message);
     res.status(500).json({ error: 'Failed to create payment link — check RAZORPAY_KEY_ID/SECRET are set correctly' });
   }
