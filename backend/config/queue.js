@@ -34,5 +34,9 @@ export const feeReminderQueue = new Queue('FeeReminderQueue', { connection });
 // request has sat pending too long — there was no reminder at all before.
 export const pettyCashReminderQueue = new Queue('PettyCashReminderQueue', { connection });
 
+// Staff leave reminder queue: same shape as petty cash — daily one-time
+// nudge to the principal when a leave request has sat pending too long.
+export const staffLeaveReminderQueue = new Queue('StaffLeaveReminderQueue', { connection });
+
 // How long to wait for a parent reply before escalating to a voice call (ms)
 export const ESCALATION_DELAY_MS = Number(process.env.ESCALATION_DELAY_MS || 2 * 60 * 60 * 1000); // default 2 hrs

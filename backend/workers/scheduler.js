@@ -1,4 +1,4 @@
-import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue } from '../config/queue.js';
+import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue } from '../config/queue.js';
 
 // The worker only reacts to jobs that land on GuidanceQueue — nothing put
 // any there before. This registers a repeatable job so it actually fires
@@ -74,6 +74,20 @@ export async function schedulePettyCashReminders() {
     }
   );
   console.log('Daily petty cash reminder job scheduled.');
+}
+
+// Staff leave pending reminder — 10:00 AM, after the petty cash reminder job.
+export async function scheduleStaffLeaveReminders() {
+  await staffLeaveReminderQueue.add(
+    'dailyStaffLeaveReminders',
+    {},
+    {
+      repeat: { pattern: process.env.STAFF_LEAVE_REMINDER_CRON || '0 10 * * *' }, // 10:00 AM daily
+      removeOnComplete: true,
+      jobId: 'daily-staff-leave-reminders',
+    }
+  );
+  console.log('Daily staff leave reminder job scheduled.');
 }
 
 // Polls pull-based-vendor buses every 30s for their current location.

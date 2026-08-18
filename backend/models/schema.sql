@@ -1459,3 +1459,26 @@ SELECT NULL, 'library_book_reminder', 'both', 'Library Book Due/Overdue',
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'library_book_reminder'
 );
+
+-- ---------- Automated staff-leave pending reminder ----------
+-- Third finding from the broader "what else should be autonomous" audit
+-- (see SUMMARY.md): routes/staffLeave.js's POST /requests (teacher applies)
+-- and PUT /requests/:id (principal approves/rejects) send NO notification
+-- at all today, in either direction — confirmed by reading the whole file,
+-- not assumed. This adds only the piece the user explicitly asked for
+-- (nudge the principal when a request has sat PENDING too long) — same
+-- shape as petty_cash_pending_reminder just above (one-time nudge, no
+-- batching needed at this volume). A separate, still-open gap: neither
+-- approval nor rejection notifies the requesting teacher either — flagged
+-- in SUMMARY.md as a related but distinct candidate, not built here to
+-- keep this commit scoped to what was actually asked.
+ALTER TABLE staff_leave_requests ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS staff_leave_reminder_days INT NOT NULL DEFAULT 2;
+
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'staff_leave_pending_reminder', 'both', 'Staff Leave Pending Reminder',
+       'staff_leave_pending_reminder_alert', '["teacher_name","leave_type","days_count"]'::jsonb,
+       'Leave request awaiting approval', '{{teacher_name}}''s {{leave_type}} leave request ({{days_count}} day(s)) has been pending for a few days.', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'staff_leave_pending_reminder'
+);
