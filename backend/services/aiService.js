@@ -165,3 +165,35 @@ export async function extractDoubtImage(base64Image, mimeType) {
     return "I received your image but I'm having trouble reading it right now — could you try describing your question in text?";
   }
 }
+
+// AI roadmap #3 revision: was a one-off Anthropic client instantiated
+// directly inside routes/communications.js — moved here to reuse this
+// file's shared `anthropic` client instead of a second one-off
+// implementation, per instructions.
+//
+// Error handling deliberately does NOT match this file's other functions
+// (which all catch-and-return a scripted fallback string, appropriate for
+// an automated WhatsApp reply that must always say something). This is a
+// synchronous, user-initiated request — the calling route needs to tell a
+// real failure apart from a real draft — so it matches tutorService.js's
+// askTutor() instead: an explicit upfront key check that throws a clear
+// error, then an uncaught API call so real failures propagate to the route.
+export async function draftBroadcastMessage(prompt, audienceLabel) {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY is not configured');
+  }
+
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-5',
+    max_tokens: 300,
+    system:
+      'You draft short WhatsApp broadcast messages from an Indian school to parents/staff, from a brief instruction. ' +
+      'Keep it under 4 sentences, plain and warm, no emoji spam (at most one), no markdown formatting (this goes ' +
+      'out as plain WhatsApp text). State only what the instruction actually says — never invent a date, time, ' +
+      'location, or detail that was not given; if the instruction is missing something essential, write the ' +
+      'message with a placeholder like [date/time] rather than guessing one. Output ONLY the message text, nothing else.',
+    messages: [{ role: 'user', content: `Audience: ${audienceLabel || 'parents'}\nInstruction: ${prompt.trim()}` }],
+  });
+  const textBlock = response.content.find((block) => block.type === 'text');
+  return textBlock ? textBlock.text.trim() : '';
+}
