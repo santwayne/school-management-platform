@@ -34,7 +34,7 @@ export default function PrincipalDashboard() {
         </div>
       </div>
 
-      <h2 className="font-display text-xl text-ink mb-4">Class Performance Drift Flags (3+ Weeks)</h2>
+      <h2 className="font-display text-xl text-ink mb-4">Student Performance Drift Flags (3+ Weeks)</h2>
 
       {error && <div className="p-3 mb-4 text-sm bg-destructive/10 text-destructive rounded-lg">{error}</div>}
 
@@ -56,10 +56,10 @@ export default function PrincipalDashboard() {
                   <span className="text-xs text-ink-soft">{alert.period}</span>
                 </div>
                 <h3 className="font-display text-lg text-ink">
-                  {alert.class_name} — {alert.subject_id}
+                  {alert.student_name || `Student #${alert.student_id}`}
                 </h3>
                 <p className="text-sm text-ink-soft mt-1">
-                  Teacher: <span className="font-medium text-ink">{alert.teacher_name || 'N/A'}</span>
+                  Class: <span className="font-medium text-ink">{alert.class_name}</span>
                 </p>
                 <p className="text-sm bg-cream-deep/30 text-ink-soft p-3 rounded-lg border border-cream-deep/60 mt-3 italic">
                   "{alert.flag_reason}"
@@ -67,8 +67,12 @@ export default function PrincipalDashboard() {
               </div>
 
               <div className="mt-4 pt-3 border-t border-cream-deep/60 flex justify-end">
-                <button onClick={() => navigate('/syllabus')} className="text-sm font-semibold text-terracotta-deep hover:text-terracotta transition">
-                  Review Syllabus Adjustments &rarr;
+                <button
+                  onClick={() => navigate(`/admin/students/${alert.student_id}/profile`)}
+                  disabled={!alert.student_id}
+                  className="text-sm font-semibold text-terracotta-deep hover:text-terracotta transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  View Student Profile &rarr;
                 </button>
               </div>
             </div>

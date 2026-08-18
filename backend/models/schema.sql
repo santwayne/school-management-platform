@@ -1702,3 +1702,16 @@ SELECT NULL, 'weekly_class_progress_summary', 'both', 'Weekly Class Progress Sum
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'weekly_class_progress_summary'
 );
+
+-- ---------- At-risk flagging: reworked to per-student (AI roadmap #1, revised) ----------
+-- The first pass of performanceDriftWorker.js computed class+subject-level
+-- snapshots, matching performance_snapshots' pre-existing shape (no
+-- student_id column at the time). A follow-up spec explicitly asked for a
+-- risk signal PER STUDENT — "a principal/teacher needs to trust and act
+-- on it" reads as needing to know WHICH student, not just which class.
+-- Added additively: student_id is nullable, so it doesn't retroactively
+-- break anything, and a school could in principle have both class-level
+-- and student-level rows in history (the worker itself now only writes
+-- student-level going forward — see performanceDriftWorker.js).
+ALTER TABLE performance_snapshots ADD COLUMN IF NOT EXISTS student_id INT REFERENCES students(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_performance_snapshots_student ON performance_snapshots(student_id);

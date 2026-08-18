@@ -6,14 +6,20 @@ const router = express.Router();
 
 // Surfaces sustained (3+ week) performance drift for human review — never
 // an automatic verdict. Scoped to the caller's own school via the token.
+// Per-STUDENT since performanceDriftWorker.js's revision (see that
+// worker's own header comment) — student_name is now the primary label;
+// teacher_name stays NULL (LEFT JOIN) since an overall student-level
+// signal isn't tied to one teacher the way the original class+subject
+// design was.
 router.get('/drift-alerts', requireAuth, async (req, res) => {
   const school_id = req.user.school_id;
   try {
     const alerts = await pool.query(
-      `SELECT ps.*, c.name AS class_name, t.name AS teacher_name
+      `SELECT ps.*, c.name AS class_name, t.name AS teacher_name, st.name AS student_name
        FROM performance_snapshots ps
        JOIN classes c ON ps.class_id = c.id
        LEFT JOIN teachers t ON ps.teacher_id = t.id
+       LEFT JOIN students st ON ps.student_id = st.id
        WHERE ps.school_id = $1 AND ps.flagged = TRUE
        ORDER BY ps.period DESC`,
       [school_id]
