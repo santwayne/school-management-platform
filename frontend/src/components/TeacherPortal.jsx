@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck, NotebookPen, X, Users } from 'lucide-react';
+import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck, NotebookPen, X, Users, MessageCircleQuestion } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
@@ -187,6 +187,46 @@ export default function TeacherPortal() {
   );
 }
 
+// AI roadmap #2: surfaces "N students across this class asked about the
+// same chapter this week" — the WhatsApp doubt bot already tags chapters
+// (routes/whatsapp.js), this just aggregates that into a re-teach signal
+// instead of a teacher having to notice the pattern from memory across
+// doubts they never see individually (the bot answers the parent
+// directly, not the teacher). Silently renders nothing if there's nothing
+// to show — this is a signal, not a permanent fixture on the page.
+function RecurringDoubtsCard() {
+  const [items, setItems] = useState(null);
+
+  useEffect(() => {
+    apiRequest('/api/analytics/recurring-doubts').then((r) => setItems(r.data || [])).catch(() => setItems([]));
+  }, []);
+
+  if (!items || items.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl bg-white border border-amber-400/40 p-5">
+      <div className="flex items-center gap-2 mb-1">
+        <MessageCircleQuestion className="w-4 h-4 text-amber-600" />
+        <h2 className="font-display text-lg text-ink">Recurring doubts this week</h2>
+      </div>
+      <p className="text-xs text-ink-soft mb-3">Multiple students asked about the same chapter — worth a quick re-cap.</p>
+      <div className="space-y-2">
+        {items.map((it) => (
+          <div key={`${it.class_id}-${it.chapter_tag}`} className="flex items-center justify-between rounded-xl border border-cream-deep/70 px-3.5 py-2.5">
+            <div>
+              <span className="text-sm font-medium text-ink">{it.chapter_tag}</span>
+              <span className="text-xs text-ink-soft ml-2">· {it.class_name}</span>
+            </div>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-400/15 text-amber-700">
+              {it.student_count} students asked
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ClassPicker({ today, classes, markedToday, markedCount, totalCount, onOpen, inchargeClasses, inchargeAttendance, pendingLeaveCount }) {
   const allDone = totalCount > 0 && markedCount === totalCount;
 
@@ -249,6 +289,9 @@ function ClassPicker({ today, classes, markedToday, markedCount, totalCount, onO
           </Link>
         </div>
       )}
+
+      {/* AI roadmap #2 — recurring doubts across the teacher's own classes */}
+      <RecurringDoubtsCard />
 
       {/* Class list */}
       {classes.length === 0 ? (
