@@ -1116,6 +1116,23 @@ WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'exam_result'
 );
 
+-- New trigger_event for the shared NotificationService (see notification_templates
+-- above) — fired once when the principal's "Add Student" bulk-upsert flow
+-- (routes/studentRecords.js) creates a brand-new student and generates a
+-- login_id + PIN, so the parent gets the credentials on WhatsApp instead of
+-- them only ever appearing in the API response. whatsapp_template_name still
+-- needs to be created + approved in WhatsApp Business Manager before this
+-- will actually send (same as every other whatsapp_template_name here) —
+-- until then notificationService.send() safely no-ops on the WhatsApp leg
+-- and only writes the dashboard_notifications row.
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'student_credentials', 'both', 'Student Login Credentials Created',
+       'student_credentials_alert', '["student_name","login_id","pin"]'::jsonb,
+       'Login created for {{student_name}}', 'Login ID: {{login_id}} · PIN: {{pin}} — keep this safe.', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'student_credentials'
+);
+
 -- ---------- Teacher Management additions: Optional Subjects + Student Leave ----------
 -- `classes` had no section column at all — sections aren't modeled anywhere
 -- else in the schema (each class name like "Class 8A" already implies its

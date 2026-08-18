@@ -2,6 +2,7 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
+import { send as sendNotification } from '../services/notificationService.js';
 
 const router = express.Router();
 
@@ -138,6 +139,25 @@ router.post('/bulk-upsert', requireAuth, requirePrincipal, async (req, res) => {
         );
         created++;
         results.push({ row_number: rowNumber, status: 'created', student: { ...insertRes.rows[0], defaultPin } });
+
+        // Parents have no web login (see schema.sql's Unified Notification
+        // Service comment) — WhatsApp is the only way they ever see their
+        // child's login_id + PIN, so send it as soon as we have a parent on
+        // file with a phone number. Best-effort: never let a WhatsApp failure
+        // block the bulk-upsert response (same defensive pattern used by
+        // every other notificationService.send() call in this codebase).
+        if (parentId) {
+          try {
+            await sendNotification({
+              triggerEvent: 'student_credentials',
+              schoolId,
+              recipients: [{ type: 'parent', studentId: insertRes.rows[0].id }],
+              variables: { login_id: loginId, pin: defaultPin },
+            });
+          } catch (notifyErr) {
+            console.error('student_credentials notification failed:', notifyErr.message);
+          }
+        }
       }
     } catch (err) {
       failed++;
