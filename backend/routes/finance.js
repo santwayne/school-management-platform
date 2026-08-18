@@ -134,6 +134,26 @@ router.get('/students/search', requireAuth, requireFinance, async (req, res) => 
   }
 });
 
+// GET /api/finance/staff/search?q= — same pattern as /students/search above,
+// for Item 16's petty cash "Staff name" fix: lets the Accountant/Principal
+// resolve a staff member to their real teacher id by typing a name, instead
+// of hand-typing a name directly into petty_cash.requested_by (which is how
+// a typo ended up saved with no link back to the actual staff record).
+router.get('/staff/search', requireAuth, requireFinance, async (req, res) => {
+  const { q } = req.query;
+  if (!q || q.trim().length < 1) return res.json([]);
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name, role FROM teachers WHERE school_id = $1 AND name ILIKE $2 ORDER BY name LIMIT 10`,
+      [req.user.school_id, `%${q}%`]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Staff search error:', err);
+    res.status(500).json({ error: 'Failed to search staff' });
+  }
+});
+
 // GET /api/finance/fee/history — recent fee payments for this school, for
 // the Accountant / Principal fee collection screen.
 router.get('/fee/history', requireAuth, requireFinance, async (req, res) => {
@@ -277,19 +297,34 @@ router.get('/fee/dashboard', requireAuth, requireFinance, async (req, res) => {
   }
 });
 
+// Item 16: staff_id is now required instead of a hand-typed requested_by
+// string — resolved server-side to the real teacher record (never trust a
+// client-supplied name) so the "sant" typo class of bug can't recur.
+// requested_by (text) is still written, from the resolved name, purely so
+// every existing reader of that column (GET /petty-cash, exports, ...) keeps
+// working unchanged.
 router.post('/petty-cash/request', requireAuth, async (req, res) => {
   const school_id = req.user.school_id;
-  const { requested_by, amount, purpose } = req.body;
+  const { staff_id, amount, purpose } = req.body;
 
-  if (!requested_by || !amount) {
-    return res.status(400).json({ error: 'requested_by and amount are required' });
+  if (!staff_id || !amount) {
+    return res.status(400).json({ error: 'staff_id and amount are required' });
   }
 
   try {
+    const staffRes = await pool.query(
+      'SELECT id, name FROM teachers WHERE id = $1 AND school_id = $2',
+      [staff_id, school_id]
+    );
+    if (staffRes.rowCount === 0) {
+      return res.status(404).json({ error: 'Staff member not found for this school' });
+    }
+    const staff = staffRes.rows[0];
+
     const result = await pool.query(
-      `INSERT INTO petty_cash (school_id, requested_by, amount, purpose, status)
-       VALUES ($1, $2, $3, $4, 'PENDING') RETURNING id`,
-      [school_id, requested_by, amount, purpose || null]
+      `INSERT INTO petty_cash (school_id, requested_by, requested_by_teacher_id, amount, purpose, status)
+       VALUES ($1, $2, $3, $4, $5, 'PENDING') RETURNING id`,
+      [school_id, staff.name, staff.id, amount, purpose || null]
     );
     res.status(200).json({ success: true, message: 'Expense request raised.', requestId: result.rows[0].id });
   } catch (err) {

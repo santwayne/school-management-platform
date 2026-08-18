@@ -357,13 +357,97 @@ function StatusBadge({ status }) {
   return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{label}</span>;
 }
 
+// Item 16: debounced staff search-and-select, replacing the free-text
+// "Staff name" input that let a typo silently get saved with no link back
+// to a real staff record. Same pattern as FinanceAdmin.jsx's StudentPicker
+// (built for the equivalent Item 1 fix) — apiRequest calls go through
+// GET /api/finance/staff/search — but kept as its own local component here
+// rather than importing FinanceAdmin.jsx just for this, since the two
+// pickers search different tables and share no other state.
+function StaffPicker({ selected, onSelect }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    setSearching(true);
+    const handle = setTimeout(() => {
+      apiRequest(`/api/finance/staff/search?q=${encodeURIComponent(query)}`)
+        .then((rows) => setResults(rows))
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false));
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [query]);
+
+  if (selected) {
+    return (
+      <div className="w-full border rounded-lg p-2 text-sm flex items-center justify-between bg-cream-deep/20">
+        <span>
+          <span className="font-medium">{selected.name}</span>
+          <span className="text-ink-soft capitalize"> · {selected.role}</span>
+        </span>
+        <button type="button" onClick={() => onSelect(null)} className="text-xs text-terracotta-deep font-medium ml-2 shrink-0">
+          Change
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        placeholder="Search staff by name"
+        className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-terracotta/40"
+      />
+      {open && query.trim() && (
+        <div className="absolute z-10 mt-1 w-full bg-white border border-cream-deep rounded-lg shadow-md max-h-56 overflow-y-auto">
+          {searching ? (
+            <div className="p-2 text-xs text-ink-soft">Searching…</div>
+          ) : results.length === 0 ? (
+            <div className="p-2 text-xs text-ink-soft">No staff match "{query}".</div>
+          ) : (
+            results.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => {
+                  onSelect(s);
+                  setQuery('');
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-cream-deep/40"
+              >
+                <span className="font-medium">{s.name}</span>
+                <span className="text-ink-soft capitalize"> · {s.role}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PettyCashTab() {
   const { user } = useAuth();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [newOpen, setNewOpen] = useState(false);
-  const [nName, setNName] = useState('');
+  const [nStaff, setNStaff] = useState(null);
   const [nAmt, setNAmt] = useState('');
   const [nReason, setNReason] = useState('');
   const [photoPreview, setPhotoPreview] = useState(null);
@@ -435,15 +519,15 @@ function PettyCashTab() {
   };
 
   const addRequest = async () => {
-    if (!nName.trim() || !Number(nAmt) || !nReason.trim()) return;
+    if (!nStaff || !Number(nAmt) || !nReason.trim()) return;
     setError('');
     try {
       await apiRequest('/api/finance/petty-cash/request', {
         method: 'POST',
-        body: { requested_by: nName.trim(), amount: Number(nAmt), purpose: nReason.trim() },
+        body: { staff_id: nStaff.id, amount: Number(nAmt), purpose: nReason.trim() },
       });
       setNewOpen(false);
-      setNName('');
+      setNStaff(null);
       setNAmt('');
       setNReason('');
       load();
@@ -527,8 +611,8 @@ function PettyCashTab() {
               <button onClick={() => setNewOpen(false)} className="p-1 rounded hover:bg-cream-deep/60 text-ink-soft"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-5 space-y-3">
-              <FormField label="Staff name">
-                <input value={nName} onChange={(e) => setNName(e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg bg-white border border-cream-deep focus:outline-none focus:ring-2 focus:ring-terracotta/40" />
+              <FormField label="Staff">
+                <StaffPicker selected={nStaff} onSelect={setNStaff} />
               </FormField>
               <FormField label="Amount (₹)">
                 <input type="number" value={nAmt} onChange={(e) => setNAmt(e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg bg-white border border-cream-deep focus:outline-none focus:ring-2 focus:ring-terracotta/40" />
@@ -538,8 +622,8 @@ function PettyCashTab() {
               </FormField>
             </div>
             <div className="px-5 py-3 border-t border-cream-deep/70 flex items-center justify-end gap-2">
-              <button onClick={() => setNewOpen(false)} className="px-3 py-2 text-sm rounded-lg border border-cream-deep text-ink-soft hover:bg-cream-deep/50">Cancel</button>
-              <button onClick={addRequest} className="px-4 py-2 text-sm font-medium rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep">Log request</button>
+              <button onClick={() => { setNewOpen(false); setNStaff(null); }} className="px-3 py-2 text-sm rounded-lg border border-cream-deep text-ink-soft hover:bg-cream-deep/50">Cancel</button>
+              <button onClick={addRequest} disabled={!nStaff} className="px-4 py-2 text-sm font-medium rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep disabled:opacity-50">Log request</button>
             </div>
           </div>
         </div>

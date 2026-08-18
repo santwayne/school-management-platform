@@ -1296,3 +1296,13 @@ CREATE TABLE IF NOT EXISTS fee_structures (
     UNIQUE (school_id, class_id)
 );
 CREATE INDEX IF NOT EXISTS idx_fee_structures_school ON fee_structures(school_id);
+
+-- Item 16 of the QA fix list: petty_cash.requested_by was plain free text
+-- with no link to the teachers table at all — hand-typed by whoever (the
+-- Accountant/Principal) was logging the request on a staff member's behalf,
+-- which is how a typo ("sant" instead of the real name) got saved. Nullable
+-- FK added rather than replacing requested_by outright — the text column
+-- stays as the display value (now always populated from the resolved
+-- teacher's real name server-side, never hand-typed) so every existing
+-- reader of petty_cash.requested_by keeps working unchanged.
+ALTER TABLE petty_cash ADD COLUMN IF NOT EXISTS requested_by_teacher_id INT REFERENCES teachers(id) ON DELETE SET NULL;
