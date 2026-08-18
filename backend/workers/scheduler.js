@@ -1,4 +1,4 @@
-import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue, eventReminderQueue } from '../config/queue.js';
+import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue } from '../config/queue.js';
 
 // The worker only reacts to jobs that land on GuidanceQueue — nothing put
 // any there before. This registers a repeatable job so it actually fires
@@ -136,6 +136,21 @@ export async function scheduleEventReminders() {
     }
   );
   console.log('Daily event reminder job scheduled.');
+}
+
+// Weekly performance-snapshot computation, Sunday night (after the school
+// week ends) so the Principal Dashboard has fresh drift flags Monday morning.
+export async function schedulePerformanceDrift() {
+  await performanceDriftQueue.add(
+    'weeklyPerformanceSnapshot',
+    {},
+    {
+      repeat: { pattern: process.env.PERFORMANCE_DRIFT_CRON || '0 20 * * 0' }, // Sunday 8:00 PM
+      removeOnComplete: true,
+      jobId: 'weekly-performance-snapshot',
+    }
+  );
+  console.log('Weekly performance drift snapshot job scheduled.');
 }
 
 // Polls pull-based-vendor buses every 30s for their current location.

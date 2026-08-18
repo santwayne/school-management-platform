@@ -51,5 +51,10 @@ export const lowAttendanceAlertQueue = new Queue('LowAttendanceAlertQueue', { co
 // haven't been reminded yet — see workers/eventReminderWorker.js.
 export const eventReminderQueue = new Queue('EventReminderQueue', { connection });
 
+// Performance drift queue: weekly computation of performance_snapshots
+// (real attendance/homework/exam data, not demo data) — see
+// workers/performanceDriftWorker.js for the full metric/threshold design.
+export const performanceDriftQueue = new Queue('PerformanceDriftQueue', { connection });
+
 // How long to wait for a parent reply before escalating to a voice call (ms)
 export const ESCALATION_DELAY_MS = Number(process.env.ESCALATION_DELAY_MS || 2 * 60 * 60 * 1000); // default 2 hrs
