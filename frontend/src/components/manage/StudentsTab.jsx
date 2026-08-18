@@ -49,6 +49,13 @@ export default function StudentsTab() {
   const [error, setError] = useState('');
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({ name: '', class_id: '', parent_id: '' });
+  // Item 18 (bus proximity alerts): a single "lat,long" text field, pasted
+  // from Google Maps — parents have no web login to set this themselves
+  // (see schema.sql's Unified Notification Service comment), so the school
+  // enters it here rather than a live map picker being built for a surface
+  // that doesn't have one yet.
+  const [homeLocation, setHomeLocation] = useState('');
+  const [homeLocationError, setHomeLocationError] = useState('');
 
   const load = async (q = '') => {
     setLoading(true);
@@ -81,16 +88,39 @@ export default function StudentsTab() {
 
   const openEdit = (s) => {
     setForm({ name: s.name, class_id: s.class_id || '', parent_id: s.parent_id || '' });
+    setHomeLocation(s.home_latitude != null && s.home_longitude != null ? `${s.home_latitude},${s.home_longitude}` : '');
+    setHomeLocationError('');
     setModal(s);
   };
 
   const save = async () => {
     setError('');
+    setHomeLocationError('');
+    const body = { name: form.name, class_id: form.class_id || null, parent_id: form.parent_id || null };
+
+    // Only touch home_latitude/home_longitude if the field wasn't left
+    // exactly as it was loaded — same "explicitly cleared vs untouched"
+    // distinction the backend already makes for class_id/parent_id.
+    const trimmed = homeLocation.trim();
+    const original = modal?.home_latitude != null && modal?.home_longitude != null ? `${modal.home_latitude},${modal.home_longitude}` : '';
+    if (trimmed !== original) {
+      if (!trimmed) {
+        body.home_latitude = null;
+        body.home_longitude = null;
+      } else {
+        const parts = trimmed.split(',').map((p) => Number(p.trim()));
+        const [lat, lng] = parts;
+        if (parts.length !== 2 || !Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+          setHomeLocationError('Enter as "latitude,longitude" — e.g. 28.6139,77.2090 (paste from Google Maps).');
+          return;
+        }
+        body.home_latitude = lat;
+        body.home_longitude = lng;
+      }
+    }
+
     try {
-      await apiRequest(`/api/academics/students/${modal.id}`, {
-        method: 'PATCH',
-        body: { name: form.name, class_id: form.class_id || null, parent_id: form.parent_id || null },
-      });
+      await apiRequest(`/api/academics/students/${modal.id}`, { method: 'PATCH', body });
       setModal(null);
       load(search);
     } catch (err) {
@@ -178,6 +208,21 @@ export default function StudentsTab() {
                 <option value="">No parent linked</option>
                 {parents.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.phone})</option>)}
               </select>
+              <div>
+                <label className="block text-xs font-medium text-ink-soft mb-1">
+                  Home location (for bus proximity alerts)
+                </label>
+                <input
+                  value={homeLocation}
+                  onChange={(e) => { setHomeLocation(e.target.value); setHomeLocationError(''); }}
+                  placeholder="latitude,longitude — e.g. 28.6139,77.2090"
+                  className="w-full px-3 py-2 rounded-lg border border-cream-deep text-sm font-mono"
+                />
+                <p className="text-[11px] text-ink-soft mt-1">
+                  Paste from Google Maps (right-click the home location → click the coordinates to copy). Leave blank to disable bus-proximity WhatsApp alerts for this student.
+                </p>
+                {homeLocationError && <p className="text-[11px] text-destructive mt-1">{homeLocationError}</p>}
+              </div>
               <button onClick={save} className="w-full py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
                 Save changes
               </button>

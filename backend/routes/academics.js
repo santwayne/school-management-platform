@@ -403,7 +403,8 @@ router.get('/students', requireAuth, requirePrincipal, async (req, res) => {
       searchFilter = `AND s.name ILIKE $${params.length}`;
     }
     const result = await pool.query(
-      `SELECT s.id, s.name, s.login_id, s.grade, c.id AS class_id, c.name AS class_name,
+      `SELECT s.id, s.name, s.login_id, s.grade, s.home_latitude, s.home_longitude,
+              c.id AS class_id, c.name AS class_name,
               p.id AS parent_id, p.name AS parent_name, p.phone AS parent_phone
        FROM students s
        LEFT JOIN classes c ON c.id = s.class_id
@@ -419,7 +420,7 @@ router.get('/students', requireAuth, requirePrincipal, async (req, res) => {
 });
 
 router.patch('/students/:id', requireAuth, requirePrincipal, async (req, res) => {
-  const { name, class_id, parent_id } = req.body;
+  const { name, class_id, parent_id, home_latitude, home_longitude } = req.body;
   // COALESCE can't tell "field omitted" from "field explicitly cleared" (both
   // arrive as SQL NULL), so callers that send { parent_id: null } to unlink a
   // parent — or { class_id: null } to unassign a class — need an explicit
@@ -427,14 +428,23 @@ router.patch('/students/:id', requireAuth, requirePrincipal, async (req, res) =>
   const hasName = Object.prototype.hasOwnProperty.call(req.body, 'name');
   const hasClassId = Object.prototype.hasOwnProperty.call(req.body, 'class_id');
   const hasParentId = Object.prototype.hasOwnProperty.call(req.body, 'parent_id');
+  // Item 18: parents have no web login (schema.sql's Unified Notification
+  // Service comment), so there's no parent-facing map/address picker to
+  // build for this MVP — the school enters/pastes the home lat,long here,
+  // same has-own-property pattern as the other optional fields above so a
+  // request that doesn't mention these two fields at all leaves them alone.
+  const hasHomeLat = Object.prototype.hasOwnProperty.call(req.body, 'home_latitude');
+  const hasHomeLng = Object.prototype.hasOwnProperty.call(req.body, 'home_longitude');
   try {
     const result = await pool.query(
       `UPDATE students SET
          name = CASE WHEN $1 THEN $2 ELSE name END,
          class_id = CASE WHEN $3 THEN $4 ELSE class_id END,
-         parent_id = CASE WHEN $5 THEN $6 ELSE parent_id END
-       WHERE id = $7 AND school_id = $8 RETURNING id, name, class_id, parent_id`,
-      [hasName, name, hasClassId, class_id, hasParentId, parent_id, req.params.id, req.user.school_id]
+         parent_id = CASE WHEN $5 THEN $6 ELSE parent_id END,
+         home_latitude = CASE WHEN $9 THEN $10 ELSE home_latitude END,
+         home_longitude = CASE WHEN $11 THEN $12 ELSE home_longitude END
+       WHERE id = $7 AND school_id = $8 RETURNING id, name, class_id, parent_id, home_latitude, home_longitude`,
+      [hasName, name, hasClassId, class_id, hasParentId, parent_id, req.params.id, req.user.school_id, hasHomeLat, home_latitude, hasHomeLng, home_longitude]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Student not found' });
     res.json(result.rows[0]);
