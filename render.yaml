@@ -1,0 +1,82 @@
+databases:
+  - name: waynur-db
+    plan: starter
+    region: singapore
+    postgresMajorVersion: "16"
+
+services:
+  - type: redis
+    name: waynur-redis
+    plan: starter
+    region: singapore
+    ipAllowList: [] # internal-only, no public access needed — only the web service talks to it
+
+  - type: web
+    name: waynur-backend
+    runtime: node
+    plan: starter # NOT free — Render's free Web Service tier spins down after 15 min idle,
+    # which would silently kill the BullMQ workers again during any quiet period,
+    # defeating the entire point of this move. Starter ($7/mo) stays alive.
+    region: singapore
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: waynur-db
+          property: connectionString
+      - key: DATABASE_SSL
+        value: "true"
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: waynur-redis
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PORT
+        value: "5000"
+      - key: ESCALATION_DELAY_MS
+        value: "7200000"
+      - key: GUIDANCE_CRON
+        value: "0 7 * * *"
+      # Everything below needs a real value pasted in after the Blueprint
+      # deploys (Render will prompt for each of these during setup since
+      # they have no default — sync: false means "ask me, don't guess").
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+      - key: WHATSAPP_ABSENCE_TEMPLATE
+        value: student_absence_alert
+      - key: WHATSAPP_GUIDANCE_TEMPLATE
+        value: daily_teaching_guidance
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: VAPI_API_KEY
+        sync: false
+      - key: VAPI_PHONE_NUMBER_ID
+        sync: false
+      - key: VAPI_ASSISTANT_ID_HINDI
+        sync: false
+      - key: VAPI_ASSISTANT_ID_PUNJABI
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        value: us-east-1
+      - key: AWS_S3_BUCKET
+        sync: false
