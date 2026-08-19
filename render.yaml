@@ -1,13 +1,16 @@
 databases:
   - name: waynur-db
-    plan: starter
+    plan: free # Render's free Postgres expires after a fixed window (same as Plotra's
+    # plotra-db on Render) and needs a manual upgrade to Starter before that date —
+    # fine to start on, not "set and forget." Bump to starter for a real production DB.
     region: singapore
     postgresMajorVersion: "16"
 
 services:
   - type: redis
     name: waynur-redis
-    plan: starter
+    plan: free # free Key-Value tier — small memory limit, fine for this app's queue volume
+    # at current scale; bump to starter later if BullMQ queues start hitting the limit.
     region: singapore
     ipAllowList: [] # internal-only, no public access needed — only the web service talks to it
 
