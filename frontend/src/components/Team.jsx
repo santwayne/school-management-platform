@@ -11,6 +11,9 @@ const TEAM = [
   { initials: 'PM', name: 'Piyush Mehndiratta', role: 'Marketing Head' },
   { initials: 'SM', name: 'Surbhi Mehndiratta', role: 'Graphic Designer' },
   { initials: 'BK', name: 'Baljeet Kaur', role: 'Graphic Designer' },
+  { initials: 'AS', name: 'Arpan Saini', role: 'Software Developer' },
+  { initials: 'SK', name: 'Sant Kaur', role: 'Senior Software Developer' },
+  { initials: 'MK', name: 'Mandeep Kaur', role: 'Senior Web Developer' },
 ];
 
 export default function Team() {
