@@ -3,6 +3,7 @@ import pool from '../config/db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sendTextMessage } from '../services/whatsappService.js';
 import { send as sendNotification } from '../services/notificationService.js';
+import { draftBroadcastMessage } from '../services/aiService.js';
 
 const router = express.Router();
 
@@ -146,6 +147,31 @@ router.get('/threads/:threadKey', requireAuth, async (req, res) => {
 // 'all_parents' | 'all_staff' | 'class:<id>' | 'student:<id>'.
 // Resolves the actual recipient list server-side — the frontend only ever
 // picks a category, it never sends a raw phone number list.
+// AI roadmap #3: drafts WhatsApp broadcast copy from a short prompt — the
+// principal/teacher still reviews and edits before /send actually fires,
+// same as before this existed. This is intentionally the only piece of
+// the broadcast flow that changed: automating WHAT the message says was
+// never the ask (see communications.js's own note on why this composer
+// is intentionally manual) — automating the TYPING is. Nothing here sends
+// anything; it only returns text for the existing composer's textarea.
+router.post('/draft', requireAuth, async (req, res) => {
+  const { prompt, audience_label } = req.body;
+  if (!prompt || !prompt.trim()) {
+    return res.status(400).json({ error: 'prompt is required' });
+  }
+
+  try {
+    const draft = await draftBroadcastMessage(prompt, audience_label);
+    res.json({ draft });
+  } catch (err) {
+    if (err.message === 'ANTHROPIC_API_KEY is not configured') {
+      return res.status(503).json({ error: 'AI drafting is not configured (ANTHROPIC_API_KEY missing) — write the message directly instead.' });
+    }
+    console.error('Broadcast draft generation failed:', err.message);
+    res.status(502).json({ error: 'Could not generate a draft right now — write the message directly instead.' });
+  }
+});
+
 router.post('/send', requireAuth, async (req, res) => {
   const school_id = req.user.school_id;
   const { audience, audience_label, message } = req.body;

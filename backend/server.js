@@ -50,7 +50,16 @@ import './workers/teacherAttendanceAggregationWorker.js';
 import './workers/attendanceWorker.js';
 import './workers/dailyGuidanceWorker.js';
 import './workers/libraryDueDateWorker.js';
-import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest } from './workers/scheduler.js';
+import './workers/feeReminderWorker.js';
+import './workers/pettyCashReminderWorker.js';
+import './workers/staffLeaveReminderWorker.js';
+import './workers/teachingReminderWorker.js';
+import './workers/lowAttendanceAlertWorker.js';
+import './workers/eventReminderWorker.js';
+import './workers/performanceDriftWorker.js';
+import './workers/weeklyProgressSummaryWorker.js';
+import './workers/recurringDoubtWorker.js';
+import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest, scheduleFeeReminders, schedulePettyCashReminders, scheduleStaffLeaveReminders, scheduleTeachingReminders, scheduleLowAttendanceAlerts, scheduleEventReminders, schedulePerformanceDrift, scheduleWeeklyProgressSummaries, scheduleRecurringDoubtCheck } from './workers/scheduler.js';
 import { runBootstrap } from './scripts/autoBootstrap.js';
 
 dotenv.config();
@@ -158,6 +167,51 @@ async function start() {
       await scheduleLibraryDigest();
     } catch (err) {
       console.error('Failed to schedule library digest job (is Redis running?):', err.message);
+    }
+    try {
+      await scheduleFeeReminders();
+    } catch (err) {
+      console.error('Failed to schedule fee reminder job (is Redis running?):', err.message);
+    }
+    try {
+      await schedulePettyCashReminders();
+    } catch (err) {
+      console.error('Failed to schedule petty cash reminder job (is Redis running?):', err.message);
+    }
+    try {
+      await scheduleStaffLeaveReminders();
+    } catch (err) {
+      console.error('Failed to schedule staff leave reminder job (is Redis running?):', err.message);
+    }
+    try {
+      await scheduleTeachingReminders();
+    } catch (err) {
+      console.error('Failed to schedule teaching reminder polling job (is Redis running?):', err.message);
+    }
+    try {
+      await scheduleLowAttendanceAlerts();
+    } catch (err) {
+      console.error('Failed to schedule low-attendance alert job (is Redis running?):', err.message);
+    }
+    try {
+      await scheduleEventReminders();
+    } catch (err) {
+      console.error('Failed to schedule event reminder job (is Redis running?):', err.message);
+    }
+    try {
+      await schedulePerformanceDrift();
+    } catch (err) {
+      console.error('Failed to schedule performance drift job (is Redis running?):', err.message);
+    }
+    try {
+      await scheduleWeeklyProgressSummaries();
+    } catch (err) {
+      console.error('Failed to schedule weekly progress summary job (is Redis running?):', err.message);
+    }
+    try {
+      await scheduleRecurringDoubtCheck();
+    } catch (err) {
+      console.error('Failed to schedule recurring-doubt check job (is Redis running?):', err.message);
     }
   });
 }

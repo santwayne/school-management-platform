@@ -19,7 +19,16 @@ import { apiRequest } from '../api';
 // app still relies on. New event sources (e.g. new_message from the
 // Messages page, activity_shared) only need to call notificationService's
 // send() — no frontend change required, they show up here for free.
-function NotificationBell() {
+//
+// Item 9 of the QA fix list: both /api/finance/petty-cash and
+// /api/fee-intake/pending are requireFinance-gated (principal or
+// accountant) on the backend, but this bell fired both unconditionally for
+// every role AdminShell renders under — including plain Teacher (reachable
+// via teacherOrPrincipalOnly routes like /admin/messages), who got a 403 on
+// both every 60s. AdminShell never renders for an Accountant (they get
+// AccountantShell instead, with its own bell), so the only roles that
+// actually land here are principal and teacher — gate on principal.
+function NotificationBell({ canSeeFinance }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState(null);
   const [error, setError] = useState('');
@@ -27,8 +36,8 @@ function NotificationBell() {
   const load = async () => {
     try {
       const [pettyCash, waQueue, feed] = await Promise.all([
-        apiRequest('/api/finance/petty-cash').catch(() => []),
-        apiRequest('/api/fee-intake/pending').catch(() => []),
+        canSeeFinance ? apiRequest('/api/finance/petty-cash').catch(() => []) : Promise.resolve([]),
+        canSeeFinance ? apiRequest('/api/fee-intake/pending').catch(() => []) : Promise.resolve([]),
         apiRequest('/api/notifications').catch(() => ({ notifications: [], unread_count: 0 })),
       ]);
 
@@ -139,6 +148,15 @@ function NotificationBell() {
   );
 }
 
+// Librarian accounts are principal-created staff scoped to just the Library
+// (see requireLibrary in backend/middleware/auth.js) — every other item
+// below sits behind principalOnly/teacherOrPrincipalOnly route guards a
+// librarian can't pass, so showing the full admin NAV to them would just be
+// a sidebar full of dead links.
+const LIBRARIAN_NAV = [
+  { label: 'Library', icon: BookOpen, to: '/admin/library' },
+];
+
 const NAV = [
   { label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
   { label: 'Attendance', icon: CalendarCheck2, to: '/admin/attendance' },
@@ -182,6 +200,7 @@ export default function AdminShell({ children }) {
   }, []);
 
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const navItems = user?.role === 'librarian' ? LIBRARIAN_NAV : NAV;
 
   return (
     <div className="flex min-h-screen bg-cream text-ink font-sans">
@@ -191,7 +210,7 @@ export default function AdminShell({ children }) {
           <span className="font-display text-xl text-ink">Waynur</span>
         </div>
         <nav className="sidebar-scroll flex flex-col gap-1 flex-1 overflow-y-auto pr-1">
-          {NAV.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.to;
             return (
@@ -221,12 +240,22 @@ export default function AdminShell({ children }) {
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="sticky top-0 z-10 flex items-center gap-4 px-8 py-3 border-b border-cream-deep/70 bg-cream/80 backdrop-blur-md">
           <div className="hidden md:flex items-center gap-2 text-sm text-ink-soft">
-            <span className="font-medium text-ink">{schoolName || 'Waynur'}</span>
-            <span className="text-ink-soft/60">·</span>
+            {/* Item 13: schoolName loads async from /api/settings — falling
+                back to 'Waynur' (the platform's own product name, not this
+                tenant's school) meant every page load flashed the wrong
+                name before the real one arrived. Hold the name+separator
+                until it actually resolves instead; the date still renders
+                immediately either way. */}
+            {schoolName && (
+              <>
+                <span className="font-medium text-ink">{schoolName}</span>
+                <span className="text-ink-soft/60">·</span>
+              </>
+            )}
             <span>{today}</span>
           </div>
           <div className="ml-auto flex items-center gap-3">
-            <NotificationBell />
+            <NotificationBell canSeeFinance={user?.role === 'principal'} />
 <button onClick={logout} className="p-2 rounded-lg hover:bg-cream-deep/60 transition text-ink-soft hover:text-terracotta-deep" aria-label="Log out">
               <LogOut className="w-5 h-5" />
             </button>

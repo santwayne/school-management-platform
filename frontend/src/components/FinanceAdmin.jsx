@@ -53,7 +53,7 @@ function PaymentHistory({ refreshKey }) {
   );
 }
 
-function StudentPicker({ selected, onSelect }) {
+export function StudentPicker({ selected, onSelect }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
@@ -130,9 +130,97 @@ function StudentPicker({ selected, onSelect }) {
   );
 }
 
+// Item 5 of the QA fix list: lets Principal/Accountant set an expected fee
+// amount per class so the Fee Dashboard's Expected/Unpaid stop always
+// showing Rs 0 — see the fee_structures comment in schema.sql for why this
+// is one amount per class rather than per-term/fee-type.
+function FeeStructure() {
+  const [rows, setRows] = useState([]);
+  const [edits, setEdits] = useState({}); // class_id -> string being typed
+  const [saving, setSaving] = useState(null); // class_id currently saving
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');
+
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await apiRequest('/api/finance/fee-structure');
+      setRows(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const save = async (classId) => {
+    const value = edits[classId];
+    if (value === undefined || value === '' || Number(value) < 0) return;
+    setSaving(classId);
+    setMsg('');
+    setError('');
+    try {
+      await apiRequest(`/api/finance/fee-structure/${classId}`, { method: 'PUT', body: { amount: Number(value) } });
+      setMsg('Saved.');
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto bg-white p-6 rounded-xl border shadow-sm">
+      <h2 className="font-display text-xl font-bold text-ink mb-1">Fee Structure</h2>
+      <p className="text-sm text-ink-soft mb-4">Set the expected fee amount per class. This drives the Expected/Unpaid totals on the Dashboard tab.</p>
+      {error && <div className="p-3 mb-3 text-xs bg-destructive/10 text-destructive rounded-lg">{error}</div>}
+      {msg && <div className="p-3 mb-3 text-xs font-semibold bg-terracotta/5 text-terracotta-deep rounded-lg">{msg}</div>}
+      {loading ? (
+        <p className="text-sm text-ink-soft">Loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-ink-soft">No classes found — add classes first under Classes.</p>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((r) => (
+            <div key={r.class_id} className="flex items-center gap-3 py-1.5 border-b border-cream-deep/60 last:border-0">
+              <span className="flex-1 text-sm font-medium">{r.class_name}</span>
+              <span className="text-xs text-ink-soft w-24">
+                {r.amount != null ? `Currently ₹${Number(r.amount).toLocaleString('en-IN')}` : 'Not set'}
+              </span>
+              <input
+                type="number"
+                min="0"
+                placeholder="Amount (₹)"
+                value={edits[r.class_id] ?? ''}
+                onChange={(e) => setEdits((prev) => ({ ...prev, [r.class_id]: e.target.value }))}
+                className="w-32 border rounded-lg p-2 text-sm"
+              />
+              <button
+                onClick={() => save(r.class_id)}
+                disabled={saving === r.class_id || !edits[r.class_id]}
+                className="px-3 py-2 rounded-lg bg-terracotta text-primary-foreground text-xs font-medium hover:bg-terracotta-deep transition disabled:opacity-50"
+              >
+                {saving === r.class_id ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const TABS = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'collect', label: 'Collect Fee' },
+  { key: 'structure', label: 'Fee Structure' },
 ];
 
 export default function FinanceAdmin() {
@@ -190,6 +278,8 @@ export default function FinanceAdmin() {
       </div>
 
       {tab === 'dashboard' && <FeeDashboard />}
+
+      {tab === 'structure' && <FeeStructure />}
 
       {tab === 'collect' && (
         <div className="max-w-2xl mx-auto">

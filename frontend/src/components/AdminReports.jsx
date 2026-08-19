@@ -20,12 +20,25 @@ function Td({ children, className = '' }) {
   return <td className={`px-4 py-3 align-middle ${className}`}>{children}</td>;
 }
 
+// Item 10 of the QA fix list: these used to go through .toISOString(),
+// which renders in UTC. For any browser set to a timezone ahead of UTC
+// (IST, this app's only real market — see utils/phone.js's India-only
+// normalizePhone default), .toISOString().slice(0, 10) silently rolls the
+// date back — new Date(y, m, 1) at local midnight becomes 18:30 UTC on the
+// LAST DAY OF THE PREVIOUS MONTH, not the 1st of this one, every single
+// time. That mismatched the from/to sent to /api/reports/attendance
+// against where the actual attendance data lives, on top of the LEFT JOIN
+// COUNT(*) bug fixed in reports.js. localDateStr formats the Date's own
+// local year/month/day directly instead of round-tripping through UTC.
+function localDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 function firstOfMonth() {
   const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  return localDateStr(new Date(d.getFullYear(), d.getMonth(), 1));
 }
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateStr(new Date());
 }
 
 function fmtDate(iso) {
@@ -94,10 +107,10 @@ function buildPDF(type, data, rangeLabel) {
   } else if (type === 'strength') {
     autoTable(doc, {
       startY: 31,
-      head: [['Class', 'Grade', 'Students']],
-      body: data.rows.map((r) => [r.class_name, r.grade, r.student_count]),
+      head: [['Class', 'Students']],
+      body: data.rows.map((r) => [r.class_name, r.student_count]),
       styles: { fontSize: 9 },
-      foot: [['Total', '', data.total]],
+      foot: [['Total', data.total]],
     });
   }
 
@@ -154,7 +167,6 @@ function buildExcel(type, data) {
     const ws = XLSX.utils.json_to_sheet(
       data.rows.map((r) => ({
         Class: r.class_name,
-        Grade: r.grade,
         Students: Number(r.student_count),
       }))
     );
@@ -446,17 +458,16 @@ function StrengthReport() {
           <div className="rounded-2xl bg-white border border-cream-deep/70 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead><tr><Th>Class</Th><Th>Grade</Th><Th>Students</Th></tr></thead>
+                <thead><tr><Th>Class</Th><Th>Students</Th></tr></thead>
                 <tbody className="divide-y divide-cream-deep/60">
                   {data.rows.map((r, i) => (
                     <tr key={i} className="hover:bg-cream-deep/20">
                       <Td className="font-medium">{r.class_name}</Td>
-                      <Td>{r.grade}</Td>
                       <Td>{r.student_count}</Td>
                     </tr>
                   ))}
                   {data.rows.length === 0 && (
-                    <tr><Td className="text-ink-soft" colSpan={3}>No students enrolled for this filter.</Td></tr>
+                    <tr><Td className="text-ink-soft" colSpan={2}>No students enrolled for this filter.</Td></tr>
                   )}
                 </tbody>
               </table>

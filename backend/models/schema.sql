@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS teachers (
     email VARCHAR(255) UNIQUE NOT NULL,
     phone VARCHAR(20) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(20) NOT NULL DEFAULT 'teacher', -- 'teacher' | 'principal'
+    role VARCHAR(20) NOT NULL DEFAULT 'teacher', -- 'teacher' | 'principal' | 'accountant' | 'librarian'
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -1116,6 +1116,23 @@ WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'exam_result'
 );
 
+-- New trigger_event for the shared NotificationService (see notification_templates
+-- above) — fired once when the principal's "Add Student" bulk-upsert flow
+-- (routes/studentRecords.js) creates a brand-new student and generates a
+-- login_id + PIN, so the parent gets the credentials on WhatsApp instead of
+-- them only ever appearing in the API response. whatsapp_template_name still
+-- needs to be created + approved in WhatsApp Business Manager before this
+-- will actually send (same as every other whatsapp_template_name here) —
+-- until then notificationService.send() safely no-ops on the WhatsApp leg
+-- and only writes the dashboard_notifications row.
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'student_credentials', 'both', 'Student Login Credentials Created',
+       'student_credentials_alert', '["student_name","login_id","pin"]'::jsonb,
+       'Login created for {{student_name}}', 'Login ID: {{login_id}} · PIN: {{pin}} — keep this safe.', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'student_credentials'
+);
+
 -- ---------- Teacher Management additions: Optional Subjects + Student Leave ----------
 -- `classes` had no section column at all — sections aren't modeled anywhere
 -- else in the schema (each class name like "Class 8A" already implies its
@@ -1251,3 +1268,483 @@ CREATE TABLE IF NOT EXISTS exam_marks (
 );
 CREATE INDEX IF NOT EXISTS idx_exam_marks_exam ON exam_marks(exam_id);
 CREATE INDEX IF NOT EXISTS idx_exam_marks_student ON exam_marks(student_id);
+
+-- ---------- Fee Structure (Item 5 of the QA fix list) ----------
+-- Fixes the Fee Dashboard always showing Rs 0 Expected/Unpaid: student_payment
+-- .amount_due (above) is never written by any real route — there was simply
+-- no screen to configure an expected fee amount anywhere. This is
+-- deliberately ONE amount per class (no per-term/fee-type breakdown), same
+-- level of simplicity as student_payment itself (see its "no itemized
+-- fee_type breakdown anywhere in the platform yet" comment further up this
+-- file) — a real school does have per-term fee schedules, but adding that
+-- here would mean inventing an academic-year/term concept this schema
+-- doesn't have anywhere else (the closest precedent, exams.term, is just a
+-- free-text label, not a structural concept queries rely on). If per-term
+-- amounts are needed later, this table is the natural place to add a
+-- nullable `term` column.
+-- amount_due is intentionally NOT backfilled into student_payment from this
+-- table — finance.js's dashboard query joins fee_structures live instead, so
+-- the numbers never go stale when a fee amount changes or a student moves
+-- classes. amount_due itself is dead going forward but left in place since
+-- dropping a column is riskier than just not writing to it.
+CREATE TABLE IF NOT EXISTS fee_structures (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (school_id, class_id)
+);
+CREATE INDEX IF NOT EXISTS idx_fee_structures_school ON fee_structures(school_id);
+
+-- Item 16 of the QA fix list: petty_cash.requested_by was plain free text
+-- with no link to the teachers table at all — hand-typed by whoever (the
+-- Accountant/Principal) was logging the request on a staff member's behalf,
+-- which is how a typo ("sant" instead of the real name) got saved. Nullable
+-- FK added rather than replacing requested_by outright — the text column
+-- stays as the display value (now always populated from the resolved
+-- teacher's real name server-side, never hand-typed) so every existing
+-- reader of petty_cash.requested_by keeps working unchanged.
+ALTER TABLE petty_cash ADD COLUMN IF NOT EXISTS requested_by_teacher_id INT REFERENCES teachers(id) ON DELETE SET NULL;
+
+-- ---------- Bus proximity alerts (Item 18 — new feature, not a bug fix) ----------
+-- "Notify parent by WhatsApp when the bus is near home." Nullable — most
+-- families won't set this immediately, and a student with no home location
+-- (or no bus assignment) is simply never checked, never an error.
+ALTER TABLE students ADD COLUMN IF NOT EXISTS home_latitude NUMERIC(9,6);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS home_longitude NUMERIC(9,6);
+
+-- School-level default "how close counts as near" — same config pattern as
+-- petty_cash_accountant_limit above. No per-route override in this MVP
+-- (routes/buses have no distinct identity beyond the bus itself — see the
+-- direction note on bus_proximity_alerts below).
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS proximity_alert_radius_meters INT NOT NULL DEFAULT 500;
+
+-- Dedup/state table so a lingering-nearby bus doesn't re-notify a parent on
+-- every ~30s GPS poll. One row per (bus, student, day, direction) —
+-- inserted the first time that combination crosses into radius; a second
+-- crossing on the same day+direction hits the UNIQUE constraint and is
+-- silently skipped (checkBusProximityAndNotify treats "no row inserted" as
+-- "already notified").
+--
+-- NOTE on `direction`: this schema has no trip/route/session entity at all
+-- (checked buses, bus_location_log, student_transport_fees, transport.js,
+-- AdminTransport.jsx) — one `buses` row is one physical vehicle with a
+-- single free-text route_name, and it does BOTH the morning pickup and
+-- afternoon drop-off run; bus_location_log is one continuous GPS stream per
+-- bus with no trip-boundary markers. Rather than bolt a static direction
+-- onto `buses` (wrong — a bus isn't only ever "pickup" or only "dropoff")
+-- or duplicate bus rows per direction (fragments the one real GPS stream
+-- across two logical records and touches every existing buses/
+-- bus_location_log consumer), direction is derived per GPS ping from time
+-- of day (see services/busProximityService.js) and recorded here, on the
+-- event/notification record, rather than on the bus. A real production
+-- version should replace the time-of-day heuristic with actual configured
+-- pickup/drop-off windows once this schema has a real trip concept.
+CREATE TABLE IF NOT EXISTS bus_proximity_alerts (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    bus_id INT NOT NULL REFERENCES buses(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    trip_date DATE NOT NULL,
+    direction VARCHAR(10) NOT NULL, -- 'pickup' | 'dropoff'
+    notified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (bus_id, student_id, trip_date, direction)
+);
+CREATE INDEX IF NOT EXISTS idx_bus_proximity_alerts_school ON bus_proximity_alerts(school_id);
+
+-- New trigger_event for the shared NotificationService (see notification_templates
+-- further up this file) — fired by services/busProximityService.js when a
+-- bus first crosses into a student's home radius for a given day+direction.
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'bus_approaching', 'both', 'Bus Approaching Home',
+       'bus_approaching_alert', '["student_name","direction_label"]'::jsonb,
+       'Bus approaching', '{{student_name}}''s school bus is near home for {{direction_label}}.', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'bus_approaching'
+);
+
+-- ---------- Automated fee-payment reminders ----------
+-- Converts the "Send payment link" flow (routes/paymentLinks.js,
+-- FeeCollectionHub.jsx) from something an accountant has to manually
+-- trigger per student into a daily automatic reminder — see the audit in
+-- workers/feeReminderWorker.js's header comment for why this was the
+-- clearest "should become automatic" candidate at scale (a school can have
+-- thousands of students; one accountant clicking Send per unpaid student
+-- doesn't scale).
+--
+-- DEPENDS ON the fee_structures table from the QA fix list's Item 5 (Fee
+-- Structure config) — that fix made "expected amount per class" a real,
+-- populated value for the first time (previously nothing ever wrote
+-- student_payment.amount_due, so there was no reliable source of "what is
+-- this student expected to pay" to build an automatic reminder against).
+-- This migration only adds new columns/tables of its own; it does not
+-- re-create fee_structures — apply the Item 5 migration first if these two
+-- pieces of work land in a database separately from each other.
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS fee_reminder_grace_days INT NOT NULL DEFAULT 7;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS fee_reminder_interval_days INT NOT NULL DEFAULT 7;
+
+-- One row per reminder actually sent — lets the worker space reminders out
+-- (fee_reminder_interval_days apart) instead of re-messaging the same
+-- parent every single day. "Stop once paid" needs no separate flag here:
+-- the worker's candidate query re-checks the real outstanding balance
+-- live on every run, so a student who's paid simply stops matching and
+-- naturally drops out — no explicit unsent/cancelled state to manage.
+CREATE TABLE IF NOT EXISTS fee_reminder_log (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    payment_link_id INT REFERENCES fee_payment_links(id) ON DELETE SET NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_fee_reminder_log_student ON fee_reminder_log(student_id, sent_at DESC);
+
+-- New trigger_event for the shared NotificationService — a worker-driven
+-- send (no human composing anything) so it goes through sendTemplateMessage
+-- (an approved Meta template), not the free-form sendTextMessage the manual
+-- "Send payment link" flow uses today, since a worker can't assume it's
+-- inside an open 24h WhatsApp conversation window with that parent.
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'fee_payment_reminder', 'both', 'Fee Payment Reminder',
+       'fee_payment_reminder_alert', '["student_name","amount","link_url"]'::jsonb,
+       'Fee payment reminder', 'A payment of ₹{{amount}} is due for {{student_name}}. Pay here: {{link_url}}', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'fee_payment_reminder'
+);
+
+-- ---------- Automated petty-cash pending reminders ----------
+-- Second finding from the same automated-parent-notifications audit:
+-- unlike fee reminders, there was no reminder AT ALL (manual or automatic)
+-- when a petty cash request sat pending — a principal/accountant only ever
+-- found out by opening the Petty Cash tab. Lower volume than fee reminders
+-- (one request, not one per student) and self-resolving once seen, so a
+-- single one-time nudge is enough — no repeat-spacing log table needed,
+-- just a timestamp on the row itself so it's never sent twice.
+ALTER TABLE petty_cash ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS petty_cash_reminder_days INT NOT NULL DEFAULT 2;
+
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'petty_cash_pending_reminder', 'both', 'Petty Cash Pending Reminder',
+       'petty_cash_pending_reminder_alert', '["requested_by","amount"]'::jsonb,
+       'Petty cash awaiting approval', 'A ₹{{amount}} petty cash request from {{requested_by}} has been pending for a few days.', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'petty_cash_pending_reminder'
+);
+
+-- ---------- Automated per-student library due-date reminders ----------
+-- workers/libraryDueDateWorker.js already ran daily and already sent
+-- WhatsApp — but only an AGGREGATE COUNT digest ("3 due soon, 1 overdue")
+-- to library_contacts (librarian/staff numbers registered in Settings).
+-- No parent and no student ever learned WHICH book, or that it was THEIR
+-- child/themselves at all — the per-recipient piece was simply missing,
+-- not just unwired. That digest is left as-is (still useful for staff
+-- awareness) and this adds the actual per-loan notification on top of it,
+-- reusing the same shared NotificationService + dashboard_notifications
+-- pattern as every other automated reminder in this file (fee/petty-cash/
+-- bus-proximity) — 'student' recipients land in the student portal's
+-- existing notification bell (frontend/src/components/StudentShell.jsx's
+-- StudentNotificationBell, GET /api/notifications) with zero frontend
+-- changes needed, since that feed is already generic.
+--
+-- last_reminder_sent_at is per-LOAN (not per-day) dedup: a book due
+-- tomorrow gets exactly one "due soon" nudge, and once overdue gets nudged
+-- again no more than every 3 days (checked in the worker) rather than once
+-- for every daily digest run it happens to still be overdue for.
+ALTER TABLE library_issues ADD COLUMN IF NOT EXISTS last_reminder_sent_at TIMESTAMP;
+
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'library_book_reminder', 'both', 'Library Book Due/Overdue',
+       'library_book_reminder_alert', '["book_title","status_label","due_date"]'::jsonb,
+       'Library book {{status_label}}', '"{{book_title}}" is {{status_label}} (due {{due_date}}).', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'library_book_reminder'
+);
+
+-- ---------- Automated staff-leave pending reminder ----------
+-- Third finding from the broader "what else should be autonomous" audit
+-- (see SUMMARY.md): routes/staffLeave.js's POST /requests (teacher applies)
+-- and PUT /requests/:id (principal approves/rejects) send NO notification
+-- at all today, in either direction — confirmed by reading the whole file,
+-- not assumed. This adds only the piece the user explicitly asked for
+-- (nudge the principal when a request has sat PENDING too long) — same
+-- shape as petty_cash_pending_reminder just above (one-time nudge, no
+-- batching needed at this volume). A separate, still-open gap: neither
+-- approval nor rejection notifies the requesting teacher either — flagged
+-- in SUMMARY.md as a related but distinct candidate, not built here to
+-- keep this commit scoped to what was actually asked.
+ALTER TABLE staff_leave_requests ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS staff_leave_reminder_days INT NOT NULL DEFAULT 2;
+
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'staff_leave_pending_reminder', 'both', 'Staff Leave Pending Reminder',
+       'staff_leave_pending_reminder_alert', '["teacher_name","leave_type","days_count"]'::jsonb,
+       'Leave request awaiting approval', '{{teacher_name}}''s {{leave_type}} leave request ({{days_count}} day(s)) has been pending for a few days.', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'staff_leave_pending_reminder'
+);
+
+-- ---------- Automated "what am I teaching next" reminder for teachers ----------
+-- NOTE: there is already a workers/dailyGuidanceWorker.js + GuidanceQueue
+-- ("daily what to teach today nudge") — but reading it closely, it is NOT
+-- what this feature needs and appears to be effectively dead in practice
+-- today: it joins class_subject_teachers.subject_id (an INT, the real
+-- subjects.id) to syllabus_calendar.subject_id (a free-text curriculum
+-- code like "MATH101" — see SyllabusManager.jsx's own CSV template) via
+-- `cst.subject_id::text = sc.subject_id`, which only matches if a school
+-- happens to type the literal numeric subjects.id into that free-text
+-- field instead of a code, which the UI itself doesn't ask for or expect.
+-- That's a pre-existing bug found while reading this code for this
+-- feature, left as-is (not what was asked here — flagged in SUMMARY.md).
+-- It's also daily, not period-aware, so it wouldn't meet "reminded before
+-- MY period starts" even if the join worked.
+--
+-- Rather than route through syllabus_calendar's unreliable identity, this
+-- feature is built on the two properly-typed data sources: timetable_slots
+-- (real subjects.id, real start_time/day_of_week) for WHEN + WHAT CLASS,
+-- and lesson_plans (also real subjects.id, has plan_date and an optional
+-- timetable_slot_id link) for the topic, when a teacher has actually
+-- logged one for today. There is no reliable "current chapter" pointer
+-- anywhere in this schema that's safe to join automatically — see the
+-- syllabus_calendar note above — so when no matching lesson plan exists,
+-- the reminder is scoped down to just class + subject + time, with no
+-- fabricated chapter name. A real "current chapter per class+subject"
+-- pointer (settable by the teacher/principal, keyed on the real
+-- subjects.id) is the natural follow-up once this data model gap is
+-- addressed on purpose rather than worked around.
+--
+-- One row per (teacher, timetable_slot, day) so a period only ever
+-- triggers one reminder, even though the worker's poll window (next 15
+-- min) overlaps across consecutive 10-minute poll runs by design.
+CREATE TABLE IF NOT EXISTS teaching_reminder_log (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    timetable_slot_id INT NOT NULL REFERENCES timetable_slots(id) ON DELETE CASCADE,
+    class_date DATE NOT NULL,
+    notified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (teacher_id, timetable_slot_id, class_date)
+);
+CREATE INDEX IF NOT EXISTS idx_teaching_reminder_log_school ON teaching_reminder_log(school_id);
+
+-- Teachers already receive automated WhatsApp via the shared
+-- NotificationService's 'staff' recipient type (teachers.whatsapp_number /
+-- whatsapp_opt_in_status — same channel used for petty_cash_pending_reminder
+-- and payroll alerts), so this reuses it rather than assuming a new channel.
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'upcoming_class_reminder', 'both', 'Upcoming Class Reminder',
+       'upcoming_class_alert', '["class_name","subject_name","topic"]'::jsonb,
+       'Upcoming class', '{{class_name}} — {{subject_name}} starting soon. {{topic}}', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'upcoming_class_reminder'
+);
+
+-- ---------- Staff-leave decision notification (audit candidate #1, built) ----------
+-- routes/staffLeave.js's PUT /requests/:id (approve/reject) sent no
+-- notification to the requesting teacher in either direction before this
+-- — confirmed by reading the route, not assumed. One trigger_event for
+-- both outcomes (status is a template variable) rather than two separate
+-- events, matching the same "one event, vary content via variables"
+-- pattern as library_book_reminder's status_label — DECISION MADE WITHOUT
+-- ASKING (see SUMMARY.md's "Decisions made without asking" section): kept
+-- as one event instead of splitting into staff_leave_approved /
+-- staff_leave_rejected, since a school customizing notification copy would
+-- otherwise have to configure two near-identical template rows for what
+-- is really one event with two outcomes.
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'staff_leave_decision', 'both', 'Staff Leave Decision',
+       'staff_leave_decision_alert', '["leave_type","status","start_date","end_date"]'::jsonb,
+       'Leave request {{status}}', 'Your {{leave_type}} leave request ({{start_date}} to {{end_date}}) has been {{status}}.', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'staff_leave_decision'
+);
+
+-- ---------- Low-attendance rolling-threshold parent alert (audit candidate #2, built) ----------
+-- The existing attendanceWorker.js alert is same-day-absence-only — no
+-- rolling "below X% over the last N days" concept existed anywhere before
+-- this. The original audit table listed this as needing "a real product
+-- decision on the threshold/window" before building. Per the new standing
+-- rule (decide sensibly, document, don't block), the following were
+-- picked without asking — see SUMMARY.md's "Decisions made without
+-- asking":
+--   - Default threshold 75% — the common minimum-attendance bar used by
+--     Indian CBSE/state-board schools for exam eligibility, so it reads as
+--     a real school policy number rather than an arbitrary pick.
+--   - Default rolling window 30 days — long enough to smooth over a
+--     single bad week (a cold going around a class) without waiting a
+--     full term to flag a real pattern.
+--   - Minimum 5 recorded attendance days before a student is even
+--     considered — a brand-new enrollment with 1-2 days on record
+--     shouldn't get flagged off a tiny sample.
+--   - Re-notify no more than every half the window (15 days by default)
+--     while still below threshold — same "space it out, don't spam"
+--     shape as every other reminder built in this round, tuned to the
+--     window instead of a fixed separately-configurable interval to keep
+--     the settings UI to one card, two numbers.
+-- Both the threshold and window are configurable per school in Settings,
+-- same pattern as every other reminder timing added this round. Reuses
+-- the EXISTING notify_attendance toggle (already wired for the same-day
+-- absence alert) rather than adding a second toggle for what is still
+-- conceptually "attendance notifications."
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS low_attendance_threshold_percent INT NOT NULL DEFAULT 75;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS low_attendance_window_days INT NOT NULL DEFAULT 30;
+
+CREATE TABLE IF NOT EXISTS low_attendance_alert_log (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    attendance_percent NUMERIC(5,1) NOT NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_low_attendance_alert_log_student ON low_attendance_alert_log(student_id, sent_at DESC);
+
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'low_attendance_alert', 'both', 'Low Attendance Alert',
+       'low_attendance_alert', '["student_name","attendance_percent","window_days"]'::jsonb,
+       'Low attendance', '{{student_name}}''s attendance over the last {{window_days}} days is {{attendance_percent}}% — below the school''s minimum.', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'low_attendance_alert'
+);
+
+-- ---------- Upcoming events/exams reminder to parents (audit candidate #3, built) ----------
+-- school_events already has an `audience` field ('all'|'staff'|'students'
+-- |'parents') and routes/events.js, but sent nothing on creation or
+-- beforehand — confirmed by reading the whole file. Decisions made
+-- without asking (see SUMMARY.md):
+--   - Default 2 days before event_date — enough notice for a PTM/exam
+--     without feeling like spam for a same-week reminder.
+--   - Every student in the school is a recipient when audience is 'all'
+--     or 'parents' — school_events has no class/grade targeting at all
+--     (checked: no class_id column), so "every family" is the only
+--     correct scope without inventing a targeting concept that doesn't
+--     exist. audience='staff'/'students' events are skipped for this
+--     parent-facing reminder — no channel is being built for those here.
+--   - Reminds once, before the event's start (event_date) only — a
+--     multi-day event's end_date does not get a second reminder, to keep
+--     this to one reminder per event rather than a full run-up campaign.
+-- One row per event ever sent, not per-day, since this fires once and is
+-- done — no repeat-spacing needed, unlike the reminders above.
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS event_reminder_days_before INT NOT NULL DEFAULT 2;
+
+CREATE TABLE IF NOT EXISTS event_reminder_log (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    event_id INT NOT NULL REFERENCES school_events(id) ON DELETE CASCADE,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (event_id)
+);
+
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'upcoming_event_reminder', 'both', 'Upcoming Event Reminder',
+       'upcoming_event_reminder_alert', '["event_title","event_date","days_before"]'::jsonb,
+       'Upcoming: {{event_title}}', '{{event_title}} is coming up on {{event_date}} ({{days_before}} day(s) from now).', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'upcoming_event_reminder'
+);
+
+-- ---------- Fix dailyGuidanceWorker.js's dead join (found while building the above) ----------
+-- syllabus_calendar.subject_id is a free-text curriculum code (e.g.
+-- "MATH101" — see SyllabusManager.jsx's own CSV template), not the real
+-- integer subjects.id used everywhere else in this schema
+-- (class_subject_teachers, timetable_slots, lesson_plans, exam_marks).
+-- workers/dailyGuidanceWorker.js's join
+-- (`cst.subject_id::text = sc.subject_id`) compares those two different
+-- identity systems and only ever matches by coincidence, making that
+-- worker's "what to teach today" nudge effectively dead in practice.
+--
+-- Fix: add a nullable, properly-typed FK alongside the existing free-text
+-- code rather than replacing it — subject_id stays as the display/import
+-- value (so the existing CSV import format keeps working unchanged), and
+-- subject_ref_id is the new reliable join target once a row is tagged
+-- with a real subject. Additive and non-destructive: existing rows get
+-- subject_ref_id = NULL and simply don't match the guidance worker's join
+-- (the same "doesn't match" behavior they have today) until someone
+-- re-saves them via the updated SyllabusManager.jsx form, which now lets
+-- a principal optionally pick the real subject. This does NOT retroactively
+-- fix historical data — only rows tagged going forward will actually
+-- trigger the daily guidance nudge.
+ALTER TABLE syllabus_calendar ADD COLUMN IF NOT EXISTS subject_ref_id INT REFERENCES subjects(id) ON DELETE SET NULL;
+
+-- ---------- Weekly class-progress summary for parents (AI roadmap #4, built) ----------
+-- Nothing like this existed before — every parent-facing notification in
+-- this codebase is single-event (one homework, one exam, one absence),
+-- never a rolled-up digest. Decisions made without asking (see SUMMARY.md):
+--   - CLASS-level, not per-student — "summarize a class's weekly
+--     progress" (the actual ask) reads as one summary per class, and it's
+--     far more scalable: one Claude call per class per week instead of
+--     one per student (a school with 2,000 students is 2,000 calls/week
+--     under a per-student design, ~60-100 under a per-class one). A
+--     personalized per-student version is a natural follow-up, not what
+--     was asked here.
+--   - New notify_weekly_summary toggle, not reusing notify_homework —
+--     this covers attendance + homework + exam performance together, not
+--     just homework, so folding it into an existing single-domain toggle
+--     would be misleading about what it controls.
+--   - Sent identically to every parent in the class (same content, not
+--     personalized) — same "one message, many recipients" shape as the
+--     existing library digest / broadcast composer, not a new pattern.
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS notify_weekly_summary BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- One row per class per week actually sent — prevents a re-run of the
+-- same week's job (e.g. after a crash/restart) from sending twice.
+CREATE TABLE IF NOT EXISTS weekly_progress_summary_log (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    period VARCHAR(20) NOT NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (class_id, period)
+);
+
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'weekly_class_progress_summary', 'both', 'Weekly Class Progress Summary',
+       'weekly_progress_summary_alert', '["class_name","summary_text"]'::jsonb,
+       'This week in {{class_name}}', '{{summary_text}}', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'weekly_class_progress_summary'
+);
+
+-- ---------- At-risk flagging: reworked to per-student (AI roadmap #1, revised) ----------
+-- The first pass of performanceDriftWorker.js computed class+subject-level
+-- snapshots, matching performance_snapshots' pre-existing shape (no
+-- student_id column at the time). A follow-up spec explicitly asked for a
+-- risk signal PER STUDENT — "a principal/teacher needs to trust and act
+-- on it" reads as needing to know WHICH student, not just which class.
+-- Added additively: student_id is nullable, so it doesn't retroactively
+-- break anything, and a school could in principle have both class-level
+-- and student-level rows in history (the worker itself now only writes
+-- student-level going forward — see performanceDriftWorker.js).
+ALTER TABLE performance_snapshots ADD COLUMN IF NOT EXISTS student_id INT REFERENCES students(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_performance_snapshots_student ON performance_snapshots(student_id);
+
+-- ---------- Recurring-doubt push notification to teachers (AI roadmap #2, revised) ----------
+-- The first pass only surfaced recurring doubts on a dashboard card a
+-- teacher has to remember to check (a pull, not a push). Follow-up spec
+-- explicitly asked to "reuse whatever notification channel teachers
+-- already get" — so this adds a real notification on top of (not instead
+-- of) that card, via the same 'staff' NotificationService channel used
+-- for staff_leave_pending_reminder/upcoming_class_reminder.
+--
+-- Notifies every teacher assigned to the class (via class_subject_teachers,
+-- any subject) rather than trying to pinpoint one exact subject teacher —
+-- chapter_tag is a plain chapter name matched from syllabus_calendar,
+-- which (per the dailyGuidanceWorker.js fix earlier in this branch) has no
+-- reliably-populated real subject link for most rows yet, so guessing a
+-- single "the" subject teacher from it would mean guessing, not reading.
+-- Documented simplification, not silently narrowed.
+CREATE TABLE IF NOT EXISTS recurring_doubt_notification_log (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    chapter_tag VARCHAR(255) NOT NULL,
+    period VARCHAR(20) NOT NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (class_id, chapter_tag, period)
+);
+
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'recurring_doubt_signal', 'both', 'Recurring Doubt Signal',
+       'recurring_doubt_signal_alert', '["chapter_tag","class_name","student_count"]'::jsonb,
+       'Recurring doubt: {{chapter_tag}}', '{{student_count}} students in {{class_name}} asked about {{chapter_tag}} this week — worth a quick re-cap.', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'recurring_doubt_signal'
+);

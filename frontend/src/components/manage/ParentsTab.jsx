@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Search, Plus, Pencil, Trash2, X } from 'lucide-react';
 import { apiRequest } from '../../api';
+import { normalizePhone } from '../../lib/phone';
 
 const LANGUAGES = [
   { value: 'hi', label: 'Hindi' },
@@ -57,11 +58,17 @@ export default function ParentsTab() {
 
   const save = async () => {
     setError('');
+    const normalized = normalizePhone(form.phone);
+    if (!normalized) {
+      setError('Enter a valid WhatsApp number (10 digits, optionally with +91).');
+      return;
+    }
     try {
+      const body = { ...form, phone: normalized };
       if (modal === 'add') {
-        await apiRequest('/api/academics/parents', { method: 'POST', body: form });
+        await apiRequest('/api/academics/parents', { method: 'POST', body });
       } else {
-        await apiRequest(`/api/academics/parents/${modal.id}`, { method: 'PATCH', body: form });
+        await apiRequest(`/api/academics/parents/${modal.id}`, { method: 'PATCH', body });
       }
       setModal(null);
       load(search);

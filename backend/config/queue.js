@@ -24,5 +24,45 @@ export const gpsPollQueue = new Queue('GpsPollQueue', { connection });
 // Library queue: daily "books due/overdue" digest to registered library contacts
 export const libraryQueue = new Queue('LibraryQueue', { connection });
 
+// Fee reminder queue: daily automatic "you have an unpaid balance" WhatsApp
+// nudge (with a fresh payment link) — converts the previously-manual
+// "Send payment link" flow into something that scales to a school with
+// thousands of students instead of needing one click per student.
+export const feeReminderQueue = new Queue('FeeReminderQueue', { connection });
+
+// Petty cash reminder queue: daily one-time nudge to the principal when a
+// request has sat pending too long — there was no reminder at all before.
+export const pettyCashReminderQueue = new Queue('PettyCashReminderQueue', { connection });
+
+// Staff leave reminder queue: same shape as petty cash — daily one-time
+// nudge to the principal when a leave request has sat pending too long.
+export const staffLeaveReminderQueue = new Queue('StaffLeaveReminderQueue', { connection });
+
+// Teaching reminder queue: polls every ~10 min for periods about to start
+// and reminds the assigned teacher (class + subject + today's lesson plan
+// topic, if logged) — see workers/teachingReminderWorker.js.
+export const teachingReminderQueue = new Queue('TeachingReminderQueue', { connection });
+
+// Low attendance alert queue: weekly rolling-threshold check — see
+// workers/lowAttendanceAlertWorker.js for the threshold/window decisions.
+export const lowAttendanceAlertQueue = new Queue('LowAttendanceAlertQueue', { connection });
+
+// Event reminder queue: daily check for events starting in N days that
+// haven't been reminded yet — see workers/eventReminderWorker.js.
+export const eventReminderQueue = new Queue('EventReminderQueue', { connection });
+
+// Performance drift queue: weekly computation of performance_snapshots
+// (real attendance/homework/exam data, not demo data) — see
+// workers/performanceDriftWorker.js for the full metric/threshold design.
+export const performanceDriftQueue = new Queue('PerformanceDriftQueue', { connection });
+
+// Weekly class-progress summary queue — see
+// workers/weeklyProgressSummaryWorker.js.
+export const weeklyProgressSummaryQueue = new Queue('WeeklyProgressSummaryQueue', { connection });
+
+// Recurring-doubt push notification queue — see
+// workers/recurringDoubtWorker.js.
+export const recurringDoubtQueue = new Queue('RecurringDoubtQueue', { connection });
+
 // How long to wait for a parent reply before escalating to a voice call (ms)
 export const ESCALATION_DELAY_MS = Number(process.env.ESCALATION_DELAY_MS || 2 * 60 * 60 * 1000); // default 2 hrs

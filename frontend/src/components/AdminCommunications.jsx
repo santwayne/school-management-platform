@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MessageSquare, Send, Clock, Users, CheckCheck, AlertCircle, ChevronDown, ChevronUp, Radio } from 'lucide-react';
+import { MessageSquare, Send, Clock, Users, CheckCheck, AlertCircle, ChevronDown, ChevronUp, Radio, Sparkles } from 'lucide-react';
 import { apiRequest } from '../api';
 
 const AUDIENCES = [
@@ -46,6 +46,20 @@ export default function AdminCommunications() {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState(null);
+  // Item 14: the WhatsApp preview hardcoded the literal string "Waynur
+  // School" as the sender name — always wrong for every real tenant, and
+  // it never self-corrected since it wasn't reading real settings at all.
+  // Same fetch AdminShell.jsx uses for its header school name; no shared
+  // context/hook exists yet for this in the app (every shell fetches
+  // /api/settings independently), so this matches the existing convention
+  // rather than introducing a new one.
+  const [schoolName, setSchoolName] = useState('');
+
+  // AI roadmap #3 — drafts message TEXT only, never sends anything itself.
+  // The principal still reviews/edits the draft in the same textarea and
+  // clicks Send broadcast same as always.
+  const [draftPrompt, setDraftPrompt] = useState('');
+  const [drafting, setDrafting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -60,6 +74,27 @@ export default function AdminCommunications() {
   };
 
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    apiRequest('/api/settings').then((s) => setSchoolName(s.school_name || '')).catch(() => {});
+  }, []);
+
+  const draftWithAI = async () => {
+    if (!draftPrompt.trim()) return;
+    setDrafting(true);
+    setError('');
+    try {
+      const label = AUDIENCES.find((a) => a.value === audience)?.label || audience;
+      const { draft } = await apiRequest('/api/communications/draft', {
+        method: 'POST',
+        body: { prompt: draftPrompt.trim(), audience_label: label },
+      });
+      setMessage(draft.slice(0, 1000));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDrafting(false);
+    }
+  };
 
   const send = async () => {
     if (!message.trim()) return;
@@ -237,6 +272,30 @@ export default function AdminCommunications() {
               </div>
             </div>
 
+            {/* AI draft */}
+            <div>
+              <span className="text-xs font-semibold text-ink-soft uppercase tracking-wide">Draft with AI (optional)</span>
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={draftPrompt}
+                  onChange={(e) => setDraftPrompt(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); draftWithAI(); } }}
+                  placeholder="e.g. remind parents about Saturday's PTM from 9am to 1pm"
+                  className="flex-1 px-3.5 py-2.5 rounded-xl border border-cream-deep bg-white text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none focus:ring-2 focus:ring-terracotta/30 focus:border-terracotta/50 transition"
+                />
+                <button
+                  onClick={draftWithAI}
+                  disabled={drafting || !draftPrompt.trim()}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-terracotta/30 text-terracotta-deep text-sm font-medium hover:bg-terracotta/5 transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {drafting ? 'Drafting…' : 'Draft'}
+                </button>
+              </div>
+              <p className="text-[11px] text-ink-soft mt-1">Fills the message below — review and edit it before sending, same as typing it yourself.</p>
+            </div>
+
             {/* Message */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
@@ -279,7 +338,7 @@ export default function AdminCommunications() {
                   <span className="text-white text-xs font-bold">W</span>
                 </div>
                 <div>
-                  <div className="text-xs font-semibold text-ink">Waynur School</div>
+                  <div className="text-xs font-semibold text-ink">{schoolName || 'Your school'}</div>
                   <div className="text-[10px] text-ink-soft">via WhatsApp</div>
                 </div>
               </div>

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Play, CheckCircle2, Pencil, Plus, X, Info } from 'lucide-react';
 import { apiRequest } from '../api';
+import { useAuth } from '../AuthContext';
 
 const INR = (n) => '₹' + Number(n).toLocaleString('en-IN');
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -76,6 +77,13 @@ function PayrollTab() {
   const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Item 6 of the QA fix list: POST /api/payroll/run only ever SELECTs FROM
+  // teacher_salary, so a teacher with no salary row at all is silently
+  // excluded with zero trace — no error, no mention in generated_count.
+  // /api/payroll/salary already LEFT JOINs every teacher against
+  // teacher_salary, so a null monthly_amount there is exactly "no salary
+  // set" — reused here instead of adding a second endpoint for the same data.
+  const [missingSalary, setMissingSalary] = useState([]);
 
   const period = `${year}-${String(month + 1).padStart(2, '0')}`;
 
@@ -92,10 +100,24 @@ function PayrollTab() {
     }
   };
 
+  const loadMissingSalary = async () => {
+    try {
+      const salaries = await apiRequest('/api/payroll/salary');
+      setMissingSalary(salaries.filter((s) => !s.monthly_amount));
+    } catch {
+      // Non-critical — the warning just won't show if this fails.
+      setMissingSalary([]);
+    }
+  };
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
+
+  useEffect(() => {
+    loadMissingSalary();
+  }, []);
 
   function shift(delta) {
     let m = month + delta;
@@ -113,6 +135,13 @@ function PayrollTab() {
   }
 
   const runPayroll = async () => {
+    if (missingSalary.length > 0) {
+      const names = missingSalary.map((s) => s.name).join(', ');
+      const proceed = confirm(
+        `${missingSalary.length} staff member${missingSalary.length > 1 ? 's have' : ' has'} no salary set and will be skipped by this run:\n\n${names}\n\nSet their salary on the Salaries tab first, or continue and run payroll for everyone else?`
+      );
+      if (!proceed) return;
+    }
     setError('');
     try {
       await apiRequest('/api/payroll/run', { method: 'POST', body: { period } });
@@ -156,6 +185,12 @@ function PayrollTab() {
       </div>
 
       {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
+
+      {missingSalary.length > 0 && (
+        <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-sm text-amber-800">
+          <span className="font-medium">{missingSalary.length} staff member{missingSalary.length > 1 ? 's have' : ' has'} no salary set</span> and will be skipped by "Run payroll": {missingSalary.map((s) => s.name).join(', ')}. Set it on the Salaries tab.
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm text-ink-soft">Loading…</p>
@@ -322,18 +357,110 @@ function StatusBadge({ status }) {
   return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{label}</span>;
 }
 
+// Item 16: debounced staff search-and-select, replacing the free-text
+// "Staff name" input that let a typo silently get saved with no link back
+// to a real staff record. Same pattern as FinanceAdmin.jsx's StudentPicker
+// (built for the equivalent Item 1 fix) — apiRequest calls go through
+// GET /api/finance/staff/search — but kept as its own local component here
+// rather than importing FinanceAdmin.jsx just for this, since the two
+// pickers search different tables and share no other state.
+function StaffPicker({ selected, onSelect }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    setSearching(true);
+    const handle = setTimeout(() => {
+      apiRequest(`/api/finance/staff/search?q=${encodeURIComponent(query)}`)
+        .then((rows) => setResults(rows))
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false));
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [query]);
+
+  if (selected) {
+    return (
+      <div className="w-full border rounded-lg p-2 text-sm flex items-center justify-between bg-cream-deep/20">
+        <span>
+          <span className="font-medium">{selected.name}</span>
+          <span className="text-ink-soft capitalize"> · {selected.role}</span>
+        </span>
+        <button type="button" onClick={() => onSelect(null)} className="text-xs text-terracotta-deep font-medium ml-2 shrink-0">
+          Change
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        placeholder="Search staff by name"
+        className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-terracotta/40"
+      />
+      {open && query.trim() && (
+        <div className="absolute z-10 mt-1 w-full bg-white border border-cream-deep rounded-lg shadow-md max-h-56 overflow-y-auto">
+          {searching ? (
+            <div className="p-2 text-xs text-ink-soft">Searching…</div>
+          ) : results.length === 0 ? (
+            <div className="p-2 text-xs text-ink-soft">No staff match "{query}".</div>
+          ) : (
+            results.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => {
+                  onSelect(s);
+                  setQuery('');
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-cream-deep/40"
+              >
+                <span className="font-medium">{s.name}</span>
+                <span className="text-ink-soft capitalize"> · {s.role}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PettyCashTab() {
+  const { user } = useAuth();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [newOpen, setNewOpen] = useState(false);
-  const [nName, setNName] = useState('');
+  const [nStaff, setNStaff] = useState(null);
   const [nAmt, setNAmt] = useState('');
   const [nReason, setNReason] = useState('');
   const [photoPreview, setPhotoPreview] = useState(null);
   const [editRow, setEditRow] = useState(null);
   const [eAmt, setEAmt] = useState('');
   const [eReason, setEReason] = useState('');
+  // Item 15: "Approvals from the Principal" was misleading — the accountant
+  // genuinely has approve/reject rights up to school_settings
+  // .petty_cash_accountant_limit (backend/routes/finance.js's
+  // /petty-cash/approve/:id enforces this; the principal configures it via
+  // /api/settings/petty-cash-limit, see AdminSettings.jsx). Pull the real
+  // configured limit instead of hardcoding the ₹5,000 default in the copy.
+  const [accountantLimit, setAccountantLimit] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -350,6 +477,15 @@ function PettyCashTab() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    // Principal's own approvals aren't limit-gated (finance.js only checks
+    // the limit for role === 'accountant') — no need to fetch or show it.
+    if (user?.role !== 'accountant') return;
+    apiRequest('/api/settings')
+      .then((s) => setAccountantLimit(Number(s.petty_cash_accountant_limit ?? 5000)))
+      .catch(() => setAccountantLimit(5000)); // same fallback finance.js's approval check itself uses
+  }, [user?.role]);
 
   const decide = async (id, status) => {
     setError('');
@@ -383,15 +519,15 @@ function PettyCashTab() {
   };
 
   const addRequest = async () => {
-    if (!nName.trim() || !Number(nAmt) || !nReason.trim()) return;
+    if (!nStaff || !Number(nAmt) || !nReason.trim()) return;
     setError('');
     try {
       await apiRequest('/api/finance/petty-cash/request', {
         method: 'POST',
-        body: { requested_by: nName.trim(), amount: Number(nAmt), purpose: nReason.trim() },
+        body: { staff_id: nStaff.id, amount: Number(nAmt), purpose: nReason.trim() },
       });
       setNewOpen(false);
-      setNName('');
+      setNStaff(null);
       setNAmt('');
       setNReason('');
       load();
@@ -405,7 +541,13 @@ function PettyCashTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-ink-soft">Approvals from the Principal.</p>
+        <p className="text-xs text-ink-soft">
+          {user?.role === 'accountant'
+            ? accountantLimit !== null
+              ? `You can approve requests up to ${INR(accountantLimit)} — above that, the Principal approves.`
+              : 'Approvals up to the school’s configured limit — above that, the Principal approves.'
+            : 'Approve or reject petty cash requests raised by staff.'}
+        </p>
         <button
           onClick={() => setNewOpen(true)}
           className="inline-flex items-center gap-1.5 text-sm font-medium px-3.5 py-2 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep transition"
@@ -469,8 +611,8 @@ function PettyCashTab() {
               <button onClick={() => setNewOpen(false)} className="p-1 rounded hover:bg-cream-deep/60 text-ink-soft"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-5 space-y-3">
-              <FormField label="Staff name">
-                <input value={nName} onChange={(e) => setNName(e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg bg-white border border-cream-deep focus:outline-none focus:ring-2 focus:ring-terracotta/40" />
+              <FormField label="Staff">
+                <StaffPicker selected={nStaff} onSelect={setNStaff} />
               </FormField>
               <FormField label="Amount (₹)">
                 <input type="number" value={nAmt} onChange={(e) => setNAmt(e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg bg-white border border-cream-deep focus:outline-none focus:ring-2 focus:ring-terracotta/40" />
@@ -480,8 +622,8 @@ function PettyCashTab() {
               </FormField>
             </div>
             <div className="px-5 py-3 border-t border-cream-deep/70 flex items-center justify-end gap-2">
-              <button onClick={() => setNewOpen(false)} className="px-3 py-2 text-sm rounded-lg border border-cream-deep text-ink-soft hover:bg-cream-deep/50">Cancel</button>
-              <button onClick={addRequest} className="px-4 py-2 text-sm font-medium rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep">Log request</button>
+              <button onClick={() => { setNewOpen(false); setNStaff(null); }} className="px-3 py-2 text-sm rounded-lg border border-cream-deep text-ink-soft hover:bg-cream-deep/50">Cancel</button>
+              <button onClick={addRequest} disabled={!nStaff} className="px-4 py-2 text-sm font-medium rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep disabled:opacity-50">Log request</button>
             </div>
           </div>
         </div>

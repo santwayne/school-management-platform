@@ -2,6 +2,7 @@ import { Worker } from 'bullmq';
 import { connection } from '../config/queue.js';
 import pool from '../config/db.js';
 import { getAdapter, getVendorConfig } from '../services/gpsAdapters/index.js';
+import { checkBusProximityAndNotify } from '../services/busProximityService.js';
 
 const worker = new Worker(
   'GpsPollQueue',
@@ -29,6 +30,12 @@ const worker = new Worker(
           `UPDATE buses SET last_poll_status = 'ok', last_poll_error = NULL, last_poll_at = NOW() WHERE id = $1`,
           [bus.id]
         );
+
+        // Item 18 — best-effort: a proximity-check failure must never break
+        // GPS ingestion or stop the rest of this poll loop from running.
+        await checkBusProximityAndNotify(bus, location).catch((err) => {
+          console.error(`[gpsPollWorker] Proximity check failed for bus ${bus.id}:`, err.message);
+        });
       } catch (err) {
         console.error(`[gpsPollWorker] Failed to poll bus ${bus.id} (${bus.gps_vendor}):`, err.message);
         await pool.query(

@@ -37,6 +37,12 @@ export default function AdminSettings() {
   const [verifyCode, setVerifyCode] = useState('');
   const [awaitingCode, setAwaitingCode] = useState(false);
   const [limit, setLimit] = useState('5000');
+  const [proximityRadius, setProximityRadius] = useState('500');
+  const [feeReminderGraceDays, setFeeReminderGraceDays] = useState('7');
+  const [feeReminderIntervalDays, setFeeReminderIntervalDays] = useState('7');
+  const [lowAttendanceThreshold, setLowAttendanceThreshold] = useState('75');
+  const [lowAttendanceWindowDays, setLowAttendanceWindowDays] = useState('30');
+  const [eventReminderDaysBefore, setEventReminderDaysBefore] = useState('2');
   const [letterhead, setLetterhead] = useState('');
   const [signatoryName, setSignatoryName] = useState('');
   const [signatoryDesignation, setSignatoryDesignation] = useState('');
@@ -52,6 +58,12 @@ export default function AdminSettings() {
       setSettings(s);
       setWhatsappNumber(s.whatsapp_business_number || '');
       setLimit(String(s.petty_cash_accountant_limit ?? 5000));
+      setProximityRadius(String(s.proximity_alert_radius_meters ?? 500));
+      setFeeReminderGraceDays(String(s.fee_reminder_grace_days ?? 7));
+      setFeeReminderIntervalDays(String(s.fee_reminder_interval_days ?? 7));
+      setLowAttendanceThreshold(String(s.low_attendance_threshold_percent ?? 75));
+      setLowAttendanceWindowDays(String(s.low_attendance_window_days ?? 30));
+      setEventReminderDaysBefore(String(s.event_reminder_days_before ?? 2));
       setLogoUrl(s.logo_url || '');
       setLogoPreview(s.logo_url || '');
       setLetterhead(s.leaving_cert_letterhead_text || '');
@@ -192,6 +204,72 @@ export default function AdminSettings() {
     }
   };
 
+  // Item 18
+  const saveProximityRadius = async () => {
+    setError('');
+    const n = Number(proximityRadius);
+    if (isNaN(n) || n <= 0) return setError('Enter a valid radius in meters.');
+    try {
+      const s = await apiRequest('/api/settings/proximity-alert-radius', { method: 'PATCH', body: { radius_meters: n } });
+      setSettings(s);
+      flash('Bus proximity radius saved.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const saveFeeReminderTiming = async () => {
+    setError('');
+    const grace = Number(feeReminderGraceDays);
+    const interval = Number(feeReminderIntervalDays);
+    if (isNaN(grace) || grace < 0) return setError('Enter a valid grace period (days).');
+    if (isNaN(interval) || interval < 1) return setError('Enter a valid reminder interval of at least 1 day.');
+    try {
+      const s = await apiRequest('/api/settings/fee-reminder-timing', {
+        method: 'PATCH',
+        body: { grace_days: grace, interval_days: interval },
+      });
+      setSettings(s);
+      flash('Fee reminder timing saved.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const saveLowAttendanceAlertTiming = async () => {
+    setError('');
+    const threshold = Number(lowAttendanceThreshold);
+    const window = Number(lowAttendanceWindowDays);
+    if (isNaN(threshold) || threshold <= 0 || threshold > 100) return setError('Enter a valid attendance threshold (1-100%).');
+    if (isNaN(window) || window < 1) return setError('Enter a valid rolling window of at least 1 day.');
+    try {
+      const s = await apiRequest('/api/settings/low-attendance-alert-timing', {
+        method: 'PATCH',
+        body: { threshold_percent: threshold, window_days: window },
+      });
+      setSettings(s);
+      flash('Low attendance alert timing saved.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const saveEventReminderTiming = async () => {
+    setError('');
+    const days = Number(eventReminderDaysBefore);
+    if (isNaN(days) || days < 0) return setError('Enter a valid number of days.');
+    try {
+      const s = await apiRequest('/api/settings/event-reminder-timing', {
+        method: 'PATCH',
+        body: { days_before: days },
+      });
+      setSettings(s);
+      flash('Event reminder timing saved.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   if (loading) return <p className="text-sm text-ink-soft">Loading…</p>;
   if (!settings) {
     return (
@@ -306,6 +384,7 @@ export default function AdminSettings() {
             <Toggle label="Homework posted alerts" checked={settings.notify_homework} onChange={(v) => toggleNotif('notify_homework', v)} />
             <Toggle label="Fee reminders" checked={settings.notify_fees} onChange={(v) => toggleNotif('notify_fees', v)} />
             <Toggle label="Payroll processed alerts" checked={settings.notify_payroll} onChange={(v) => toggleNotif('notify_payroll', v)} />
+            <Toggle label="Weekly class progress summary" checked={settings.notify_weekly_summary} onChange={(v) => toggleNotif('notify_weekly_summary', v)} />
           </Card>
 
           <Card title="Accountant approval limit">
@@ -319,6 +398,104 @@ export default function AdminSettings() {
                 className="w-40 px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
               />
               <button onClick={saveLimit} className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
+                Save
+              </button>
+            </div>
+          </Card>
+
+          <Card title="Bus Proximity Alerts">
+            <p className="text-xs text-ink-soft mb-3">
+              How close a school bus needs to get to a student's saved home location before their parent gets a
+              WhatsApp alert. Set a student's home location from Manage School → Students.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={proximityRadius}
+                onChange={(e) => setProximityRadius(e.target.value)}
+                className="w-40 px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
+              />
+              <span className="text-sm text-ink-soft">meters</span>
+              <button onClick={saveProximityRadius} className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
+                Save
+              </button>
+            </div>
+          </Card>
+
+          <Card title="Automatic Fee Reminders">
+            <p className="text-xs text-ink-soft mb-3">
+              Every day, parents of students with an unpaid balance get an automatic WhatsApp reminder with a fresh
+              payment link — no accountant has to send it by hand. Controlled by the "Fee reminders" toggle above.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-xs font-medium text-ink-soft">Grace period after enrollment (days)</span>
+                <input
+                  type="number"
+                  value={feeReminderGraceDays}
+                  onChange={(e) => setFeeReminderGraceDays(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-ink-soft">Days between repeat reminders</span>
+                <input
+                  type="number"
+                  value={feeReminderIntervalDays}
+                  onChange={(e) => setFeeReminderIntervalDays(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
+                />
+              </label>
+            </div>
+            <button onClick={saveFeeReminderTiming} className="mt-3 px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
+              Save
+            </button>
+          </Card>
+
+          <Card title="Low Attendance Alerts">
+            <p className="text-xs text-ink-soft mb-3">
+              Once a week, parents of students whose attendance over the rolling window below falls under the
+              threshold get an automatic WhatsApp alert. Controlled by the "Attendance alerts" toggle above.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-xs font-medium text-ink-soft">Minimum attendance (%)</span>
+                <input
+                  type="number"
+                  value={lowAttendanceThreshold}
+                  onChange={(e) => setLowAttendanceThreshold(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-ink-soft">Rolling window (days)</span>
+                <input
+                  type="number"
+                  value={lowAttendanceWindowDays}
+                  onChange={(e) => setLowAttendanceWindowDays(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
+                />
+              </label>
+            </div>
+            <button onClick={saveLowAttendanceAlertTiming} className="mt-3 px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
+              Save
+            </button>
+          </Card>
+
+          <Card title="Upcoming Event Reminders">
+            <p className="text-xs text-ink-soft mb-3">
+              Parents get an automatic WhatsApp reminder this many days before a school event (holiday, exam, PTM,
+              etc. — events marked for "all" or "parents" audiences only).
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={eventReminderDaysBefore}
+                onChange={(e) => setEventReminderDaysBefore(e.target.value)}
+                className="w-40 px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
+              />
+              <span className="text-sm text-ink-soft">days before</span>
+              <button onClick={saveEventReminderTiming} className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
                 Save
               </button>
             </div>

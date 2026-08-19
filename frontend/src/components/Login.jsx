@@ -40,6 +40,7 @@ function SubmitButton({ disabled, children }) {
 function goToRoleHome(navigate, role) {
   if (role === 'principal') navigate('/dashboard');
   else if (role === 'accountant') navigate('/accountant');
+  else if (role === 'librarian') navigate('/admin/library');
   else navigate('/teacher');
 }
 

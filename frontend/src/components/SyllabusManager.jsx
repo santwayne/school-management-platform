@@ -3,7 +3,8 @@ import { apiRequest } from '../api';
 
 export default function SyllabusManager() {
   const [syllabusList, setSyllabusList] = useState([]);
-  const [manualForm, setManualForm] = useState({ class_id: '', subject_id: '', chapter_id: '', chapter_name: '', target_start_date: '', target_end_date: '' });
+  const [subjects, setSubjects] = useState([]);
+  const [manualForm, setManualForm] = useState({ class_id: '', subject_id: '', subject_ref_id: '', chapter_id: '', chapter_name: '', target_start_date: '', target_end_date: '' });
   const [errors, setErrors] = useState(null);
   const [message, setMessage] = useState('');
 
@@ -14,7 +15,26 @@ export default function SyllabusManager() {
     } catch (err) { setErrors('Failed to load tracking calendar entries.'); }
   };
 
-  useEffect(() => { loadSyllabus(); }, []);
+  useEffect(() => {
+    loadSyllabus();
+    apiRequest('/api/academics/subjects').then(setSubjects).catch(() => {});
+  }, []);
+
+  // Links (or unlinks) a row's real subject after the fact — the whole
+  // point of subject_ref_id is that existing rows, entered before this
+  // field existed, can be retroactively tagged without re-entering the
+  // whole row. Fires immediately on selection, same "select -> save"
+  // pattern used elsewhere in this codebase rather than a separate save
+  // button per row.
+  const linkSubject = async (id, subjectRefId) => {
+    try {
+      await apiRequest(`/api/syllabus/${id}`, {
+        method: 'PATCH',
+        body: { subject_ref_id: subjectRefId || null },
+      });
+      loadSyllabus();
+    } catch (err) { alert(err.message); }
+  };
 
   const downloadTemplate = () => {
     const csvContent = "data:text/csv;charset=utf-8,class_id,subject_id,chapter_id,chapter_name,target_start_date,target_end_date\n1,MATH101,CH1,Real Numbers,2026-06-01,2026-06-15\n1,MATH101,CH2,Polynomials,2026-06-16,2026-06-30";
@@ -72,7 +92,7 @@ export default function SyllabusManager() {
         body: { rows: [manualForm] }
       });
       setMessage('Single tracking sequence added.');
-      setManualForm({ class_id: '', subject_id: '', chapter_id: '', chapter_name: '', target_start_date: '', target_end_date: '' });
+      setManualForm({ class_id: '', subject_id: '', subject_ref_id: '', chapter_id: '', chapter_name: '', target_start_date: '', target_end_date: '' });
       loadSyllabus();
     } catch (err) { setErrors({ message: err.message }); }
   };
@@ -116,6 +136,15 @@ export default function SyllabusManager() {
             <h3 className="font-semibold text-ink">Add Entry Form</h3>
             <input type="number" placeholder="Class ID" value={manualForm.class_id} onChange={e => setManualForm({...manualForm, class_id: e.target.value})} required className="w-full p-2 border text-sm rounded" />
             <input type="text" placeholder="Subject ID (e.g. MATH101)" value={manualForm.subject_id} onChange={e => setManualForm({...manualForm, subject_id: e.target.value})} required className="w-full p-2 border text-sm rounded" />
+            <div>
+              <select value={manualForm.subject_ref_id} onChange={e => setManualForm({...manualForm, subject_ref_id: e.target.value})} className="w-full p-2 border text-sm rounded text-ink-soft">
+                <option value="">Link to a real subject (optional)</option>
+                {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <p className="text-[11px] text-ink-soft mt-1">
+                Needed for the daily "what to teach today" WhatsApp nudge to actually fire for this chapter — the Subject ID above is just a free-text code, not linked to anything on its own.
+              </p>
+            </div>
             <input type="text" placeholder="Chapter ID (e.g. CH1)" value={manualForm.chapter_id} onChange={e => setManualForm({...manualForm, chapter_id: e.target.value})} required className="w-full p-2 border text-sm rounded" />
             <input type="text" placeholder="Chapter Structural Name" value={manualForm.chapter_name} onChange={e => setManualForm({...manualForm, chapter_name: e.target.value})} required className="w-full p-2 border text-sm rounded" />
             <div className="grid grid-cols-2 gap-2">
@@ -139,6 +168,7 @@ export default function SyllabusManager() {
               <tr>
                 <th className="p-3">Scope Context</th>
                 <th className="p-3">Chapter</th>
+                <th className="p-3">Real Subject Link</th>
                 <th className="p-3">Timeline Constraints</th>
                 <th className="p-3 text-right">Actions</th>
               </tr>
@@ -152,6 +182,17 @@ export default function SyllabusManager() {
                   <td className="p-3">
                     <span className="font-mono text-xs bg-cream-deep/40 px-1 py-0.5 rounded mr-1">{item.chapter_id}</span>
                     {item.chapter_name}
+                  </td>
+                  <td className="p-3">
+                    <select
+                      value={item.subject_ref_id || ''}
+                      onChange={e => linkSubject(item.id, e.target.value)}
+                      className={`text-xs p-1 border rounded ${item.subject_ref_id ? 'text-ink' : 'text-ink-soft border-amber-400'}`}
+                      title={item.subject_ref_id ? '' : 'Not linked — this chapter\'s daily guidance nudge will not fire until linked'}
+                    >
+                      <option value="">Not linked</option>
+                      {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
                   </td>
                   <td className="p-3 text-xs">
                     {new Date(item.target_start_date).toLocaleDateString()} - {new Date(item.target_end_date).toLocaleDateString()}

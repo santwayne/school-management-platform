@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
+import { normalizePhone } from '../utils/phone.js';
 
 const router = express.Router();
 
@@ -25,10 +26,14 @@ router.post('/', requireAuth, requirePrincipal, async (req, res) => {
   if (!name || !whatsapp_number) {
     return res.status(400).json({ error: 'name and whatsapp_number are required' });
   }
+  const normalizedNumber = normalizePhone(whatsapp_number);
+  if (!normalizedNumber) {
+    return res.status(400).json({ error: 'whatsapp_number must be a valid Indian mobile number (10 digits, optionally with +91)' });
+  }
   try {
     const result = await pool.query(
       `INSERT INTO library_contacts (school_id, name, whatsapp_number) VALUES ($1, $2, $3) RETURNING *`,
-      [req.user.school_id, name, whatsapp_number]
+      [req.user.school_id, name, normalizedNumber]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {

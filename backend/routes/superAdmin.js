@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
+import { normalizePhone } from '../utils/phone.js';
 
 const router = express.Router();
 
@@ -41,6 +42,10 @@ router.post('/schools', requireAuth, requireSuperAdmin, async (req, res) => {
   if (!name || !principal_name || !principal_email || !principal_phone || !principal_password) {
     return res.status(400).json({ error: 'name, principal_name, principal_email, principal_phone, principal_password are required' });
   }
+  const normalizedPrincipalPhone = normalizePhone(principal_phone);
+  if (!normalizedPrincipalPhone) {
+    return res.status(400).json({ error: 'principal_phone must be a valid Indian mobile number (10 digits, optionally with +91)' });
+  }
 
   const client = await pool.connect();
   try {
@@ -59,7 +64,7 @@ router.post('/schools', requireAuth, requireSuperAdmin, async (req, res) => {
     await client.query(
       `INSERT INTO teachers (school_id, name, email, phone, password_hash, role)
        VALUES ($1, $2, $3, $4, $5, 'principal')`,
-      [schoolId, principal_name, principal_email, principal_phone, passwordHash]
+      [schoolId, principal_name, principal_email, normalizedPrincipalPhone, passwordHash]
     );
 
     await client.query('COMMIT');

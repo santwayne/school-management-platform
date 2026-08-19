@@ -3,6 +3,7 @@ import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
 import { sendClassNoteNow } from '../services/classNoteService.js';
 import { sendTextMessage } from '../services/whatsappService.js';
+import { normalizePhone } from '../utils/phone.js';
 
 const router = express.Router();
 
@@ -160,13 +161,17 @@ router.post('/teachers/:id/whatsapp', requireAuth, requirePrincipal, async (req,
   if (!whatsapp_number) {
     return res.status(400).json({ error: 'whatsapp_number is required' });
   }
+  const normalizedNumber = normalizePhone(whatsapp_number);
+  if (!normalizedNumber) {
+    return res.status(400).json({ error: 'whatsapp_number must be a valid Indian mobile number (10 digits, optionally with +91)' });
+  }
 
   try {
     const result = await pool.query(
       `UPDATE teachers SET whatsapp_number = $1, whatsapp_opt_in_status = 'OPTED_IN'
        WHERE id = $2 AND school_id = $3
        RETURNING id, name, whatsapp_number, whatsapp_opt_in_status`,
-      [whatsapp_number, id, schoolId]
+      [normalizedNumber, id, schoolId]
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Teacher not found for this school' });
@@ -186,13 +191,24 @@ router.post('/teachers/whatsapp-opt-in', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'Teacher login required' });
   }
 
+  // Same "only validate when actually provided" rule as elsewhere — a
+  // teacher can opt in/out without resupplying their number, but a supplied
+  // number that doesn't normalize is rejected rather than silently stored.
+  let normalizedNumber = null;
+  if (whatsapp_number) {
+    normalizedNumber = normalizePhone(whatsapp_number);
+    if (!normalizedNumber) {
+      return res.status(400).json({ error: 'whatsapp_number must be a valid Indian mobile number (10 digits, optionally with +91)' });
+    }
+  }
+
   try {
     const { rows } = await pool.query(
       `UPDATE teachers SET
          whatsapp_number = COALESCE($1, whatsapp_number),
          whatsapp_opt_in_status = $2
        WHERE id = $3 RETURNING id, whatsapp_number, whatsapp_opt_in_status`,
-      [whatsapp_number || null, opt_in ? 'OPTED_IN' : 'OPTED_OUT', teacherId]
+      [normalizedNumber, opt_in ? 'OPTED_IN' : 'OPTED_OUT', teacherId]
     );
     res.json(rows[0]);
   } catch (err) {

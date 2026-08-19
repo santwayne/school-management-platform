@@ -127,8 +127,18 @@ export default function AccountantShell({ children }) {
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="sticky top-0 z-10 flex items-center gap-4 px-8 py-3 border-b border-cream-deep/70 bg-cream/80 backdrop-blur-md">
           <div className="hidden md:flex items-center gap-2 text-sm text-ink-soft">
-            <span className="font-medium text-ink">{schoolName || 'Waynur'}</span>
-            <span className="text-ink-soft/60">·</span>
+            {/* Same bug/fix as AdminShell.jsx's Items 13/14 — this file just
+                wasn't in that item's original file list. schoolName loads
+                async from /api/settings, and falling back to 'Waynur' (the
+                platform's own product name, not this tenant's school) meant
+                every page load flashed the wrong name before the real one
+                arrived. Hold the name+separator until it actually resolves. */}
+            {schoolName && (
+              <>
+                <span className="font-medium text-ink">{schoolName}</span>
+                <span className="text-ink-soft/60">·</span>
+              </>
+            )}
             <span>{today}</span>
           </div>
           <div className="ml-auto flex items-center gap-3">

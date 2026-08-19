@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck, NotebookPen, X, Users } from 'lucide-react';
+import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck, NotebookPen, X, Users, MessageCircleQuestion, Bell } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
@@ -9,6 +9,110 @@ const STATUS_ORDER = ['present', 'late', 'absent'];
 function initials(name) {
   if (!name) return '?';
   return name.trim().split(/\s+/).slice(0, 2).map((n) => n[0]).join('').toUpperCase();
+}
+
+// Design-consistency pass: teachers had no way to see their own
+// dashboard_notifications feed in-app — every 'staff'-recipient automation
+// this build added (the upcoming-class reminder, the staff-leave
+// approved/rejected notice, and the recurring-doubt signal) writes a row
+// there via notificationService.send() (see its own header comment: "always
+// written, even if WhatsApp fails"), but AdminShell.jsx/AccountantShell.jsx
+// are the only shells that ever read it back — TeacherPortal.jsx never has.
+// A teacher without WhatsApp opted in (or a wrong number on file) would
+// have had genuinely zero trace of any of the above. Mirrors AdminShell.jsx's
+// NotificationBell, minus its finance-gated legacy petty-cash/WhatsApp-queue
+// items — those routes are principal/accountant-only and would just 403 for
+// a teacher.
+function NotificationBell() {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState(null);
+  const [error, setError] = useState('');
+
+  const load = async () => {
+    try {
+      const feed = await apiRequest('/api/notifications').catch(() => ({ notifications: [] }));
+      setItems(
+        (feed.notifications || []).map((n) => ({
+          id: n.id,
+          text: n.title || n.body || n.trigger_event,
+          to: n.link || '/teacher',
+          read: !!n.is_read,
+        }))
+      );
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const unreadCount = items?.filter((n) => !n.read).length || 0;
+
+  const handleItemClick = (n) => {
+    setOpen(false);
+    if (!n.read) {
+      apiRequest(`/api/notifications/${n.id}/read`, { method: 'PATCH' }).catch(() => {});
+      setItems((prev) => prev.map((i) => (i.id === n.id ? { ...i, read: true } : i)));
+    }
+  };
+
+  const markAllRead = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await apiRequest('/api/notifications/read-all', { method: 'PATCH' });
+      setItems((prev) => prev.map((i) => ({ ...i, read: true })));
+    } catch {
+      // best-effort — dropdown stays interactive either way
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen((o) => !o)} className="relative p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition" aria-label="Notifications">
+        <Bell className="w-5 h-5" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-terracotta text-white text-[10px] font-semibold flex items-center justify-center">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-cream-deep/70 shadow-xl z-20 max-h-96 overflow-y-auto">
+            <div className="px-4 py-3 border-b border-cream-deep/60 flex items-center justify-between">
+              <span className="font-display text-sm text-ink">Needs your attention</span>
+              {unreadCount > 0 && (
+                <button onClick={markAllRead} className="text-[11px] text-terracotta-deep font-medium hover:underline">
+                  Mark all read
+                </button>
+              )}
+            </div>
+            {error && <div className="px-4 py-3 text-xs text-destructive">{error}</div>}
+            {items && items.length === 0 && <div className="px-4 py-6 text-sm text-ink-soft text-center">Nothing pending — you're all caught up.</div>}
+            {items?.map((n) => (
+              <Link
+                key={n.id}
+                to={n.to}
+                onClick={() => handleItemClick(n)}
+                className={`flex items-start gap-2 px-4 py-3 text-sm hover:bg-cream-deep/30 border-b border-cream-deep/40 last:border-0 ${
+                  n.read ? 'text-ink-soft' : 'text-ink'
+                }`}
+              >
+                {!n.read && <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-terracotta shrink-0" />}
+                <span className={n.read ? '' : 'font-medium'}>{n.text}</span>
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 export default function TeacherPortal() {
@@ -104,6 +208,7 @@ export default function TeacherPortal() {
             <div className="font-display text-base text-ink truncate">{user?.name}</div>
             <div className="text-xs text-ink-soft">Teacher Portal</div>
           </div>
+          <NotificationBell />
           <Link
             to="/optional-subjects"
             className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition"
@@ -187,6 +292,46 @@ export default function TeacherPortal() {
   );
 }
 
+// AI roadmap #2: surfaces "N students across this class asked about the
+// same chapter this week" — the WhatsApp doubt bot already tags chapters
+// (routes/whatsapp.js), this just aggregates that into a re-teach signal
+// instead of a teacher having to notice the pattern from memory across
+// doubts they never see individually (the bot answers the parent
+// directly, not the teacher). Silently renders nothing if there's nothing
+// to show — this is a signal, not a permanent fixture on the page.
+function RecurringDoubtsCard() {
+  const [items, setItems] = useState(null);
+
+  useEffect(() => {
+    apiRequest('/api/analytics/recurring-doubts').then((r) => setItems(r.data || [])).catch(() => setItems([]));
+  }, []);
+
+  if (!items || items.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl bg-white border border-amber-400/40 p-5">
+      <div className="flex items-center gap-2 mb-1">
+        <MessageCircleQuestion className="w-4 h-4 text-amber-600" />
+        <h2 className="font-display text-lg text-ink">Recurring doubts this week</h2>
+      </div>
+      <p className="text-xs text-ink-soft mb-3">Multiple students asked about the same chapter — worth a quick re-cap.</p>
+      <div className="space-y-2">
+        {items.map((it) => (
+          <div key={`${it.class_id}-${it.chapter_tag}`} className="flex items-center justify-between rounded-xl border border-cream-deep/70 px-3.5 py-2.5">
+            <div>
+              <span className="text-sm font-medium text-ink">{it.chapter_tag}</span>
+              <span className="text-xs text-ink-soft ml-2">· {it.class_name}</span>
+            </div>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-400/15 text-amber-700">
+              {it.student_count} students asked
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ClassPicker({ today, classes, markedToday, markedCount, totalCount, onOpen, inchargeClasses, inchargeAttendance, pendingLeaveCount }) {
   const allDone = totalCount > 0 && markedCount === totalCount;
 
@@ -249,6 +394,9 @@ function ClassPicker({ today, classes, markedToday, markedCount, totalCount, onO
           </Link>
         </div>
       )}
+
+      {/* AI roadmap #2 — recurring doubts across the teacher's own classes */}
+      <RecurringDoubtsCard />
 
       {/* Class list */}
       {classes.length === 0 ? (

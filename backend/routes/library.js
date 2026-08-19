@@ -1,6 +1,6 @@
 import express from 'express';
 import pool from '../config/db.js';
-import { requireAuth, requirePrincipal } from '../middleware/auth.js';
+import { requireAuth, requireLibrary } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -24,7 +24,7 @@ router.get('/books', requireAuth, async (req, res) => {
 });
 
 // POST /api/library/books — add a book (or a new batch of copies)
-router.post('/books', requireAuth, requirePrincipal, async (req, res) => {
+router.post('/books', requireAuth, requireLibrary, async (req, res) => {
   const { title, author, isbn, category, total_copies = 1 } = req.body;
   if (!title || total_copies < 1) {
     return res.status(400).json({ error: 'title is required and total_copies must be at least 1' });
@@ -42,7 +42,7 @@ router.post('/books', requireAuth, requirePrincipal, async (req, res) => {
 });
 
 // PUT /api/library/books/:id
-router.put('/books/:id', requireAuth, requirePrincipal, async (req, res) => {
+router.put('/books/:id', requireAuth, requireLibrary, async (req, res) => {
   const { title, author, isbn, category, total_copies } = req.body;
   try {
     const { rows: existing } = await pool.query('SELECT * FROM library_books WHERE id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
@@ -68,7 +68,7 @@ router.put('/books/:id', requireAuth, requirePrincipal, async (req, res) => {
 });
 
 // DELETE /api/library/books/:id
-router.delete('/books/:id', requireAuth, requirePrincipal, async (req, res) => {
+router.delete('/books/:id', requireAuth, requireLibrary, async (req, res) => {
   try {
     const active = await pool.query(`SELECT id FROM library_issues WHERE book_id = $1 AND status = 'ISSUED'`, [req.params.id]);
     if (active.rowCount > 0) {
@@ -85,7 +85,7 @@ router.delete('/books/:id', requireAuth, requirePrincipal, async (req, res) => {
 // ---------- Issue / return ----------
 
 // POST /api/library/issue — issue a book to a student or staff member
-router.post('/issue', requireAuth, requirePrincipal, async (req, res) => {
+router.post('/issue', requireAuth, requireLibrary, async (req, res) => {
   const { book_id, student_id, teacher_id, due_date } = req.body;
   if (!book_id || !due_date || (!student_id && !teacher_id)) {
     return res.status(400).json({ error: 'book_id, due_date and either student_id or teacher_id are required' });
@@ -142,7 +142,7 @@ router.post('/issue', requireAuth, requirePrincipal, async (req, res) => {
 });
 
 // PUT /api/library/issue/:id/return — mark a copy returned (with optional fine)
-router.put('/issue/:id/return', requireAuth, requirePrincipal, async (req, res) => {
+router.put('/issue/:id/return', requireAuth, requireLibrary, async (req, res) => {
   const { fine_amount = 0 } = req.body;
 
   const client = await pool.connect();

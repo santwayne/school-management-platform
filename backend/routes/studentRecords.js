@@ -2,6 +2,8 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
+import { send as sendNotification } from '../services/notificationService.js';
+import { normalizePhone } from '../utils/phone.js';
 
 const router = express.Router();
 
@@ -39,6 +41,7 @@ router.post('/bulk-upsert', requireAuth, requirePrincipal, async (req, res) => {
   let created = 0;
   let updated = 0;
   let failed = 0;
+  let possibleDuplicates = 0;
 
   for (const row of rows) {
     const rowNumber = row.row_number ?? results.length + 1;
@@ -62,25 +65,35 @@ router.post('/bulk-upsert', requireAuth, requirePrincipal, async (req, res) => {
     }
 
     try {
-      // Resolve/attach a parent record if phone was supplied.
+      // Resolve/attach a parent record if phone was supplied. An
+      // unrecognizable phone (see utils/phone.js) doesn't fail the row —
+      // the student still gets created, just without a parent linked, and
+      // it's flagged with a warning so the admin can go fix the source data
+      // rather than the phone silently getting stored wrong (and WhatsApp
+      // sends to it silently failing later).
       let parentId = null;
+      let phoneWarning = null;
       if (row.parent_phone) {
-        const phone = String(row.parent_phone).trim();
-        const existingParent = await pool.query(
-          'SELECT id FROM parents WHERE school_id = $1 AND phone = $2',
-          [schoolId, phone]
-        );
-        if (existingParent.rowCount > 0) {
-          parentId = existingParent.rows[0].id;
-          if (row.parent_name) {
-            await pool.query('UPDATE parents SET name = $1 WHERE id = $2', [row.parent_name.trim(), parentId]);
-          }
+        const phone = normalizePhone(row.parent_phone);
+        if (!phone) {
+          phoneWarning = `Could not recognize parent_phone "${row.parent_phone}" as a valid number — no parent was linked.`;
         } else {
-          const newParent = await pool.query(
-            `INSERT INTO parents (school_id, name, phone) VALUES ($1, $2, $3) RETURNING id`,
-            [schoolId, (row.parent_name || `Parent of ${name}`).trim(), phone]
+          const existingParent = await pool.query(
+            'SELECT id FROM parents WHERE school_id = $1 AND phone = $2',
+            [schoolId, phone]
           );
-          parentId = newParent.rows[0].id;
+          if (existingParent.rowCount > 0) {
+            parentId = existingParent.rows[0].id;
+            if (row.parent_name) {
+              await pool.query('UPDATE parents SET name = $1 WHERE id = $2', [row.parent_name.trim(), parentId]);
+            }
+          } else {
+            const newParent = await pool.query(
+              `INSERT INTO parents (school_id, name, phone) VALUES ($1, $2, $3) RETURNING id`,
+              [schoolId, (row.parent_name || `Parent of ${name}`).trim(), phone]
+            );
+            parentId = newParent.rows[0].id;
+          }
         }
       }
 
@@ -124,8 +137,36 @@ router.post('/bulk-upsert', requireAuth, requirePrincipal, async (req, res) => {
           [name, classId, row.grade || null, parentId, existing.id, schoolId]
         );
         updated++;
-        results.push({ row_number: rowNumber, status: 'updated', student: updateRes.rows[0] });
+        results.push({ row_number: rowNumber, status: 'updated', student: updateRes.rows[0], warning: phoneWarning || undefined });
       } else {
+        // Item 8 of the QA fix list: creation was unconditional whenever no
+        // login_id/student_id was supplied — no same-name+class check, so a
+        // re-upload of the same sheet (or a typo'd login_id that fell
+        // through to "new enrollment") silently produced a second student
+        // record for the same kid with a different login_id. Same
+        // name+class can legitimately happen (twins, common names), so this
+        // doesn't block outright — it comes back as a distinct
+        // 'possible_duplicate' status requiring an explicit
+        // confirm_duplicate: true on retry to actually create it.
+        if (!row.confirm_duplicate) {
+          const dupCheck = await pool.query(
+            `SELECT id, name, login_id FROM students
+             WHERE school_id = $1 AND LOWER(name) = LOWER($2) AND class_id IS NOT DISTINCT FROM $3`,
+            [schoolId, name, classId]
+          );
+          if (dupCheck.rowCount > 0) {
+            possibleDuplicates++;
+            results.push({
+              row_number: rowNumber,
+              status: 'possible_duplicate',
+              message: `A student named "${name}" already exists in this class (login_id ${dupCheck.rows[0].login_id}). Resubmit this row with confirm_duplicate: true to create anyway.`,
+              existing_student: dupCheck.rows[0],
+              input: row,
+            });
+            continue;
+          }
+        }
+
         const randHex = Math.random().toString(36).substring(2, 6).toUpperCase();
         const loginId = `STD-${schoolId}-${randHex}`;
         const defaultPin = String(Math.floor(1000 + Math.random() * 9000));
@@ -137,7 +178,26 @@ router.post('/bulk-upsert', requireAuth, requirePrincipal, async (req, res) => {
           [schoolId, classId, name, row.grade || null, loginId, pinHash, parentId]
         );
         created++;
-        results.push({ row_number: rowNumber, status: 'created', student: { ...insertRes.rows[0], defaultPin } });
+        results.push({ row_number: rowNumber, status: 'created', student: { ...insertRes.rows[0], defaultPin }, warning: phoneWarning || undefined });
+
+        // Parents have no web login (see schema.sql's Unified Notification
+        // Service comment) — WhatsApp is the only way they ever see their
+        // child's login_id + PIN, so send it as soon as we have a parent on
+        // file with a phone number. Best-effort: never let a WhatsApp failure
+        // block the bulk-upsert response (same defensive pattern used by
+        // every other notificationService.send() call in this codebase).
+        if (parentId) {
+          try {
+            await sendNotification({
+              triggerEvent: 'student_credentials',
+              schoolId,
+              recipients: [{ type: 'parent', studentId: insertRes.rows[0].id }],
+              variables: { login_id: loginId, pin: defaultPin },
+            });
+          } catch (notifyErr) {
+            console.error('student_credentials notification failed:', notifyErr.message);
+          }
+        }
       }
     } catch (err) {
       failed++;
@@ -147,7 +207,7 @@ router.post('/bulk-upsert', requireAuth, requirePrincipal, async (req, res) => {
 
   res.status(207).json({
     success: true,
-    summary: { total: rows.length, created, updated, failed },
+    summary: { total: rows.length, created, updated, failed, possible_duplicates: possibleDuplicates },
     results,
   });
 });
@@ -172,14 +232,26 @@ router.get('/strength-report', requireAuth, requirePrincipal, async (req, res) =
       yearFilter = `AND EXTRACT(YEAR FROM s.created_at) = $${params.length}`;
     }
 
+    // Item 12 of the QA fix list — confirmed root cause: grade is free text
+    // on the student row, never FK'd to class_id (see schema.sql). Grouping
+    // by s.grade alongside c.id/c.name meant any student whose grade value
+    // didn't exactly match their classmates' (a typo, "Class 8" vs "8",
+    // blank, ...) spawned its own phantom row for the same real class —
+    // duplicate/garbled rows, including literal class-name strings showing
+    // up in what should've been a numeric Grade column. Grouping by the
+    // real class_id/class_name only (dropping grade from GROUP BY and the
+    // output entirely — there's no single reliable "grade" value left to
+    // show per class once it's not part of the grouping key) fixes this
+    // structurally; see scripts/backfillStudentGrade.js for a one-off
+    // cleanup of the underlying bad grade data.
     const byClass = await pool.query(
       `SELECT c.id AS class_id, COALESCE(c.name, 'Unassigned') AS class_name,
-              COALESCE(s.grade, '—') AS grade, COUNT(*) AS student_count
+              COUNT(*) AS student_count
        FROM students s
        LEFT JOIN classes c ON c.id = s.class_id
        WHERE s.school_id = $1 ${yearFilter}
-       GROUP BY c.id, c.name, s.grade
-       ORDER BY c.name NULLS LAST, s.grade`,
+       GROUP BY c.id, c.name
+       ORDER BY c.name NULLS LAST`,
       params
     );
 

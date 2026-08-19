@@ -157,19 +157,20 @@ router.post('/whatsapp/verify', requireAuth, requirePrincipal, async (req, res) 
 // Update notification toggles.
 router.patch('/notifications', requireAuth, requirePrincipal, async (req, res) => {
   const school_id = req.user.school_id;
-  const { notify_attendance, notify_homework, notify_fees, notify_payroll } = req.body;
+  const { notify_attendance, notify_homework, notify_fees, notify_payroll, notify_weekly_summary } = req.body;
   try {
     const result = await pool.query(
-      `INSERT INTO school_settings (school_id, notify_attendance, notify_homework, notify_fees, notify_payroll)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO school_settings (school_id, notify_attendance, notify_homework, notify_fees, notify_payroll, notify_weekly_summary)
+       VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (school_id) DO UPDATE SET
          notify_attendance = COALESCE(EXCLUDED.notify_attendance, school_settings.notify_attendance),
          notify_homework = COALESCE(EXCLUDED.notify_homework, school_settings.notify_homework),
          notify_fees = COALESCE(EXCLUDED.notify_fees, school_settings.notify_fees),
          notify_payroll = COALESCE(EXCLUDED.notify_payroll, school_settings.notify_payroll),
+         notify_weekly_summary = COALESCE(EXCLUDED.notify_weekly_summary, school_settings.notify_weekly_summary),
          updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
-      [school_id, notify_attendance, notify_homework, notify_fees, notify_payroll]
+      [school_id, notify_attendance, notify_homework, notify_fees, notify_payroll, notify_weekly_summary]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -200,6 +201,117 @@ router.patch('/petty-cash-limit', requireAuth, requirePrincipal, async (req, res
   } catch (err) {
     console.error('Petty cash limit update error:', err);
     res.status(500).json({ error: 'Failed to update petty cash limit' });
+  }
+});
+
+// Item 18: how close (in meters) a bus needs to get to a student's saved
+// home location before services/busProximityService.js fires a WhatsApp
+// alert — same config pattern as petty-cash-limit above.
+router.patch('/proximity-alert-radius', requireAuth, requirePrincipal, async (req, res) => {
+  const school_id = req.user.school_id;
+  const { radius_meters } = req.body;
+  if (radius_meters === undefined || isNaN(radius_meters) || radius_meters <= 0) {
+    return res.status(400).json({ error: 'A valid positive radius (in meters) is required' });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO school_settings (school_id, proximity_alert_radius_meters)
+       VALUES ($1, $2)
+       ON CONFLICT (school_id) DO UPDATE SET
+         proximity_alert_radius_meters = EXCLUDED.proximity_alert_radius_meters,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [school_id, radius_meters]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Proximity alert radius update error:', err);
+    res.status(500).json({ error: 'Failed to update proximity alert radius' });
+  }
+});
+
+// Automated fee-reminder timing (workers/feeReminderWorker.js) — how many
+// days of grace a newly-enrolled student gets before reminders start, and
+// how many days apart repeat reminders are spaced.
+router.patch('/fee-reminder-timing', requireAuth, requirePrincipal, async (req, res) => {
+  const school_id = req.user.school_id;
+  const { grace_days, interval_days } = req.body;
+  if (grace_days === undefined || isNaN(grace_days) || grace_days < 0) {
+    return res.status(400).json({ error: 'A valid non-negative grace_days is required' });
+  }
+  if (interval_days === undefined || isNaN(interval_days) || interval_days < 1) {
+    return res.status(400).json({ error: 'A valid interval_days of at least 1 is required' });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO school_settings (school_id, fee_reminder_grace_days, fee_reminder_interval_days)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (school_id) DO UPDATE SET
+         fee_reminder_grace_days = EXCLUDED.fee_reminder_grace_days,
+         fee_reminder_interval_days = EXCLUDED.fee_reminder_interval_days,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [school_id, grace_days, interval_days]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Fee reminder timing update error:', err);
+    res.status(500).json({ error: 'Failed to update fee reminder timing' });
+  }
+});
+
+// Low-attendance rolling-threshold alert config — same shape as
+// fee-reminder-timing above. Defaults (75%, 30 days) are documented
+// decisions in schema.sql, not hardcoded guesses a school is stuck with.
+router.patch('/low-attendance-alert-timing', requireAuth, requirePrincipal, async (req, res) => {
+  const school_id = req.user.school_id;
+  const { threshold_percent, window_days } = req.body;
+  if (threshold_percent === undefined || isNaN(threshold_percent) || threshold_percent <= 0 || threshold_percent > 100) {
+    return res.status(400).json({ error: 'A valid threshold_percent between 1 and 100 is required' });
+  }
+  if (window_days === undefined || isNaN(window_days) || window_days < 1) {
+    return res.status(400).json({ error: 'A valid window_days of at least 1 is required' });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO school_settings (school_id, low_attendance_threshold_percent, low_attendance_window_days)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (school_id) DO UPDATE SET
+         low_attendance_threshold_percent = EXCLUDED.low_attendance_threshold_percent,
+         low_attendance_window_days = EXCLUDED.low_attendance_window_days,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [school_id, threshold_percent, window_days]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Low attendance alert timing update error:', err);
+    res.status(500).json({ error: 'Failed to update low attendance alert timing' });
+  }
+});
+
+// Upcoming-event parent reminder lead time — same shape as the other
+// reminder-timing routes above.
+router.patch('/event-reminder-timing', requireAuth, requirePrincipal, async (req, res) => {
+  const school_id = req.user.school_id;
+  const { days_before } = req.body;
+  if (days_before === undefined || isNaN(days_before) || days_before < 0) {
+    return res.status(400).json({ error: 'A valid non-negative days_before is required' });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO school_settings (school_id, event_reminder_days_before)
+       VALUES ($1, $2)
+       ON CONFLICT (school_id) DO UPDATE SET
+         event_reminder_days_before = EXCLUDED.event_reminder_days_before,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [school_id, days_before]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Event reminder timing update error:', err);
+    res.status(500).json({ error: 'Failed to update event reminder timing' });
   }
 });
 

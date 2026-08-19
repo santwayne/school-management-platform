@@ -19,13 +19,22 @@ router.get('/attendance', requireAuth, async (req, res) => {
       classFilter = `AND s.class_id = $${params.length}`;
     }
 
+    // Item 10 of the QA fix list — root cause confirmed: this used COUNT(*)
+    // for every column, including total_marked. LEFT JOIN attendance a ON
+    // ... AND a.date BETWEEN $2 AND $3 still produces exactly one row per
+    // student even when NOTHING matches in that date range — with every a.*
+    // column NULL. COUNT(*) counts that placeholder row too, so a student
+    // with zero real attendance rows in range came back as "Days Marked: 1,
+    // 0/0/0, 0.0%" instead of correctly showing no data. COUNT(a.id) (or any
+    // non-nullable a.* column) skips NULLs and only counts real matches —
+    // the standard fix for COUNT(*) after a LEFT JOIN.
     const result = await pool.query(
       `SELECT s.id AS student_id, s.name AS student_name, c.name AS class_name,
-              COUNT(*) FILTER (WHERE a.status = 'present') AS present_days,
-              COUNT(*) FILTER (WHERE a.status = 'absent') AS absent_days,
-              COUNT(*) FILTER (WHERE a.status = 'late') AS late_days,
-              COUNT(*) AS total_marked,
-              ROUND(100.0 * COUNT(*) FILTER (WHERE a.status = 'present') / NULLIF(COUNT(*), 0), 1) AS percentage
+              COUNT(a.id) FILTER (WHERE a.status = 'present') AS present_days,
+              COUNT(a.id) FILTER (WHERE a.status = 'absent') AS absent_days,
+              COUNT(a.id) FILTER (WHERE a.status = 'late') AS late_days,
+              COUNT(a.id) AS total_marked,
+              ROUND(100.0 * COUNT(a.id) FILTER (WHERE a.status = 'present') / NULLIF(COUNT(a.id), 0), 1) AS percentage
        FROM students s
        LEFT JOIN classes c ON c.id = s.class_id
        LEFT JOIN attendance a ON a.student_id = s.id AND a.date BETWEEN $2 AND $3

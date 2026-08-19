@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiRequest } from '../api';
+import { normalizePhone } from '../lib/phone';
 
 export default function ClassManager() {
   const [classes, setClasses] = useState([]);
@@ -84,8 +85,13 @@ export default function ClassManager() {
 
   const handleSetTeacherWhatsapp = async (teacherId, whatsappNumber) => {
     setError('');
+    const normalized = normalizePhone(whatsappNumber);
+    if (!normalized) {
+      setError('Enter a valid WhatsApp number (10 digits, optionally with +91).');
+      return;
+    }
     try {
-      await apiRequest(`/api/teachers/${teacherId}/whatsapp`, { method: 'POST', body: { whatsapp_number: whatsappNumber } });
+      await apiRequest(`/api/teachers/${teacherId}/whatsapp`, { method: 'POST', body: { whatsapp_number: normalized } });
       setMessage('Teacher WhatsApp number saved.');
       loadBaseData();
     } catch (err) {
@@ -128,10 +134,20 @@ export default function ClassManager() {
   const handleAddStudent = async (e) => {
     e.preventDefault();
     setError('');
+    // Parent phone is optional here — only validate/normalize when one was
+    // actually typed in, don't block enrolling a student with no parent yet.
+    let normalizedPhone = '';
+    if (parentPhone.trim()) {
+      normalizedPhone = normalizePhone(parentPhone);
+      if (!normalizedPhone) {
+        setError('Enter a valid parent mobile number (10 digits, optionally with +91), or leave it blank.');
+        return;
+      }
+    }
     try {
       const res = await apiRequest('/api/academics/students/bulk', {
         method: 'POST',
-        body: { class_id: selectedClass, students: [{ name: studentName, parent_phone: parentPhone }] },
+        body: { class_id: selectedClass, students: [{ name: studentName, parent_phone: normalizedPhone }] },
       });
       setStudentName('');
       setParentPhone('');

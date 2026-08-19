@@ -209,12 +209,47 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
     }
 
     const aiResponseHint = await generateAIHint(userMessageText);
-    const chapterTag = await tagDoubtChapter(userMessageText, []); // pass real syllabus chapter list once available
+
+    // AI roadmap #2: tagDoubtChapter was always called with an empty
+    // chapter list (see this function's own header comment — it
+    // short-circuits to 'Untagged' whenever the list is empty), so every
+    // doubt was tagged 'Untagged' before this. Fixed by actually looking
+    // up the asking student's class and its currently-relevant syllabus
+    // chapters.
+    //
+    // student_doubts already had an unused student_id column (never
+    // populated by this route) — a parent can have more than one child,
+    // and this webhook has no way to ask "which of your kids is this
+    // about," so: if the parent has exactly one linked student, use that
+    // student's class to scope both the chapter list AND student_id on
+    // the row (fixing a second, related gap — doubts were never linkable
+    // to a specific child at all). If the parent has multiple children,
+    // student_id stays NULL and the chapter list stays empty (same
+    // 'Untagged' behavior as before) rather than guessing which child.
+    const studentRes = await pool.query(`SELECT id, class_id FROM students WHERE parent_id = $1`, [parent.id]);
+    let studentId = null;
+    let chapterNames = [];
+    if (studentRes.rowCount === 1) {
+      studentId = studentRes.rows[0].id;
+      // "Currently relevant" = taught in the last 60 days or starting in
+      // the next 14 — wide enough to catch a doubt about last week's
+      // chapter without pulling in the whole year's syllabus.
+      const chaptersRes = await pool.query(
+        `SELECT DISTINCT chapter_name FROM syllabus_calendar
+         WHERE class_id = $1
+           AND target_end_date >= CURRENT_DATE - INTERVAL '60 days'
+           AND target_start_date <= CURRENT_DATE + INTERVAL '14 days'
+           AND chapter_name IS NOT NULL`,
+        [studentRes.rows[0].class_id]
+      );
+      chapterNames = chaptersRes.rows.map((r) => r.chapter_name);
+    }
+    const chapterTag = await tagDoubtChapter(userMessageText, chapterNames);
 
     await pool.query(
-      `INSERT INTO student_doubts (school_id, parent_id, original_query, ai_response_hint, chapter_tag)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [parent.school_id, parent.id, userMessageText, aiResponseHint, chapterTag]
+      `INSERT INTO student_doubts (school_id, parent_id, student_id, original_query, ai_response_hint, chapter_tag)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [parent.school_id, parent.id, studentId, userMessageText, aiResponseHint, chapterTag]
     );
 
     await sendTextMessage(fromPhone, aiResponseHint);
