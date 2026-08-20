@@ -7,7 +7,8 @@ function homeFor(role) {
   if (role === 'super_admin') return '/super-admin';
   if (role === 'accountant') return '/accountant/fee-collection';
   if (role === 'librarian') return '/admin/library';
-  return '/teacher'; // teacher and principal both land on the Teacher Portal by default
+  if (role === 'principal') return '/dashboard';
+  return '/teacher'; // teachers land on the Teacher Portal by default
 }
 
 export default function ProtectedRoute({ children, principalOnly = false, studentOnly = false, superAdminOnly = false, teacherOrPrincipalOnly = false, accountantOnly = false, financeOnly = false, libraryOnly = false }) {
