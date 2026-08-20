@@ -5,7 +5,7 @@ import {
   FileBarChart, CreditCard, Settings, Bell, Sparkles, Building2, LogOut,
   ClipboardList, CalendarClock, CalendarDays, BookOpen, GraduationCap, GalleryHorizontal,
   ListChecks, UserCheck, MessagesSquare, UploadCloud, Award, FileCheck2,
-  ClipboardEdit, FileText, NotebookPen,
+  ClipboardEdit, FileText, NotebookPen, Menu, X,
 } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
@@ -194,51 +194,90 @@ export default function AdminShell({ children }) {
   const { pathname } = useLocation();
   const { user, logout } = useAuth();
   const [schoolName, setSchoolName] = useState('');
+  // P-11: the sidebar was `hidden lg:flex` with no mobile fallback at all —
+  // below ~1024px an admin lost every nav item beyond whatever page they
+  // were already on. Below `lg` it now renders as a slide-over drawer
+  // toggled by a hamburger button in the header instead of disappearing.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     apiRequest('/api/settings').then((s) => setSchoolName(s.school_name || '')).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
+
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const navItems = user?.role === 'librarian' ? LIBRARIAN_NAV : NAV;
+
+  const sidebarContent = (
+    <>
+      <div className="flex items-center gap-2 px-2 pb-6 shrink-0">
+        <div className="h-8 w-8 rounded-lg bg-terracotta flex items-center justify-center text-primary-foreground font-display font-semibold">W</div>
+        <span className="font-display text-xl text-ink">Waynur</span>
+      </div>
+      <nav className="sidebar-scroll flex flex-col gap-1 flex-1 overflow-y-auto pr-1">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const active = pathname === item.to;
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-left transition ${
+                active ? 'bg-terracotta/10 text-terracotta-deep font-medium border-l-2 border-terracotta' : 'text-ink-soft hover:bg-cream-deep/50 hover:text-ink'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
+      <div className="mt-auto shrink-0 p-3 rounded-xl bg-cream-deep/60 border border-cream-deep">
+        <div className="flex items-center gap-2 text-xs text-ink-soft">
+          <Sparkles className="w-3.5 h-3.5 text-terracotta" />
+          AI Assistant
+        </div>
+        <p className="text-xs text-ink-soft mt-1 leading-relaxed">
+          Check Reports for this week's attendance and fee collection trends.
+        </p>
+      </div>
+    </>
+  );
 
   return (
     <div className="flex min-h-screen bg-cream text-ink font-sans">
       <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r border-cream-deep/70 bg-white/60 backdrop-blur-sm px-4 py-6 gap-1 sticky top-0 h-screen">
-        <div className="flex items-center gap-2 px-2 pb-6 shrink-0">
-          <div className="h-8 w-8 rounded-lg bg-terracotta flex items-center justify-center text-primary-foreground font-display font-semibold">W</div>
-          <span className="font-display text-xl text-ink">Waynur</span>
-        </div>
-        <nav className="sidebar-scroll flex flex-col gap-1 flex-1 overflow-y-auto pr-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const active = pathname === item.to;
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-left transition ${
-                  active ? 'bg-terracotta/10 text-terracotta-deep font-medium border-l-2 border-terracotta' : 'text-ink-soft hover:bg-cream-deep/50 hover:text-ink'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="mt-auto shrink-0 p-3 rounded-xl bg-cream-deep/60 border border-cream-deep">
-          <div className="flex items-center gap-2 text-xs text-ink-soft">
-            <Sparkles className="w-3.5 h-3.5 text-terracotta" />
-            AI Assistant
-          </div>
-          <p className="text-xs text-ink-soft mt-1 leading-relaxed">
-            Check Reports for this week's attendance and fee collection trends.
-          </p>
-        </div>
+        {sidebarContent}
       </aside>
+
+      {mobileNavOpen && (
+        <div className="lg:hidden fixed inset-0 z-40 flex">
+          <div className="fixed inset-0 bg-ink/40" onClick={() => setMobileNavOpen(false)} />
+          <aside className="relative flex w-64 max-w-[80vw] flex-col bg-white px-4 py-6 gap-1 h-screen overflow-y-auto shadow-xl">
+            <button
+              onClick={() => setMobileNavOpen(false)}
+              className="absolute top-4 right-3 p-1.5 rounded-lg hover:bg-cream-deep/60 text-ink-soft"
+              aria-label="Close menu"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+
       <div className="flex-1 min-w-0 flex flex-col">
-        <div className="sticky top-0 z-10 flex items-center gap-4 px-8 py-3 border-b border-cream-deep/70 bg-cream/80 backdrop-blur-md">
+        <div className="sticky top-0 z-10 flex items-center gap-4 px-4 sm:px-8 py-3 border-b border-cream-deep/70 bg-cream/80 backdrop-blur-md">
+          <button
+            onClick={() => setMobileNavOpen(true)}
+            className="lg:hidden p-2 -ml-2 rounded-lg hover:bg-cream-deep/60 text-ink-soft shrink-0"
+            aria-label="Open menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
           <div className="hidden md:flex items-center gap-2 text-sm text-ink-soft">
             {/* Item 13: schoolName loads async from /api/settings — falling
                 back to 'Waynur' (the platform's own product name, not this
