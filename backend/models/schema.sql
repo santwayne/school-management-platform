@@ -1814,3 +1814,10 @@ ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS confirmed_delivered_count INT NO
 -- turning the button into an actual reset instead of an accumulator.
 ALTER TABLE teachers ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE students ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- QA fix (P-10): the onboarding wizard's "Attendance method" question
+-- (biometric vs. manual, via teachers) was collected and submitted to
+-- POST /api/onboarding, but that route destructured `attendance` from the
+-- body and never did anything with it — nowhere was it persisted, so the
+-- choice had no visible effect anywhere afterwards.
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS attendance_method VARCHAR(20) NOT NULL DEFAULT 'biometric';

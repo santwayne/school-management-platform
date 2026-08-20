@@ -36,17 +36,29 @@ export default function AdminAttendance() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  // QA fix (P-10): the onboarding wizard's "manual, via teachers" choice
+  // previously had no effect anywhere — this page always led with
+  // biometric-device setup regardless. Collapse that section by default
+  // for a manual-attendance school instead of assuming every school has
+  // hardware to register.
+  const [attendanceMethod, setAttendanceMethod] = useState('biometric');
+  const [devicesOpen, setDevicesOpen] = useState(true);
 
   const loadAll = async () => {
     try {
-      const [d, t, s] = await Promise.all([
+      const [d, t, s, settings] = await Promise.all([
         apiRequest('/api/biometric/devices'),
         apiRequest('/api/academics/teachers'),
         apiRequest('/api/biometric/attendance/today'),
+        apiRequest('/api/settings').catch(() => null),
       ]);
       setDevices(d);
       setTeachers(t);
       setStaff(s);
+      if (settings) {
+        setAttendanceMethod(settings.attendance_method || 'biometric');
+        setDevicesOpen(settings.attendance_method !== 'manual');
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -132,7 +144,11 @@ export default function AdminAttendance() {
     <div className="space-y-8">
       <div>
         <h1 className="font-display text-3xl text-ink">Attendance</h1>
-        <p className="text-sm text-ink-soft mt-1">Biometric devices and today's staff punches.</p>
+        <p className="text-sm text-ink-soft mt-1">
+          {attendanceMethod === 'manual'
+            ? "Today's staff punches — your school tracks attendance manually, biometric devices are optional."
+            : "Biometric devices and today's staff punches."}
+        </p>
       </div>
 
       {message && <div className="rounded-xl bg-joy-leaf/25 border border-joy-leaf/40 px-4 py-3 text-sm text-ink">{message}</div>}
@@ -140,14 +156,26 @@ export default function AdminAttendance() {
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-display text-xl text-ink">Devices</h2>
           <button
-            onClick={() => setAddOpen(true)}
-            className="inline-flex items-center gap-1.5 text-sm font-medium px-3.5 py-2 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep transition"
+            onClick={() => setDevicesOpen((v) => !v)}
+            className="flex items-center gap-1.5 font-display text-xl text-ink"
           >
-            <Plus className="w-4 h-4" /> Register device
+            {devicesOpen ? <ChevronDown className="w-5 h-5 text-ink-soft" /> : <ChevronRight className="w-5 h-5 text-ink-soft" />}
+            Devices
+            {attendanceMethod === 'manual' && (
+              <span className="text-xs font-sans font-normal text-ink-soft ml-1">(optional — your school uses manual attendance)</span>
+            )}
           </button>
+          {devicesOpen && (
+            <button
+              onClick={() => setAddOpen(true)}
+              className="inline-flex items-center gap-1.5 text-sm font-medium px-3.5 py-2 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep transition"
+            >
+              <Plus className="w-4 h-4" /> Register device
+            </button>
+          )}
         </div>
+        {devicesOpen && (
         <div className="rounded-2xl bg-white border border-cream-deep/70 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -217,13 +245,18 @@ export default function AdminAttendance() {
             </tbody>
           </table>
         </div>
+        )}
       </section>
 
       <section className="space-y-3">
         <div className="flex items-end justify-between">
           <div>
             <h2 className="font-display text-xl text-ink">Today's staff attendance</h2>
-            <p className="text-sm text-ink-soft">Auto-pulled from biometric devices. Override where needed.</p>
+            <p className="text-sm text-ink-soft">
+              {attendanceMethod === 'manual'
+                ? 'Mark or correct each staff member below.'
+                : 'Auto-pulled from biometric devices. Override where needed.'}
+            </p>
           </div>
           <div className="text-xs text-ink-soft">
             {staff.filter((s) => s.status === 'present').length} present ·{' '}

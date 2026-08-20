@@ -33,9 +33,14 @@ router.post('/', onboardingLimiter, async (req, res) => {
     );
     const schoolId = schoolRes.rows[0].id;
 
+    // QA fix (P-10): `attendance` was previously collected in the wizard
+    // and submitted here, but never persisted anywhere — the Attendance
+    // page then had no way to know a school had chosen "Manual, via
+    // teachers" and always showed its biometric-devices-oriented default.
+    const attendanceMethod = attendance === 'manual' ? 'manual' : 'biometric';
     await client.query(
-      `INSERT INTO school_settings (school_id, logo_url) VALUES ($1, $2)`,
-      [schoolId, logoDataUrl || null]
+      `INSERT INTO school_settings (school_id, logo_url, attendance_method) VALUES ($1, $2, $3)`,
+      [schoolId, logoDataUrl || null, attendanceMethod]
     );
 
     const passwordHash = await bcrypt.hash(adminPassword, 10);

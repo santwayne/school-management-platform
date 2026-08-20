@@ -201,6 +201,31 @@ router.patch('/notifications', requireAuth, requirePrincipal, async (req, res) =
   }
 });
 
+// QA fix (P-10): the onboarding wizard's own copy promises "you can change
+// it any time" for the attendance method choice — this is that "any time".
+router.patch('/attendance-method', requireAuth, requirePrincipal, async (req, res) => {
+  const school_id = req.user.school_id;
+  const { attendance_method } = req.body;
+  if (!['biometric', 'manual'].includes(attendance_method)) {
+    return res.status(400).json({ error: 'attendance_method must be "biometric" or "manual"' });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO school_settings (school_id, attendance_method)
+       VALUES ($1, $2)
+       ON CONFLICT (school_id) DO UPDATE SET
+         attendance_method = EXCLUDED.attendance_method,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [school_id, attendance_method]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Attendance method update error:', err);
+    res.status(500).json({ error: 'Failed to update attendance method' });
+  }
+});
+
 // Update the accountant petty-cash approval limit — requests at/under this
 // amount can be approved by an accountant; above it, they need the principal.
 router.patch('/petty-cash-limit', requireAuth, requirePrincipal, async (req, res) => {
