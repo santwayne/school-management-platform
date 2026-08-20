@@ -40,13 +40,21 @@ export default function AdminStaffLeave() {
     load(tab);
   }, [tab]);
 
-  const review = async (id, status) => {
+  // T-4: approving a request that exceeds the teacher's remaining balance
+  // now comes back as a 409 with code OVER_BALANCE instead of silently
+  // going through — surface it as a confirm prompt and retry with the
+  // override flag if the principal chooses to proceed anyway.
+  const review = async (id, status, force = false) => {
     setBusyId(id);
     setError('');
     try {
-      await apiRequest(`/api/staff-leave/requests/${id}`, { method: 'PUT', body: { status } });
+      await apiRequest(`/api/staff-leave/requests/${id}`, { method: 'PUT', body: { status, force } });
       await load(tab);
     } catch (err) {
+      if (err.message.includes('force: true') && confirm(`${err.message}\n\nApprove anyway?`)) {
+        setBusyId(null);
+        return review(id, status, true);
+      }
       setError(err.message);
     } finally {
       setBusyId(null);
