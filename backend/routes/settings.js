@@ -94,8 +94,21 @@ router.patch('/whatsapp', requireAuth, requirePrincipal, async (req, res) => {
   try {
     await sendTemplateMessage(whatsapp_business_number, OTP_TEMPLATE, 'en', [code]);
   } catch (err) {
-    console.error('WhatsApp verification send failed:', err.message);
-    return res.status(502).json({ error: 'Could not send a verification message to that number. Check the number and try again.' });
+    // Surface Meta's actual error instead of a generic 502 — this route's
+    // 502 was reported (QA Group 1 / P-2) as "always fails regardless of
+    // number", which points at a config problem (missing/invalid
+    // WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID, or the
+    // `verification_code` / WHATSAPP_OTP_TEMPLATE template not existing or
+    // not yet Meta-approved) rather than a bad phone number every time.
+    // GET /api/whatsapp/debug-templates already exists to check template
+    // approval status — this at least stops hiding which of those it is.
+    const metaError = err.response?.data?.error;
+    console.error('WhatsApp verification send failed:', metaError ? JSON.stringify(metaError) : err.message);
+    const reason = metaError?.error_user_msg || metaError?.message
+      || (!process.env.WHATSAPP_ACCESS_TOKEN || !process.env.WHATSAPP_PHONE_NUMBER_ID
+        ? 'WhatsApp Business API credentials are not configured on the server.'
+        : `The "${OTP_TEMPLATE}" template may not exist or isn't approved yet for this WhatsApp Business number.`);
+    return res.status(502).json({ error: `Could not send a verification message: ${reason}` });
   }
 
   try {

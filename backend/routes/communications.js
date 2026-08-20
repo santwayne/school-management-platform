@@ -143,6 +143,30 @@ router.get('/threads/:threadKey', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/communications/:id/recipients — per-recipient send/delivery
+// breakdown for one broadcast (P-7: History's "Expand" previously only
+// toggled the message text, with no way to see which specific number
+// failed vs. delivered).
+router.get('/:id/recipients', requireAuth, async (req, res) => {
+  const school_id = req.user.school_id;
+  const { id } = req.params;
+  try {
+    const broadcastCheck = await pool.query('SELECT id FROM broadcasts WHERE id = $1 AND school_id = $2', [id, school_id]);
+    if (broadcastCheck.rowCount === 0) {
+      return res.status(404).json({ error: 'Broadcast not found' });
+    }
+    const { rows } = await pool.query(
+      `SELECT phone, recipient_label, status, error_message, created_at, updated_at
+       FROM broadcast_recipients WHERE broadcast_id = $1 ORDER BY id ASC`,
+      [id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Broadcast recipients fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch recipient breakdown' });
+  }
+});
+
 // Compose + send. audience is one of:
 // 'all_parents' | 'all_staff' | 'class:<id>' | 'student:<id>'.
 // Resolves the actual recipient list server-side — the frontend only ever
@@ -187,59 +211,87 @@ router.post('/send', requireAuth, async (req, res) => {
   }
 
   try {
-    let recipients = [];
+    // { phone, label } pairs — a phone-less row is dropped from `recipients`
+    // (and counted in noNumberCount) instead of silently being attempted
+    // and mis-reported as a failed send (T-2).
+    let rows = [];
 
     if (audience === 'all_parents') {
       const r = await pool.query(
-        `SELECT phone FROM parents WHERE school_id = $1 AND opt_in_status = 'OPTED_IN'`,
+        `SELECT p.phone, s.name AS label FROM parents p
+         LEFT JOIN students s ON s.parent_id = p.id
+         WHERE p.school_id = $1 AND p.opt_in_status = 'OPTED_IN'`,
         [school_id]
       );
-      recipients = r.rows.map((row) => row.phone);
+      rows = r.rows;
     } else if (audience === 'all_staff') {
-      const r = await pool.query(`SELECT phone FROM teachers WHERE school_id = $1`, [school_id]);
-      recipients = r.rows.map((row) => row.phone);
+      const r = await pool.query(`SELECT phone, name AS label FROM teachers WHERE school_id = $1`, [school_id]);
+      rows = r.rows;
     } else if (audience.startsWith('class:')) {
       const classId = audience.split(':')[1];
       const r = await pool.query(
-        `SELECT p.phone FROM parents p
+        `SELECT p.phone, s.name AS label FROM parents p
          JOIN students s ON s.parent_id = p.id
          WHERE s.school_id = $1 AND s.class_id = $2 AND p.opt_in_status = 'OPTED_IN'`,
         [school_id, classId]
       );
-      recipients = r.rows.map((row) => row.phone);
+      rows = r.rows;
     } else if (audience.startsWith('student:')) {
       const studentId = audience.split(':')[1];
       const r = await pool.query(
-        `SELECT p.phone FROM parents p
+        `SELECT p.phone, s.name AS label FROM parents p
          JOIN students s ON s.parent_id = p.id
          WHERE s.school_id = $1 AND s.id = $2 AND p.opt_in_status = 'OPTED_IN'`,
         [school_id, studentId]
       );
-      recipients = r.rows.map((row) => row.phone);
+      rows = r.rows;
     } else {
       return res.status(400).json({ error: 'Unrecognized audience value' });
     }
 
+    const recipients = rows.filter((row) => row.phone && row.phone.trim());
+    const noNumberCount = rows.length - recipients.length;
+
     let delivered = 0;
     let failed = 0;
-    for (const phone of recipients) {
+    const recipientResults = [];
+    for (const { phone, label } of recipients) {
       try {
-        await sendTextMessage(phone, message);
+        const result = await sendTextMessage(phone, message);
         delivered += 1;
+        recipientResults.push({ phone, label, status: 'SENT', wa_message_id: result?.messages?.[0]?.id || null, error_message: null });
       } catch (sendErr) {
         console.error(`Broadcast send failed for ${phone}:`, sendErr.message);
         failed += 1;
+        recipientResults.push({ phone, label, status: 'FAILED', wa_message_id: null, error_message: sendErr.message });
       }
     }
 
     const thread_key = threadKeyFor(audience);
 
     const logResult = await pool.query(
-      `INSERT INTO broadcasts (school_id, audience, audience_label, message, sent_by, recipient_count, delivered_count, failed_count, thread_key)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [school_id, audience, audience_label || audience, message, req.user.teacher_id || null, recipients.length, delivered, failed, thread_key]
+      `INSERT INTO broadcasts (school_id, audience, audience_label, message, sent_by, recipient_count, delivered_count, failed_count, no_number_count, thread_key)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [school_id, audience, audience_label || audience, message, req.user.teacher_id || null, recipients.length, delivered, failed, noNumberCount, thread_key]
     );
     const broadcast = logResult.rows[0];
+
+    // Per-recipient rows power the History "Expand" breakdown (P-7) and give
+    // the /webhook status handler something to match a delivery/read/failed
+    // callback against via wa_message_id.
+    if (recipientResults.length > 0) {
+      const values = [];
+      const placeholders = recipientResults.map((r, i) => {
+        const base = i * 6;
+        values.push(broadcast.id, r.phone, r.label || null, r.status, r.wa_message_id, r.error_message);
+        return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
+      });
+      await pool.query(
+        `INSERT INTO broadcast_recipients (broadcast_id, phone, recipient_label, status, wa_message_id, error_message)
+         VALUES ${placeholders.join(', ')}`,
+        values
+      );
+    }
 
     // A new threaded message pings every principal in the school (other than
     // the sender, if the sender happens to be one) via the shared
