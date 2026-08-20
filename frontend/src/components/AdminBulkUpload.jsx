@@ -286,6 +286,7 @@ export default function AdminBulkUpload() {
                       <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-2 bg-cream-deep/40">Row</th>
                       <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-2 bg-cream-deep/40">Name</th>
                       <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-2 bg-cream-deep/40">Login ID</th>
+                      <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-2 bg-cream-deep/40">PIN</th>
                       <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-2 bg-cream-deep/40">Status</th>
                       <th className="text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-2 bg-cream-deep/40">Note</th>
                     </tr>
@@ -296,6 +297,10 @@ export default function AdminBulkUpload() {
                         <td className="px-4 py-2 font-mono text-xs">{r.row_number}</td>
                         <td className="px-4 py-2">{r.student?.name}</td>
                         <td className="px-4 py-2 font-mono text-xs">{r.student?.login_id}</td>
+                        {/* Only newly created rows have a fresh PIN — an updated
+                            existing student's PIN is unchanged and unknown here
+                            (S-1: recoverable later via the Students tab's Reset PIN action). */}
+                        <td className="px-4 py-2 font-mono text-xs font-bold text-amber-900">{r.student?.defaultPin || '—'}</td>
                         <td className="px-4 py-2"><StatusBadge status={r.status} /></td>
                         <td className="px-4 py-2 text-xs text-amber-700">{r.warning || ''}</td>
                       </tr>
