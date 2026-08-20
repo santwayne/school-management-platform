@@ -173,7 +173,7 @@ export default function StudentsTab() {
             className="w-full pl-9 pr-3 py-2 text-sm rounded-lg bg-white border border-cream-deep focus:outline-none focus:ring-2 focus:ring-terracotta/40"
           />
         </div>
-        <p className="text-xs text-ink-soft ml-auto">New students are added via bulk import on the Classes &amp; Sections tab.</p>
+        <p className="text-xs text-ink-soft ml-auto">Add students one at a time or via bulk CSV import, both on the Classes &amp; Sections tab.</p>
       </div>
 
       {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}

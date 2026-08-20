@@ -177,7 +177,21 @@ export default function TeacherPortal() {
       }
     }
     load();
-    return () => { cancelled = true; };
+
+    // QA fix (T-5): "My Class" only ever fetched once, on mount — a teacher
+    // who already had the portal open when a principal made them Class
+    // Incharge (elsewhere, e.g. Manage School) saw nothing change until a
+    // manual browser reload. Re-running the same load() when the tab
+    // regains focus/visibility picks up the new assignment as soon as the
+    // teacher switches back to it, without needing a hard refresh.
+    const onFocus = () => { if (document.visibilityState === 'visible') load(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
   }, []);
 
   const active = classes.find((c) => `${c.class_id}-${c.subject_id}` === activeId) ?? null;
