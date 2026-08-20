@@ -57,6 +57,23 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  // P-6: there was previously no way to remove a school at all, only
+  // Suspend/Activate. Deletion is irreversible and wipes every table scoped
+  // to that school, so this asks for the school's exact name typed back —
+  // matching the backend's confirm_name requirement — rather than a single
+  // confirm() click.
+  const deleteSchool = async (id, name) => {
+    const typed = window.prompt(`This permanently deletes "${name}" and ALL of its data (staff, students, fees, everything). This cannot be undone.\n\nType the school's name to confirm:`);
+    if (typed === null) return;
+    setError('');
+    try {
+      await apiRequest(`/api/super-admin/schools/${id}`, { method: 'DELETE', body: { confirm_name: typed } });
+      fetchSchools();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const generateDemo = async (id) => {
     if (!window.confirm('Regenerate demo accounts for this school? Any demo credentials already shared with a prospect will stop working.')) return;
     setError('');
@@ -134,6 +151,9 @@ export default function SuperAdminDashboard() {
                     </button>
                     <button onClick={() => generateDemo(s.id)} className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800 font-medium">
                       Demo accounts
+                    </button>
+                    <button onClick={() => deleteSchool(s.id, s.name)} className="text-xs px-2 py-1 rounded bg-red-100 text-red-800 font-medium">
+                      Delete
                     </button>
                   </td>
                 </tr>

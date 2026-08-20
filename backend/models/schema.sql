@@ -1801,3 +1801,16 @@ ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS no_number_count INT NOT NULL DEF
 -- regressed to a lower delivered number while webhook events are still
 -- trickling in.
 ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS confirmed_delivered_count INT NOT NULL DEFAULT 0;
+
+-- QA fix (P-4): Super Admin's "Demo accounts" button (routes/superAdmin.js's
+-- POST /schools/:id/test-users) inserted a brand new Principal/Teacher/
+-- Student every click with no way to tell those rows apart from real staff/
+-- students afterwards — repeated clicks left multiple Principal accounts
+-- and orphaned students with no class/parent, and DELETE /teachers/:id's
+-- role='teacher' guard (deliberately there to stop a Principal deleting
+-- their own account) meant none of the extra Principal rows could be
+-- removed via the Staff tab either. Tagging demo-generated rows lets the
+-- endpoint delete its own previous output before creating a fresh set,
+-- turning the button into an actual reset instead of an accumulator.
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE;
