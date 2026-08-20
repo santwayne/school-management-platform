@@ -17,6 +17,11 @@ export default function SuperAdminDashboard() {
   const [demoCreds, setDemoCreds] = useState(null);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // P-14: toggleStatus had a couple seconds of round-trip with no loading
+  // indicator, inviting a second click that fired a second toggle before
+  // the first one had even come back — tracking the busy school id lets the
+  // button disable itself and show progress for exactly that window.
+  const [statusBusyId, setStatusBusyId] = useState(null);
 
   const fetchSchools = async () => {
     try {
@@ -49,11 +54,15 @@ export default function SuperAdminDashboard() {
 
   const toggleStatus = async (id, currentStatus) => {
     const nextStatus = currentStatus === 'active' ? 'suspended' : 'active';
+    setStatusBusyId(id);
+    setError('');
     try {
       await apiRequest(`/api/super-admin/schools/${id}/status`, { method: 'PATCH', body: { status: nextStatus } });
-      fetchSchools();
+      await fetchSchools();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setStatusBusyId(null);
     }
   };
 
@@ -146,8 +155,12 @@ export default function SuperAdminDashboard() {
                     <div>Students: <strong className="text-ink">{s.student_count}</strong></div>
                   </td>
                   <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                    <button onClick={() => toggleStatus(s.id, s.status)} className={`text-xs px-2 py-1 rounded font-medium ${s.status === 'active' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                      {s.status === 'active' ? 'Suspend' : 'Activate'}
+                    <button
+                      onClick={() => toggleStatus(s.id, s.status)}
+                      disabled={statusBusyId === s.id}
+                      className={`text-xs px-2 py-1 rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed ${s.status === 'active' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}
+                    >
+                      {statusBusyId === s.id ? '…' : s.status === 'active' ? 'Suspend' : 'Activate'}
                     </button>
                     <button onClick={() => generateDemo(s.id)} className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800 font-medium">
                       Demo accounts

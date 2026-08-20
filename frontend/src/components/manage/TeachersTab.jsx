@@ -131,6 +131,12 @@ export default function TeachersTab() {
               <h3 className="font-display text-lg text-ink">{modal === 'add' ? 'Add staff' : 'Edit staff'}</h3>
               <button onClick={() => setModal(null)}><X className="w-4 h-4 text-ink-soft" /></button>
             </div>
+            {/* P-15: this error banner used to only exist outside the modal
+                (below, in the page body) — completely hidden behind this
+                modal's own overlay, so a failed Save silently looked like
+                nothing happened until a second click (which might just
+                retry the same failure, or coincidentally succeed). */}
+            {error && <div className="mb-3 rounded-xl bg-destructive/10 border border-destructive/20 px-3 py-2 text-xs text-destructive">{error}</div>}
             <div className="space-y-3">
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Name" className="w-full px-3 py-2 rounded-lg border border-cream-deep text-sm" />
               {modal === 'add' && (

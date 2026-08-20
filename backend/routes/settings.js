@@ -167,7 +167,16 @@ router.post('/whatsapp/verify', requireAuth, requirePrincipal, async (req, res) 
   }
 });
 
-// Update notification toggles.
+// Update notification toggles. The frontend flips one toggle at a time
+// (AdminSettings.jsx's toggleNotif sends only { [key]: value }), so the
+// other four fields arrive as `undefined` here, not omitted-and-defaulted —
+// QA fix (P-16): unlike the leaving-cert route below (which already does
+// `?? null` for this exact reason), this route passed those raw
+// `undefined`s straight into the query's params array. node-postgres has
+// no defined behavior for an undefined bind parameter and throws, which
+// this try/catch turned into a 500 with no useful detail — every
+// single-toggle PATCH here was one bad param away from failing depending
+// on which four fields happened to be present.
 router.patch('/notifications', requireAuth, requirePrincipal, async (req, res) => {
   const school_id = req.user.school_id;
   const { notify_attendance, notify_homework, notify_fees, notify_payroll, notify_weekly_summary } = req.body;
@@ -183,7 +192,7 @@ router.patch('/notifications', requireAuth, requirePrincipal, async (req, res) =
          notify_weekly_summary = COALESCE(EXCLUDED.notify_weekly_summary, school_settings.notify_weekly_summary),
          updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
-      [school_id, notify_attendance, notify_homework, notify_fees, notify_payroll, notify_weekly_summary]
+      [school_id, notify_attendance ?? null, notify_homework ?? null, notify_fees ?? null, notify_payroll ?? null, notify_weekly_summary ?? null]
     );
     res.json(result.rows[0]);
   } catch (err) {

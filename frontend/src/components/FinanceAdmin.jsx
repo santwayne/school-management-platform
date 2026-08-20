@@ -181,7 +181,10 @@ function FeeStructure() {
       <h2 className="font-display text-xl font-bold text-ink mb-1">Fee Structure</h2>
       <p className="text-sm text-ink-soft mb-4">Set the expected fee amount per class. This drives the Expected/Unpaid totals on the Dashboard tab.</p>
       {error && <div className="p-3 mb-3 text-xs bg-destructive/10 text-destructive rounded-lg">{error}</div>}
-      {msg && <div className="p-3 mb-3 text-xs font-semibold bg-terracotta/5 text-terracotta-deep rounded-lg">{msg}</div>}
+      {/* AL-4: success confirmations were styled in the same terracotta
+          (orange/red) brand tone used for validation errors elsewhere —
+          switched to green, the conventional success color. */}
+      {msg && <div className="p-3 mb-3 text-xs font-semibold bg-emerald-500/10 text-emerald-700 rounded-lg">{msg}</div>}
       {loading ? (
         <p className="text-sm text-ink-soft">Loading…</p>
       ) : rows.length === 0 ? (
@@ -285,7 +288,10 @@ export default function FinanceAdmin() {
         <div className="max-w-2xl mx-auto">
           <div className="bg-white p-6 rounded-xl border shadow-sm">
             <h2 className="font-display text-xl font-bold text-ink mb-4">Collect Student Fee</h2>
-            {msg && <div className="p-3 mb-4 text-xs font-semibold bg-terracotta/5 text-terracotta-deep rounded-lg">{msg}</div>}
+            {/* AL-4: "Fee recorded successfully!" was styled in the same
+                terracotta (orange/red) brand tone used for validation errors
+                elsewhere — switched to green, the conventional success color. */}
+            {msg && <div className="p-3 mb-4 text-xs font-semibold bg-emerald-500/10 text-emerald-700 rounded-lg">{msg}</div>}
 
             <form onSubmit={handleFeeSubmit} className="space-y-4">
               <div>

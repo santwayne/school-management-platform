@@ -159,6 +159,10 @@ export default function ParentsTab() {
               <h3 className="font-display text-lg text-ink">{modal === 'add' ? 'Add parent' : 'Edit parent'}</h3>
               <button onClick={() => setModal(null)}><X className="w-4 h-4 text-ink-soft" /></button>
             </div>
+            {/* P-15 (same fix as TeachersTab.jsx): the page-body error banner
+                below is completely hidden behind this modal's own overlay,
+                so a failed save looked like nothing happened. */}
+            {error && <div className="mb-3 rounded-xl bg-destructive/10 border border-destructive/20 px-3 py-2 text-xs text-destructive">{error}</div>}
             <div className="space-y-3">
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Name" className="w-full px-3 py-2 rounded-lg border border-cream-deep text-sm" />
               <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="WhatsApp number" className="w-full px-3 py-2 rounded-lg border border-cream-deep text-sm" />
