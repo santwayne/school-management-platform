@@ -226,10 +226,14 @@ function RoleTabs({ value, onChange }) {
     { key: 'admin', label: 'Admin' },
     { key: 'accountant', label: 'Accountant' },
     { key: 'teacher', label: 'Teacher' },
+    // AL-1: librarians had no tab of their own — the only way in was
+    // guessing to use the Teacher tab, since librarian is a role on the
+    // same teachers table/login endpoint, not a separate account type.
+    { key: 'librarian', label: 'Librarian' },
     { key: 'student', label: 'Student' },
   ];
   return (
-    <div className="grid grid-cols-4 p-1 bg-cream-deep/50 rounded-xl">
+    <div className="grid grid-cols-5 p-1 bg-cream-deep/50 rounded-xl">
       {tabs.map((t) => {
         const active = value === t.key;
         return (
@@ -273,6 +277,7 @@ export default function Login() {
               {role === 'admin' && <AdminForm key="admin" />}
               {role === 'accountant' && <AdminForm key="accountant" />}
               {role === 'teacher' && <TeacherForm key="teacher" />}
+              {role === 'librarian' && <TeacherForm key="librarian" />}
               {role === 'student' && <StudentForm key="student" />}
             </div>
           </div>

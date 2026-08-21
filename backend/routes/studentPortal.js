@@ -424,7 +424,20 @@ router.get('/rewards', requireAuth, requireStudent, async (req, res) => {
     const badges = [
       { key: 'streak_5', label: '5-day streak', earned: streak >= 5, progress: `${Math.min(streak, 5)}/5` },
       { key: 'streak_10', label: '10-day streak', earned: streak >= 10, progress: `${Math.min(streak, 10)}/10` },
-      { key: 'perfect_week', label: 'Perfect week', earned: perfectWeek, progress: perfectWeek ? 'Done' : `${done_this_week}/${assigned_this_week || 0}` },
+      // QA fix (S-4): assigned_this_week/done_this_week come back from COUNT()
+      // as strings like "0" — truthy in JS, so `assigned_this_week || 0`
+      // never actually caught the no-homework-this-week case and just showed
+      // the real "0/0", unlike streak_5/streak_10's genuine fixed targets.
+      {
+        key: 'perfect_week',
+        label: 'Perfect week',
+        earned: perfectWeek,
+        progress: perfectWeek
+          ? 'Done'
+          : Number(assigned_this_week) > 0
+            ? `${done_this_week}/${assigned_this_week}`
+            : 'No homework yet this week',
+      },
       { key: 'quiz_master', label: 'Quiz master', earned: goodTests > 0, progress: goodTests > 0 ? 'Done' : `0/1` },
     ];
 

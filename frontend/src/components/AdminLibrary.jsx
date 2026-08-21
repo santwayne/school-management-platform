@@ -113,7 +113,10 @@ function IssueForm({ book, onClose, onSaved }) {
         </select>
         <label className="text-sm text-ink-soft space-y-1 block">
           Due date
-          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full rounded-lg border border-cream-deep/70 px-3 py-2 text-ink" />
+          {/* P-8: a past due date was accepted with no warning, and the book
+              showed as overdue the instant it was issued. `min` stops a past
+              date being pickable at all; the server also rejects one. */}
+          <input type="date" min={new Date().toISOString().slice(0, 10)} value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full rounded-lg border border-cream-deep/70 px-3 py-2 text-ink" />
         </label>
         <button disabled={saving} onClick={save} className="w-full px-4 py-2 rounded-lg bg-terracotta text-white text-sm font-medium hover:bg-terracotta-deep disabled:opacity-50">
           {saving ? 'Issuing…' : 'Issue book'}

@@ -124,7 +124,7 @@ router.get('/requests', requireAuth, async (req, res) => {
 // the used_days balance is incremented (creating the balance row if missing).
 router.put('/requests/:id', requireAuth, requirePrincipal, async (req, res) => {
   const { id } = req.params;
-  const { status, review_note } = req.body;
+  const { status, review_note, force } = req.body;
   if (!['APPROVED', 'REJECTED'].includes(status)) {
     return res.status(400).json({ error: 'status must be APPROVED or REJECTED' });
   }
@@ -145,6 +145,33 @@ router.put('/requests/:id', requireAuth, requirePrincipal, async (req, res) => {
     if (leaveReq.status !== 'PENDING') {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: `Request already ${leaveReq.status.toLowerCase()}` });
+    }
+
+    // QA fix (T-4): approval never checked the requester's remaining
+    // balance at all — a request could be approved with 0/0 days allotted
+    // (or already fully used) with no warning. Doesn't hard-block (a
+    // principal may legitimately grant leave beyond quota, e.g. unpaid) —
+    // instead requires an explicit `force: true` once warned, same
+    // "confirm to override" shape as a typical destructive-action prompt.
+    if (status === 'APPROVED' && !force) {
+      const year = new Date(leaveReq.start_date).getFullYear();
+      const balanceRes = await client.query(
+        `SELECT total_days, used_days FROM staff_leave_balances
+         WHERE school_id = $1 AND teacher_id = $2 AND year = $3 AND leave_type = $4`,
+        [req.user.school_id, leaveReq.teacher_id, year, leaveReq.leave_type]
+      );
+      const balance = balanceRes.rows[0] || { total_days: 0, used_days: 0 };
+      const remaining = Number(balance.total_days) - Number(balance.used_days);
+      if (remaining < leaveReq.days_count) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: `Only ${Math.max(remaining, 0)} ${leaveReq.leave_type} day(s) remaining out of ${balance.total_days} — this request is for ${leaveReq.days_count}. Approve anyway with force: true, or reject.`,
+          code: 'OVER_BALANCE',
+          remaining: Math.max(remaining, 0),
+          total_days: Number(balance.total_days),
+          requested_days: leaveReq.days_count,
+        });
+      }
     }
 
     const { rows: updated } = await client.query(

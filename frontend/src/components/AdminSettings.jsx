@@ -173,6 +173,23 @@ export default function AdminSettings() {
     }
   };
 
+  // QA fix (P-10): the onboarding wizard says the attendance-method choice
+  // can be changed "any time" — this is that control, matching the setting
+  // the Attendance page now actually reads.
+  const toggleAttendanceMethod = async (isManual) => {
+    setError('');
+    try {
+      const s = await apiRequest('/api/settings/attendance-method', {
+        method: 'PATCH',
+        body: { attendance_method: isManual ? 'manual' : 'biometric' },
+      });
+      setSettings(s);
+      flash('Attendance method updated.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const saveLeavingCert = async () => {
     setError('');
     try {
@@ -385,6 +402,14 @@ export default function AdminSettings() {
             <Toggle label="Fee reminders" checked={settings.notify_fees} onChange={(v) => toggleNotif('notify_fees', v)} />
             <Toggle label="Payroll processed alerts" checked={settings.notify_payroll} onChange={(v) => toggleNotif('notify_payroll', v)} />
             <Toggle label="Weekly class progress summary" checked={settings.notify_weekly_summary} onChange={(v) => toggleNotif('notify_weekly_summary', v)} />
+          </Card>
+
+          <Card title="Attendance method">
+            <Toggle
+              label="Manual attendance (via teachers), instead of biometric devices"
+              checked={settings.attendance_method === 'manual'}
+              onChange={toggleAttendanceMethod}
+            />
           </Card>
 
           <Card title="Accountant approval limit">

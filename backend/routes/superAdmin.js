@@ -114,6 +114,30 @@ router.patch('/schools/:id/status', requireAuth, requireSuperAdmin, async (req, 
   }
 });
 
+// QA fix (P-6): Super Admin had no way to remove a school at all — only
+// Suspend/Activate. Deleting is irreversible and wipes every table scoped
+// by school_id (all 65 of them cascade off schools.id — see schema.sql),
+// so this requires the caller to echo the school's exact current name back
+// as `confirm_name`, the same "type the name to confirm" pattern used for
+// other irreversible actions elsewhere, rather than a single click.
+router.delete('/schools/:id', requireAuth, requireSuperAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { confirm_name } = req.body;
+  try {
+    const schoolRes = await pool.query('SELECT name FROM schools WHERE id = $1', [id]);
+    if (schoolRes.rowCount === 0) {
+      return res.status(404).json({ error: 'School not found' });
+    }
+    if (!confirm_name || confirm_name.trim() !== schoolRes.rows[0].name) {
+      return res.status(400).json({ error: 'confirm_name must exactly match the school\'s current name' });
+    }
+    await pool.query('DELETE FROM schools WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Admin: Generate one-click test/demo users for a school (for showing a client demo)
 router.post('/schools/:id/test-users', requireAuth, requireSuperAdmin, async (req, res) => {
   const schoolId = req.params.id;
@@ -144,22 +168,28 @@ router.post('/schools/:id/test-users', requireAuth, requireSuperAdmin, async (re
 
     await client.query('BEGIN');
 
+    // Reset, not accumulate: remove this school's previous demo-generated
+    // rows before creating a fresh set, so repeated clicks don't leave
+    // multiple Principal accounts and orphaned demo students behind.
+    await client.query(`DELETE FROM students WHERE school_id = $1 AND is_demo = TRUE`, [schoolId]);
+    await client.query(`DELETE FROM teachers WHERE school_id = $1 AND is_demo = TRUE`, [schoolId]);
+
     const pHash = await bcrypt.hash(pPass, 10);
     const tHash = await bcrypt.hash(tPass, 10);
     const sHash = await bcrypt.hash(sPin, 10);
 
     await client.query(
-      `INSERT INTO teachers (school_id, name, email, phone, password_hash, role) VALUES ($1, $2, $3, $4, $5, 'principal')`,
+      `INSERT INTO teachers (school_id, name, email, phone, password_hash, role, is_demo) VALUES ($1, $2, $3, $4, $5, 'principal', TRUE)`,
       [schoolId, `Demo Principal ${randStr}`, pEmail, pPhone, pHash]
     );
 
     await client.query(
-      `INSERT INTO teachers (school_id, name, email, phone, password_hash, role) VALUES ($1, $2, $3, $4, $5, 'teacher')`,
+      `INSERT INTO teachers (school_id, name, email, phone, password_hash, role, is_demo) VALUES ($1, $2, $3, $4, $5, 'teacher', TRUE)`,
       [schoolId, `Demo Teacher ${randStr}`, tEmail, tPhone, tHash]
     );
 
     await client.query(
-      `INSERT INTO students (school_id, name, login_id, pin_hash, grade) VALUES ($1, $2, $3, $4, 'Class 8')`,
+      `INSERT INTO students (school_id, name, login_id, pin_hash, grade, is_demo) VALUES ($1, $2, $3, $4, 'Class 8', TRUE)`,
       [schoolId, `Demo Student ${randStr}`, sLoginId, sHash]
     );
 

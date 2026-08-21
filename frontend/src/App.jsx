@@ -84,6 +84,7 @@ function homeFor(role) {
   if (role === 'super_admin') return '/super-admin';
   if (role === 'accountant') return '/accountant';
   if (role === 'librarian') return '/admin/library';
+  if (role === 'principal') return '/dashboard';
   return '/teacher';
 }
 

@@ -1,7 +1,7 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import pool from '../config/db.js';
-import { requireAuth, requirePrincipal } from '../middleware/auth.js';
+import { requireAuth, requirePrincipal, requireLibrary } from '../middleware/auth.js';
 import { normalizePhone } from '../utils/phone.js';
 
 const router = express.Router();
@@ -393,7 +393,15 @@ router.delete('/teachers/:id', requireAuth, requirePrincipal, async (req, res) =
 // Students — flat searchable list (the existing endpoint only returns a
 // per-class roster), plus edit/delete. Creation stays on the bulk-import
 // endpoint above — a single-student add is just a bulk call with one row.
-router.get('/students', requireAuth, requirePrincipal, async (req, res) => {
+//
+// QA fix (AL-2): this was requirePrincipal-only, so a librarian loading the
+// Issue Book dialog got a silent 403 here (swallowed by the frontend's
+// .catch(() => {})) while the /teachers list next to it — requireAuth only —
+// loaded fine, leaving the student picker empty with no error shown. Reads
+// need to work for both roles that actually use this list; edit/delete
+// below stay requirePrincipal since only a principal should be able to
+// change or remove a student record.
+router.get('/students', requireAuth, requireLibrary, async (req, res) => {
   const { search } = req.query;
   try {
     const params = [req.user.school_id];
@@ -457,6 +465,27 @@ router.delete('/students/:id', requireAuth, requirePrincipal, async (req, res) =
   try {
     await pool.query('DELETE FROM students WHERE id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// QA fix (S-1): a student's PIN was only ever visible once, in the raw
+// /students/bulk API response at enrollment time — nowhere in the admin UI
+// showed it afterwards, and there was no way to recover access for a
+// student who lost it. Only pin_hash is stored (bcrypt, one-way), so
+// there's no "view" — this generates and returns a fresh PIN, same as
+// enrollment, which the principal can then hand to the family.
+router.post('/students/:id/reset-pin', requireAuth, requirePrincipal, async (req, res) => {
+  const defaultPin = String(Math.floor(1000 + Math.random() * 9000));
+  const pinHash = await bcrypt.hash(defaultPin, 10);
+  try {
+    const result = await pool.query(
+      `UPDATE students SET pin_hash = $1 WHERE id = $2 AND school_id = $3 RETURNING id, name, login_id`,
+      [pinHash, req.params.id, req.user.school_id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Student not found' });
+    res.json({ ...result.rows[0], defaultPin });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

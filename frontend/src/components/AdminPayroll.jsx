@@ -588,13 +588,28 @@ function PettyCashTab() {
                   <Td className="text-ink-soft whitespace-nowrap">{new Date(r.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</Td>
                   <Td><StatusBadge status={r.status} /></Td>
                   <Td className="text-right">
-                    {r.status === 'PENDING' && (
-                      <div className="inline-flex items-center gap-2">
-                        <button onClick={() => openEdit(r)} className="p-1.5 text-ink-soft hover:text-terracotta-deep"><Pencil className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => decide(r.id, 'REJECTED')} className="text-xs px-3 py-1.5 rounded-lg border border-cream-deep text-ink-soft hover:bg-cream-deep/50">Reject</button>
-                        <button onClick={() => decide(r.id, 'APPROVED')} className="text-xs font-medium px-3 py-1.5 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep">Approve</button>
-                      </div>
-                    )}
+                    {r.status === 'PENDING' && (() => {
+                      // AL-3: an accountant above their own approval limit got a
+                      // live, clickable Approve button that only failed after
+                      // the click (server-side check in finance.js is correct,
+                      // this was purely a UI nit) — disable it up front instead,
+                      // with a tooltip explaining why. Reject has no limit.
+                      const overLimit = user?.role === 'accountant' && accountantLimit !== null && Number(r.amount) > accountantLimit;
+                      return (
+                        <div className="inline-flex items-center gap-2">
+                          <button onClick={() => openEdit(r)} className="p-1.5 text-ink-soft hover:text-terracotta-deep"><Pencil className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => decide(r.id, 'REJECTED')} className="text-xs px-3 py-1.5 rounded-lg border border-cream-deep text-ink-soft hover:bg-cream-deep/50">Reject</button>
+                          <button
+                            onClick={() => decide(r.id, 'APPROVED')}
+                            disabled={overLimit}
+                            title={overLimit ? `Above your ${INR(accountantLimit)} approval limit — needs Principal approval` : undefined}
+                            className="text-xs font-medium px-3 py-1.5 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-terracotta"
+                          >
+                            Approve
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </Td>
                 </tr>
               ))}

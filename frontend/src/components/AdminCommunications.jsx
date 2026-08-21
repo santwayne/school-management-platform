@@ -16,13 +16,21 @@ function AudienceBadge({ label }) {
   );
 }
 
-function DeliveryBar({ delivered, failed, total }) {
+// "Sent" here means Meta's API accepted the message for delivery, NOT that
+// it actually reached the phone — that only becomes known asynchronously,
+// via the confirmedDelivered figure (populated by the status webhook) and
+// the per-recipient breakdown below. Labeling this "delivered" was the root
+// of P-3 (a broadcast could show "delivered" and never arrive).
+function DeliveryBar({ sent, failed, confirmedDelivered, total }) {
   if (!total) return null;
-  const pct = Math.round((delivered / total) * 100);
+  const pct = Math.round((sent / total) * 100);
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-[11px] text-ink-soft">
-        <span>{delivered} delivered{failed > 0 ? `, ${failed} failed` : ''}</span>
+        <span>
+          {sent} sent{failed > 0 ? `, ${failed} failed` : ''}
+          {confirmedDelivered > 0 ? ` · ${confirmedDelivered} confirmed delivered` : ''}
+        </span>
         <span>{pct}%</span>
       </div>
       <div className="h-1 rounded-full bg-cream-deep overflow-hidden">
@@ -31,6 +39,47 @@ function DeliveryBar({ delivered, failed, total }) {
           <div className="h-full rounded-full bg-destructive/60" style={{ width: `${Math.round((failed / total) * 100)}%`, marginLeft: `${pct}%`, marginTop: '-4px' }} />
         )}
       </div>
+    </div>
+  );
+}
+
+const RECIPIENT_STATUS_STYLE = {
+  SENT: 'bg-cream-deep text-ink-soft',
+  DELIVERED: 'bg-emerald-500/10 text-emerald-700',
+  READ: 'bg-emerald-500/10 text-emerald-700',
+  FAILED: 'bg-destructive/10 text-destructive',
+};
+
+function RecipientBreakdown({ broadcastId }) {
+  const [recipients, setRecipients] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiRequest(`/api/communications/${broadcastId}/recipients`)
+      .then(setRecipients)
+      .catch((err) => setError(err.message));
+  }, [broadcastId]);
+
+  if (error) return <p className="text-xs text-destructive px-1">{error}</p>;
+  if (!recipients) return <p className="text-xs text-ink-soft px-1">Loading recipients…</p>;
+  if (recipients.length === 0) return <p className="text-xs text-ink-soft px-1">No individual recipients recorded for this broadcast.</p>;
+
+  return (
+    <div className="rounded-xl border border-cream-deep/70 bg-cream/40 divide-y divide-cream-deep/60 max-h-64 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      {recipients.map((r, i) => (
+        <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
+          <div className="min-w-0">
+            <div className="text-ink font-medium truncate">{r.recipient_label || 'Unknown'}</div>
+            <div className="text-ink-soft truncate">{r.phone}</div>
+          </div>
+          <div className="flex flex-col items-end gap-0.5 shrink-0">
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${RECIPIENT_STATUS_STYLE[r.status] || 'bg-cream-deep text-ink-soft'}`}>
+              {r.status}
+            </span>
+            {r.error_message && <span className="text-[10px] text-destructive max-w-[160px] truncate" title={r.error_message}>{r.error_message}</span>}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -142,7 +191,7 @@ export default function AdminCommunications() {
             <div className="w-px h-8 bg-cream-deep" />
             <div>
               <div className="text-lg font-semibold text-ink">{totalDelivered}</div>
-              <div className="text-xs text-ink-soft">delivered</div>
+              <div className="text-xs text-ink-soft">sent</div>
             </div>
           </div>
         )}
@@ -226,13 +275,23 @@ export default function AdminCommunications() {
                     </div>
                     <p className={`text-sm text-ink leading-relaxed ${isOpen ? '' : 'line-clamp-2'}`}>{b.message}</p>
                     <div className="mt-3">
-                      <DeliveryBar delivered={b.delivered_count} failed={b.failed_count} total={b.recipient_count} />
+                      <DeliveryBar sent={b.delivered_count} failed={b.failed_count} confirmedDelivered={b.confirmed_delivered_count} total={b.recipient_count} />
                     </div>
+                    {b.no_number_count > 0 && (
+                      <p className="mt-1.5 text-[11px] text-ink-soft">
+                        {b.no_number_count} {b.no_number_count === 1 ? 'recipient' : 'recipients'} skipped — no WhatsApp number on file
+                      </p>
+                    )}
+                    {isOpen && (
+                      <div className="mt-3">
+                        <RecipientBreakdown broadcastId={b.id} />
+                      </div>
+                    )}
                   </div>
                   <div className="px-4 pb-3 flex items-center justify-between">
                     <div className="flex items-center gap-1 text-xs text-ink-soft">
                       <CheckCheck className="w-3.5 h-3.5 text-terracotta" />
-                      {b.delivered_count} of {b.recipient_count} delivered
+                      {b.delivered_count} of {b.recipient_count} sent
                     </div>
                     <span className="text-xs text-ink-soft flex items-center gap-0.5">
                       {isOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -314,8 +373,10 @@ export default function AdminCommunications() {
             {sendResult && (
               <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-3 text-sm text-emerald-700">
                 <CheckCheck className="w-4 h-4 shrink-0" />
-                Sent to {sendResult.recipient_count} recipients — {sendResult.delivered_count} delivered
-                {sendResult.failed_count > 0 ? `, ${sendResult.failed_count} failed` : ''}.
+                Sent to {sendResult.recipient_count} recipients — {sendResult.delivered_count} accepted
+                {sendResult.failed_count > 0 ? `, ${sendResult.failed_count} failed` : ''}
+                {sendResult.no_number_count > 0 ? `, ${sendResult.no_number_count} skipped (no WhatsApp number on file)` : ''}.
+                Actual delivery confirms asynchronously — check History for real-time status.
               </div>
             )}
 

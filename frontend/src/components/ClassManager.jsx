@@ -51,6 +51,22 @@ export default function ClassManager() {
     }
   };
 
+  // QA fix (P-12): enrolling a student with a new parent phone number
+  // auto-creates a parent row server-side and links it — the roster's
+  // parent_id comes back correct from loadRoster() above, but the Parent
+  // <select> below renders its options from this `parents` array, which
+  // was only ever fetched once on mount. A brand-new parent's id has no
+  // matching <option>, so the browser silently falls back to the first
+  // option ("— Not linked —") until something refetches parents — which a
+  // full page reload does, but nothing here did before this fetch.
+  const loadParents = async () => {
+    try {
+      setParents(await apiRequest('/api/academics/parents', { method: 'GET' }));
+    } catch (err) {
+      setError('Failed to load parents.');
+    }
+  };
+
   useEffect(() => {
     loadBaseData();
   }, []);
@@ -154,6 +170,7 @@ export default function ClassManager() {
       setMessage('Student enrolled.');
       setProvisionedStudents(res.records || []);
       loadRoster();
+      loadParents();
     } catch (err) {
       setError(err.message);
     }
@@ -180,6 +197,7 @@ export default function ClassManager() {
         setMessage(`Enrolled ${res.inserted_count} students.`);
         setProvisionedStudents(res.records || []);
         loadRoster();
+        loadParents();
       } catch (err) {
         setError(err.message);
       }
@@ -233,7 +251,7 @@ export default function ClassManager() {
         <div className="space-y-6">
           <div className="bg-white p-5 border rounded-lg shadow-sm space-y-3">
             <h2 className="text-lg font-semibold text-ink">Teacher WhatsApp Numbers</h2>
-            <p className="text-xs text-ink-soft">Teachers don't log in — set their WhatsApp number here so they get "what to teach today" and student notes automatically.</p>
+            <p className="text-xs text-ink-soft">Teachers log in with their own email and password — set their WhatsApp number here too so they get "what to teach today" and student notes automatically.</p>
             {teachers.map((t) => (
               <div key={t.id} className="flex items-center gap-2">
                 <span className="text-sm text-ink-soft w-32 truncate">{t.name}</span>
@@ -333,7 +351,7 @@ export default function ClassManager() {
           </div>
 
           <div className="bg-white p-6 border rounded-lg shadow-sm">
-            <h2 className="font-display text-xl font-bold text-ink mb-3">Class Roster ({roster.students.length} students)</h2>
+            <h2 className="font-display text-xl font-bold text-ink mb-3">Class Roster ({roster.students.length} {roster.students.length === 1 ? 'student' : 'students'})</h2>
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase text-ink-soft border-b">

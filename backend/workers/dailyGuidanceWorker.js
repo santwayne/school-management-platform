@@ -1,9 +1,7 @@
 import { Worker } from 'bullmq';
 import { connection } from '../config/queue.js';
 import pool from '../config/db.js';
-import { sendTemplateMessage } from '../services/whatsappService.js';
-
-const GUIDANCE_TEMPLATE_NAME = process.env.WHATSAPP_GUIDANCE_TEMPLATE || 'daily_teaching_guidance';
+import { send as sendNotification } from '../services/notificationService.js';
 
 const guidanceWorker = new Worker(
   'GuidanceQueue',
@@ -50,13 +48,22 @@ const guidanceWorker = new Worker(
 
     for (const row of targetChapters.rows) {
       try {
-        await sendTemplateMessage(row.teacher_phone, GUIDANCE_TEMPLATE_NAME, 'en', [
-          row.teacher_name,
-          row.class_name,
-          row.chapter_name || row.chapter_id,
-          row.suggested_text || 'Review today\u2019s chapter and assign practice questions.',
-        ]);
-        console.log(`Guidance sent to ${row.teacher_name} (${row.class_name} / ${row.chapter_id})`);
+        // Routed through the shared NotificationService (instead of calling
+        // whatsappService directly) so every send leaves a dashboard_notifications
+        // row \u2014 visible in the Teacher Portal's NotificationBell \u2014 rather than
+        // only a console.log neither a teacher nor a principal can ever see.
+        const result = await sendNotification({
+          triggerEvent: 'daily_teaching_guidance',
+          schoolId: row.school_id,
+          recipients: [{ type: 'staff', teacherId: row.teacher_id }],
+          variables: {
+            teacher_name: row.teacher_name,
+            class_name: row.class_name,
+            chapter_name: row.chapter_name || row.chapter_id,
+            suggestion: row.suggested_text || 'Review today\u2019s chapter and assign practice questions.',
+          },
+        });
+        console.log(`Guidance logged for ${row.teacher_name} (${row.class_name} / ${row.chapter_id}):`, result);
       } catch (err) {
         console.error(`Guidance send failed for teacher ${row.teacher_id}:`, err.message);
       }

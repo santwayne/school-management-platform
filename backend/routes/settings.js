@@ -94,8 +94,21 @@ router.patch('/whatsapp', requireAuth, requirePrincipal, async (req, res) => {
   try {
     await sendTemplateMessage(whatsapp_business_number, OTP_TEMPLATE, 'en', [code]);
   } catch (err) {
-    console.error('WhatsApp verification send failed:', err.message);
-    return res.status(502).json({ error: 'Could not send a verification message to that number. Check the number and try again.' });
+    // Surface Meta's actual error instead of a generic 502 — this route's
+    // 502 was reported (QA Group 1 / P-2) as "always fails regardless of
+    // number", which points at a config problem (missing/invalid
+    // WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID, or the
+    // `verification_code` / WHATSAPP_OTP_TEMPLATE template not existing or
+    // not yet Meta-approved) rather than a bad phone number every time.
+    // GET /api/whatsapp/debug-templates already exists to check template
+    // approval status — this at least stops hiding which of those it is.
+    const metaError = err.response?.data?.error;
+    console.error('WhatsApp verification send failed:', metaError ? JSON.stringify(metaError) : err.message);
+    const reason = metaError?.error_user_msg || metaError?.message
+      || (!process.env.WHATSAPP_ACCESS_TOKEN || !process.env.WHATSAPP_PHONE_NUMBER_ID
+        ? 'WhatsApp Business API credentials are not configured on the server.'
+        : `The "${OTP_TEMPLATE}" template may not exist or isn't approved yet for this WhatsApp Business number.`);
+    return res.status(502).json({ error: `Could not send a verification message: ${reason}` });
   }
 
   try {
@@ -154,14 +167,30 @@ router.post('/whatsapp/verify', requireAuth, requirePrincipal, async (req, res) 
   }
 });
 
-// Update notification toggles.
+// Update notification toggles. The frontend flips one toggle at a time
+// (AdminSettings.jsx's toggleNotif sends only { [key]: value }), so the
+// other four fields arrive as `undefined` here, not omitted-and-defaulted —
+// QA fix (P-16): unlike the leaving-cert route below (which already does
+// `?? null` for this exact reason), this route passed those raw
+// `undefined`s straight into the query's params array. node-postgres has
+// no defined behavior for an undefined bind parameter and throws, which
+// this try/catch turned into a 500 with no useful detail — every
+// single-toggle PATCH here was one bad param away from failing depending
+// on which four fields happened to be present.
 router.patch('/notifications', requireAuth, requirePrincipal, async (req, res) => {
   const school_id = req.user.school_id;
   const { notify_attendance, notify_homework, notify_fees, notify_payroll, notify_weekly_summary } = req.body;
   try {
+    // COALESCE(..., TRUE) in the VALUES list matters too, not just the
+    // UPDATE SET clause below: these columns are NOT NULL DEFAULT TRUE, so
+    // on a school's very first settings write (no row to conflict with
+    // yet), a bare $n placeholder would try to INSERT an actual NULL and
+    // fail the NOT NULL constraint before ON CONFLICT ever gets a chance
+    // to run — same 500 the fix above was supposed to prevent, just from
+    // the DB layer instead of the driver layer.
     const result = await pool.query(
       `INSERT INTO school_settings (school_id, notify_attendance, notify_homework, notify_fees, notify_payroll, notify_weekly_summary)
-       VALUES ($1, $2, $3, $4, $5, $6)
+       VALUES ($1, COALESCE($2, TRUE), COALESCE($3, TRUE), COALESCE($4, TRUE), COALESCE($5, TRUE), COALESCE($6, TRUE))
        ON CONFLICT (school_id) DO UPDATE SET
          notify_attendance = COALESCE(EXCLUDED.notify_attendance, school_settings.notify_attendance),
          notify_homework = COALESCE(EXCLUDED.notify_homework, school_settings.notify_homework),
@@ -170,12 +199,37 @@ router.patch('/notifications', requireAuth, requirePrincipal, async (req, res) =
          notify_weekly_summary = COALESCE(EXCLUDED.notify_weekly_summary, school_settings.notify_weekly_summary),
          updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
-      [school_id, notify_attendance, notify_homework, notify_fees, notify_payroll, notify_weekly_summary]
+      [school_id, notify_attendance ?? null, notify_homework ?? null, notify_fees ?? null, notify_payroll ?? null, notify_weekly_summary ?? null]
     );
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Notification settings update error:', err);
     res.status(500).json({ error: 'Failed to update notification settings' });
+  }
+});
+
+// QA fix (P-10): the onboarding wizard's own copy promises "you can change
+// it any time" for the attendance method choice — this is that "any time".
+router.patch('/attendance-method', requireAuth, requirePrincipal, async (req, res) => {
+  const school_id = req.user.school_id;
+  const { attendance_method } = req.body;
+  if (!['biometric', 'manual'].includes(attendance_method)) {
+    return res.status(400).json({ error: 'attendance_method must be "biometric" or "manual"' });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO school_settings (school_id, attendance_method)
+       VALUES ($1, $2)
+       ON CONFLICT (school_id) DO UPDATE SET
+         attendance_method = EXCLUDED.attendance_method,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [school_id, attendance_method]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Attendance method update error:', err);
+    res.status(500).json({ error: 'Failed to update attendance method' });
   }
 });
 

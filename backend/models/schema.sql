@@ -1748,3 +1748,76 @@ SELECT NULL, 'recurring_doubt_signal', 'both', 'Recurring Doubt Signal',
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'recurring_doubt_signal'
 );
+
+-- QA fix (T-3): dailyGuidanceWorker.js called whatsappService.sendTemplateMessage
+-- directly, with only a console.log on success/failure — nothing was ever
+-- persisted, so there was no way for a teacher or principal to see whether
+-- the "what to teach today" digest had actually run. Routing it through the
+-- shared NotificationService (same as upcoming_class_reminder) gives it a
+-- dashboard_notifications row every send — visible in the Teacher Portal's
+-- NotificationBell — on top of the WhatsApp attempt, whether or not the
+-- template below is Meta-approved yet.
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'daily_teaching_guidance', 'both', 'Daily Teaching Guidance',
+       'daily_teaching_guidance', '["teacher_name","class_name","chapter_name","suggestion"]'::jsonb,
+       'Today''s teaching plan: {{class_name}}', '{{chapter_name}} — {{suggestion}}', FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'daily_teaching_guidance'
+);
+
+-- QA fix (Group 1 / P-3, T-2): broadcasts.delivered_count/failed_count were
+-- only ever set from whether the synchronous Graph API call was accepted —
+-- Meta returning 200 there means "queued for delivery", not "delivered to
+-- the phone". There was no per-recipient record and no handling of Meta's
+-- async `statuses` webhook callbacks, so a broadcast could show "delivered"
+-- and still never arrive, with no way to see which number failed (P-7).
+-- broadcast_recipients gives one row per attempted send, updated to
+-- DELIVERED/READ/FAILED when the real status webhook event arrives.
+CREATE TABLE IF NOT EXISTS broadcast_recipients (
+    id SERIAL PRIMARY KEY,
+    broadcast_id INT NOT NULL REFERENCES broadcasts(id) ON DELETE CASCADE,
+    phone VARCHAR(20) NOT NULL,
+    recipient_label VARCHAR(255),
+    status VARCHAR(20) NOT NULL DEFAULT 'SENT', -- 'SENT' | 'DELIVERED' | 'READ' | 'FAILED'
+    wa_message_id VARCHAR(100),
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_broadcast ON broadcast_recipients(broadcast_id);
+CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_wa_message_id ON broadcast_recipients(wa_message_id) WHERE wa_message_id IS NOT NULL;
+
+-- Staff/parents with no WhatsApp number on file were previously silently
+-- included in recipient_count and then counted as a send failure (T-2) —
+-- this tracks them as a distinct, honest category instead.
+ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS no_number_count INT NOT NULL DEFAULT 0;
+
+-- delivered_count/failed_count stay what they always were — the SYNCHRONOUS
+-- send-time outcome (did Meta accept the API call). confirmed_delivered_count
+-- is the count of recipients whose broadcast_recipients row has actually
+-- reached DELIVERED/READ via a real Meta status webhook callback — kept as
+-- a separate column rather than overwriting delivered_count so an in-flight
+-- broadcast (accepted, not yet confirmed) never misleadingly LOOKS like it
+-- regressed to a lower delivered number while webhook events are still
+-- trickling in.
+ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS confirmed_delivered_count INT NOT NULL DEFAULT 0;
+
+-- QA fix (P-4): Super Admin's "Demo accounts" button (routes/superAdmin.js's
+-- POST /schools/:id/test-users) inserted a brand new Principal/Teacher/
+-- Student every click with no way to tell those rows apart from real staff/
+-- students afterwards — repeated clicks left multiple Principal accounts
+-- and orphaned students with no class/parent, and DELETE /teachers/:id's
+-- role='teacher' guard (deliberately there to stop a Principal deleting
+-- their own account) meant none of the extra Principal rows could be
+-- removed via the Staff tab either. Tagging demo-generated rows lets the
+-- endpoint delete its own previous output before creating a fresh set,
+-- turning the button into an actual reset instead of an accumulator.
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- QA fix (P-10): the onboarding wizard's "Attendance method" question
+-- (biometric vs. manual, via teachers) was collected and submitted to
+-- POST /api/onboarding, but that route destructured `attendance` from the
+-- body and never did anything with it — nowhere was it persisted, so the
+-- choice had no visible effect anywhere afterwards.
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS attendance_method VARCHAR(20) NOT NULL DEFAULT 'biometric';

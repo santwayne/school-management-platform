@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Pencil, Trash2, X } from 'lucide-react';
+import { Search, Pencil, Trash2, X, KeyRound, Copy } from 'lucide-react';
 import { apiRequest } from '../../api';
 
 // Observations logged by teachers for this student (feature 4.6) — shown
@@ -56,6 +56,13 @@ export default function StudentsTab() {
   // that doesn't have one yet.
   const [homeLocation, setHomeLocation] = useState('');
   const [homeLocationError, setHomeLocationError] = useState('');
+  // S-1: a student's PIN was only ever visible once, in the raw enrollment
+  // API response — nowhere in the admin UI afterwards, so a lost PIN meant
+  // a student simply couldn't log in. This surfaces a "Reset PIN" action
+  // right in the Edit Student modal (same place a principal already looks
+  // a student up) and displays the new PIN durably until dismissed.
+  const [resettingPin, setResettingPin] = useState(false);
+  const [pinResetResult, setPinResetResult] = useState(null);
 
   const load = async (q = '') => {
     setLoading(true);
@@ -90,7 +97,23 @@ export default function StudentsTab() {
     setForm({ name: s.name, class_id: s.class_id || '', parent_id: s.parent_id || '' });
     setHomeLocation(s.home_latitude != null && s.home_longitude != null ? `${s.home_latitude},${s.home_longitude}` : '');
     setHomeLocationError('');
+    setPinResetResult(null);
     setModal(s);
+  };
+
+  const resetPin = async () => {
+    if (!modal) return;
+    if (!confirm(`Reset ${modal.name}'s PIN? Their old PIN will stop working immediately.`)) return;
+    setResettingPin(true);
+    setError('');
+    try {
+      const result = await apiRequest(`/api/academics/students/${modal.id}/reset-pin`, { method: 'POST' });
+      setPinResetResult(result.defaultPin);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setResettingPin(false);
+    }
   };
 
   const save = async () => {
@@ -150,7 +173,7 @@ export default function StudentsTab() {
             className="w-full pl-9 pr-3 py-2 text-sm rounded-lg bg-white border border-cream-deep focus:outline-none focus:ring-2 focus:ring-terracotta/40"
           />
         </div>
-        <p className="text-xs text-ink-soft ml-auto">New students are added via bulk import on the Classes &amp; Sections tab.</p>
+        <p className="text-xs text-ink-soft ml-auto">Add students one at a time or via bulk CSV import, both on the Classes &amp; Sections tab.</p>
       </div>
 
       {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
@@ -198,6 +221,10 @@ export default function StudentsTab() {
               <h3 className="font-display text-lg text-ink">Edit student</h3>
               <button onClick={() => setModal(null)}><X className="w-4 h-4 text-ink-soft" /></button>
             </div>
+            {/* P-15 (same fix as TeachersTab.jsx): the page-body error banner
+                below is completely hidden behind this modal's own overlay,
+                so a failed save looked like nothing happened. */}
+            {error && <div className="mb-3 rounded-xl bg-destructive/10 border border-destructive/20 px-3 py-2 text-xs text-destructive">{error}</div>}
             <div className="space-y-3">
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Name" className="w-full px-3 py-2 rounded-lg border border-cream-deep text-sm" />
               <select value={form.class_id} onChange={(e) => setForm({ ...form, class_id: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-cream-deep text-sm">
@@ -223,6 +250,38 @@ export default function StudentsTab() {
                 </p>
                 {homeLocationError && <p className="text-[11px] text-destructive mt-1">{homeLocationError}</p>}
               </div>
+
+              <div className="rounded-lg border border-cream-deep bg-cream-deep/20 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-medium text-ink">Student login</p>
+                    <p className="text-xs text-ink-soft font-mono mt-0.5">{modal.login_id || '—'}</p>
+                  </div>
+                  <button
+                    onClick={resetPin}
+                    disabled={resettingPin}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-terracotta/30 text-terracotta-deep text-xs font-medium hover:bg-terracotta/5 transition disabled:opacity-50 shrink-0"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    {resettingPin ? 'Resetting…' : 'Reset PIN'}
+                  </button>
+                </div>
+                {pinResetResult && (
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
+                    <p className="text-sm text-emerald-800">
+                      New PIN: <span className="font-mono font-semibold">{pinResetResult}</span>
+                    </p>
+                    <button
+                      onClick={() => navigator.clipboard?.writeText(`Login ID: ${modal.login_id}\nPIN: ${pinResetResult}`)}
+                      className="p-1 text-emerald-700 hover:text-emerald-900"
+                      title="Copy login details"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <button onClick={save} className="w-full py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
                 Save changes
               </button>

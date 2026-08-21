@@ -106,6 +106,57 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
     const change = entry?.changes?.[0]?.value;
     const message = change?.messages?.[0];
 
+    // Meta's async delivery-status callbacks (sent/delivered/read/failed)
+    // arrive here as `statuses`, never as `messages` — this codebase had no
+    // handler for them at all, so broadcasts.delivered_count only ever
+    // reflected "Meta accepted the send request", not real delivery (P-3).
+    // This matches each status update back to its broadcast_recipients row
+    // by wa_message_id and rolls a confirmed-delivered count up to the
+    // parent broadcast, without disturbing the original send-time counts.
+    const statuses = change?.statuses;
+    if (statuses && statuses.length > 0) {
+      for (const s of statuses) {
+        const newStatus = s.status === 'delivered' ? 'DELIVERED'
+          : s.status === 'read' ? 'READ'
+          : s.status === 'failed' ? 'FAILED'
+          : null;
+        if (!newStatus || !s.id) continue;
+        try {
+          const current = await pool.query(
+            `SELECT id, broadcast_id, status FROM broadcast_recipients WHERE wa_message_id = $1`,
+            [s.id]
+          );
+          const recipient = current.rows[0];
+          // FAILED/READ are terminal for our purposes — never downgrade a
+          // read receipt back to "delivered", and don't reopen a failure.
+          if (!recipient || recipient.status === 'FAILED' || recipient.status === 'READ') continue;
+
+          const wasAlreadyConfirmedDelivered = recipient.status === 'DELIVERED';
+          await pool.query(
+            `UPDATE broadcast_recipients SET status = $1, error_message = COALESCE($2, error_message), updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
+            [newStatus, s.errors?.[0]?.title || null, recipient.id]
+          );
+
+          if ((newStatus === 'DELIVERED' || newStatus === 'READ') && !wasAlreadyConfirmedDelivered) {
+            await pool.query(
+              `UPDATE broadcasts SET confirmed_delivered_count = confirmed_delivered_count + 1 WHERE id = $1`,
+              [recipient.broadcast_id]
+            );
+          } else if (newStatus === 'FAILED') {
+            // Was counted as a successful send when Meta first accepted it —
+            // now known to have never actually reached the phone.
+            await pool.query(
+              `UPDATE broadcasts SET delivered_count = GREATEST(delivered_count - 1, 0), failed_count = failed_count + 1 WHERE id = $1`,
+              [recipient.broadcast_id]
+            );
+          }
+        } catch (statusErr) {
+          console.error('WhatsApp status webhook update failed:', statusErr.message);
+        }
+      }
+      return res.sendStatus(200);
+    }
+
     if (!message) return res.sendStatus(200);
 
     const fromPhone = message.from;

@@ -90,6 +90,14 @@ router.post('/issue', requireAuth, requireLibrary, async (req, res) => {
   if (!book_id || !due_date || (!student_id && !teacher_id)) {
     return res.status(400).json({ error: 'book_id, due_date and either student_id or teacher_id are required' });
   }
+  // QA fix (P-8): a past due_date was accepted with no warning, and the
+  // book showed as overdue the instant it was issued — checking against
+  // today (IST, since config/db.js pins the session timezone) at issue
+  // time rather than relying on the UI to catch it first.
+  const dueDateCheck = await pool.query(`SELECT $1::date < CURRENT_DATE AS in_past`, [due_date]);
+  if (dueDateCheck.rows[0].in_past) {
+    return res.status(400).json({ error: 'Due date cannot be in the past' });
+  }
 
   const client = await pool.connect();
   try {
