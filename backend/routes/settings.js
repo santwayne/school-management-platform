@@ -181,9 +181,16 @@ router.patch('/notifications', requireAuth, requirePrincipal, async (req, res) =
   const school_id = req.user.school_id;
   const { notify_attendance, notify_homework, notify_fees, notify_payroll, notify_weekly_summary } = req.body;
   try {
+    // COALESCE(..., TRUE) in the VALUES list matters too, not just the
+    // UPDATE SET clause below: these columns are NOT NULL DEFAULT TRUE, so
+    // on a school's very first settings write (no row to conflict with
+    // yet), a bare $n placeholder would try to INSERT an actual NULL and
+    // fail the NOT NULL constraint before ON CONFLICT ever gets a chance
+    // to run — same 500 the fix above was supposed to prevent, just from
+    // the DB layer instead of the driver layer.
     const result = await pool.query(
       `INSERT INTO school_settings (school_id, notify_attendance, notify_homework, notify_fees, notify_payroll, notify_weekly_summary)
-       VALUES ($1, $2, $3, $4, $5, $6)
+       VALUES ($1, COALESCE($2, TRUE), COALESCE($3, TRUE), COALESCE($4, TRUE), COALESCE($5, TRUE), COALESCE($6, TRUE))
        ON CONFLICT (school_id) DO UPDATE SET
          notify_attendance = COALESCE(EXCLUDED.notify_attendance, school_settings.notify_attendance),
          notify_homework = COALESCE(EXCLUDED.notify_homework, school_settings.notify_homework),
