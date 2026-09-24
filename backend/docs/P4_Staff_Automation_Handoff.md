@@ -44,7 +44,7 @@ Spec: `WAYNUR_AUTOMATION_SPEC.md` §5. Four features, one commit each.
 ## Env (optional)
 `PAYROLL_CRON` (default `0 10 25 * *`, IST), `TIMETABLE_SOLVER_SECONDS` (20), `WHATSAPP_SUBSTITUTION_TEMPLATE`, `WHATSAPP_PAYSLIP_TEMPLATE`, `WHATSAPP_CERTIFICATE_TEMPLATE`.
 
-`npm test`: **all suites pass** (see PR).
+`npm test`: 40/40 across all phases.
 
 ## Known gaps
 - **No frontend screens for Phases 2–4 yet** (APIs complete).
