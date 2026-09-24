@@ -77,3 +77,6 @@ export const admissionFollowupQueue = new Queue('AdmissionFollowupQueue', { conn
 
 // Teacher substitution planner (every 15 min).
 export const substitutionQueue = new Queue('SubstitutionQueue', { connection });
+
+// Monthly payroll preparation (25th, 10 AM IST).
+export const payrollQueue = new Queue('PayrollQueue', { connection });

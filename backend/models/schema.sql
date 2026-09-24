@@ -2156,3 +2156,59 @@ CREATE TABLE IF NOT EXISTS teacher_absence_marks (
 INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
   ('substitution', 'Teacher substitution planner', 'academics', 15, true, 'SubstitutionQueue', 'planSubstitutions', 60)
 ON CONFLICT (automation_key) DO NOTHING;
+
+-- ============================================================
+-- Phase 4d: Automatic payroll + payslips
+-- Monthly: compute each staff member's pay (base, allowances, deductions,
+-- loss of pay for unapproved absence), flag anomalies, and put ONE approval
+-- in the principal's inbox. On approval: payslips (PDF on demand), staff
+-- notified, teacher_salary_history rows written for the existing
+-- mark-paid flow, bank CSV for the accountant. Nothing is paid automatically.
+-- ============================================================
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS bank_account_name VARCHAR(150);
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS bank_account_number VARCHAR(30);
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS bank_ifsc VARCHAR(15);
+
+CREATE TABLE IF NOT EXISTS salary_components (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT REFERENCES teachers(id) ON DELETE CASCADE, -- NULL = everyone
+    name VARCHAR(60) NOT NULL,
+    kind VARCHAR(10) NOT NULL, -- 'earning' | 'deduction'
+    calc VARCHAR(20) NOT NULL, -- 'fixed' | 'percent_of_base'
+    value NUMERIC(10,2) NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    CHECK (kind IN ('earning', 'deduction')),
+    CHECK (calc IN ('fixed', 'percent_of_base'))
+);
+
+CREATE TABLE IF NOT EXISTS payroll_runs (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    period VARCHAR(7) NOT NULL, -- 'YYYY-MM'
+    status VARCHAR(20) NOT NULL DEFAULT 'draft', -- draft | approved
+    working_days INT NOT NULL,
+    totals JSONB NOT NULL DEFAULT '{}'::jsonb,
+    anomalies JSONB NOT NULL DEFAULT '[]'::jsonb,
+    approved_by INT REFERENCES teachers(id),
+    approved_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (school_id, period)
+);
+
+CREATE TABLE IF NOT EXISTS payslips (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    payroll_run_id INT NOT NULL REFERENCES payroll_runs(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    breakdown JSONB NOT NULL,
+    gross NUMERIC(10,2) NOT NULL,
+    deductions NUMERIC(10,2) NOT NULL,
+    net_pay NUMERIC(10,2) NOT NULL,
+    notified_at TIMESTAMP,
+    UNIQUE (payroll_run_id, teacher_id)
+);
+
+INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
+  ('payroll_prepare', 'Monthly payroll preparation', 'fees', NULL, false, 'PayrollQueue', 'preparePayroll', NULL)
+ON CONFLICT (automation_key) DO NOTHING;

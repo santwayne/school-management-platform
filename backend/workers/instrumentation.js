@@ -17,6 +17,7 @@ import weeklyProgressSummaryWorker from './weeklyProgressSummaryWorker.js';
 import recurringDoubtWorker from './recurringDoubtWorker.js';
 import admissionFollowupWorker from './admissionFollowupWorker.js';
 import substitutionWorker from './substitutionWorker.js';
+import payrollWorker from './payrollWorker.js';
 
 // ------------------------------------------------------------------
 // Every existing worker already `export default`s its Worker instance, so
@@ -47,6 +48,7 @@ const WORKERS = [
   { worker: recurringDoubtWorker, keyFor: () => 'recurring_doubt' },
   { worker: admissionFollowupWorker, keyFor: () => 'admission_followup' },
   { worker: substitutionWorker, keyFor: () => 'substitution' },
+  { worker: payrollWorker, keyFor: () => 'payroll_prepare' },
 ];
 
 let registryCache = { at: 0, rows: new Map() };
