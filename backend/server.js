@@ -42,6 +42,7 @@ import studentLeaveRoutes from './routes/studentLeave.js';
 import studentRecordsRoutes from './routes/studentRecords.js';
 import examsRoutes from './routes/exams.js';
 import opsRoutes from './routes/ops.js';
+import parentConversationsRoutes from './routes/parentConversations.js';
 import admissionsRoutes, { publicRouter as publicAdmissionsRoutes } from './routes/admissions.js';
 import './workers/gpsPollWorker.js';
 import './workers/teacherAttendanceAggregationWorker.js';
@@ -128,6 +129,7 @@ app.use('/api/student-leave', studentLeaveRoutes);
 app.use('/api/student-records', studentRecordsRoutes);
 app.use('/api/exams', examsRoutes);
 app.use('/api/ops', opsRoutes);
+app.use('/api/parent-conversations', parentConversationsRoutes);
 app.use('/api/admissions', admissionsRoutes);
 app.use('/api/public/admissions', publicAdmissionsRoutes);
 
