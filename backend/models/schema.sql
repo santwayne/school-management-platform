@@ -2253,3 +2253,48 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_issued_cert_request ON issued_certificates(
 INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
   ('certificates', 'Certificate issuing', 'admin', 10, false, 'CertificateQueue', 'processCertificates', 120)
 ON CONFLICT (automation_key) DO NOTHING;
+
+-- ============================================================
+-- Phase 4b: Timetable generator
+-- The school enters what each class needs (subject, teacher, periods per
+-- week) and when teachers are unavailable; the solver produces a draft with
+-- zero clashes; the principal publishes it. Publishing updates existing
+-- timetable_slots rows in place (keeping their ids, so lesson plans and
+-- substitution history stay attached) and a backup of the previous
+-- timetable is kept as a draft for rollback.
+-- ============================================================
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS periods_per_day INT NOT NULL DEFAULT 8;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS working_days VARCHAR(20) NOT NULL DEFAULT '1,2,3,4,5,6';
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS period_times JSONB; -- [{"start":"08:00","end":"08:40"}, ...]
+
+CREATE TABLE IF NOT EXISTS timetable_requirements (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    subject_id INT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    teacher_id INT REFERENCES teachers(id) ON DELETE SET NULL,
+    periods_per_week SMALLINT NOT NULL CHECK (periods_per_week BETWEEN 1 AND 20),
+    heavy BOOLEAN NOT NULL DEFAULT FALSE, -- keep out of the last period
+    UNIQUE (class_id, subject_id)
+);
+
+CREATE TABLE IF NOT EXISTS teacher_unavailability (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    day_of_week SMALLINT NOT NULL,
+    period_number SMALLINT NOT NULL,
+    UNIQUE (teacher_id, day_of_week, period_number)
+);
+
+CREATE TABLE IF NOT EXISTS timetable_drafts (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    slots JSONB NOT NULL,
+    unplaced JSONB NOT NULL DEFAULT '[]'::jsonb,
+    penalty NUMERIC NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft', -- draft | published | backup | discarded
+    created_by INT REFERENCES teachers(id),
+    published_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
