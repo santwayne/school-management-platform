@@ -74,3 +74,6 @@ export const opsDigestQueue = new Queue('OpsDigestQueue', { connection });
 
 // Admissions: follow-ups for silent enquiries + campus-visit reminders.
 export const admissionFollowupQueue = new Queue('AdmissionFollowupQueue', { connection });
+
+// Teacher substitution planner (every 15 min).
+export const substitutionQueue = new Queue('SubstitutionQueue', { connection });

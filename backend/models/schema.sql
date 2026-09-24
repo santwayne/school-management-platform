@@ -2112,3 +2112,47 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_parent_messages_wamid ON parent_messages(wa
 INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
   ('parent_assistant', 'Parent WhatsApp assistant', 'communication', NULL, true, NULL, NULL, 30)
 ON CONFLICT (automation_key) DO NOTHING;
+
+-- ============================================================
+-- Phase 4a: Automatic teacher substitution
+-- A teacher on approved leave, or with no biometric punch by the cutoff,
+-- has each of that day's periods assigned to the best free teacher
+-- (same subject > teaches that class > fewest substitutions this week),
+-- within a daily cap. Unfilled periods go to the Control Center inbox.
+-- ============================================================
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS max_substitutions_per_day INT NOT NULL DEFAULT 2;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS substitution_cutoff_time TIME NOT NULL DEFAULT '08:15';
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS auto_substitution BOOLEAN NOT NULL DEFAULT TRUE;
+
+CREATE TABLE IF NOT EXISTS substitutions (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    timetable_slot_id INT NOT NULL REFERENCES timetable_slots(id) ON DELETE CASCADE,
+    absent_teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    substitute_teacher_id INT REFERENCES teachers(id) ON DELETE SET NULL, -- NULL = unfilled
+    status VARCHAR(20) NOT NULL DEFAULT 'assigned', -- assigned | unfilled | cancelled
+    reason VARCHAR(20) NOT NULL, -- 'leave' | 'no_punch' | 'manual'
+    score_detail JSONB,
+    assigned_by INT REFERENCES teachers(id), -- NULL = automatic
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+-- One live substitution per period per day (cancelled rows don't block re-planning).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_substitution_slot_date ON substitutions(timetable_slot_id, date) WHERE status <> 'cancelled';
+CREATE INDEX IF NOT EXISTS idx_substitutions_school_date ON substitutions(school_id, date);
+
+-- Operator marks a teacher absent for a day without a leave request.
+CREATE TABLE IF NOT EXISTS teacher_absence_marks (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    marked_by INT REFERENCES teachers(id),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (teacher_id, date)
+);
+
+INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
+  ('substitution', 'Teacher substitution planner', 'academics', 15, true, 'SubstitutionQueue', 'planSubstitutions', 60)
+ON CONFLICT (automation_key) DO NOTHING;
