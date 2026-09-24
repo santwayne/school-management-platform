@@ -1,4 +1,5 @@
 import express from 'express';
+import { normalizePhone } from '../utils/phone.js';
 import crypto from 'crypto';
 import axios from 'axios';
 import { webhookLimiter } from '../middleware/rateLimit.js';
@@ -160,6 +161,14 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
     if (!message) return res.sendStatus(200);
 
     const fromPhone = message.from;
+    // Meta sends `from` as bare digits ("919876543210"), but every phone in
+    // our DB is stored E.164 with a plus ("+919876543210") by
+    // utils/phone.js. Comparing the raw value never matched, so EVERY
+    // inbound message from a parent was dropped as "not OPTED_IN" — replies
+    // to absence alerts never cancelled the voice call, the doubt bot never
+    // answered, and fee-collector photos were never matched. Match on both
+    // forms so rows saved before normalisation existed still work.
+    const fromCandidates = [...new Set([normalizePhone(fromPhone), fromPhone, `+${fromPhone}`].filter(Boolean))];
 
     // Fee collector check runs first — a registered collector's number is
     // never also a parent number, so this branch is exclusive. The same
@@ -168,8 +177,8 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
     // "petty"/"expense" routes the photo there instead of fee cash intake,
     // reusing this one photo-intake pipeline rather than building a second.
     const collectorRes = await pool.query(
-      'SELECT id, school_id, name FROM fee_collectors WHERE whatsapp_number = $1',
-      [fromPhone]
+      'SELECT id, school_id, name FROM fee_collectors WHERE whatsapp_number = ANY($1::text[])',
+      [fromCandidates]
     );
     if (collectorRes.rowCount > 0) {
       const collector = collectorRes.rows[0];
@@ -219,8 +228,8 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
     }
 
     const complianceCheck = await pool.query(
-      'SELECT id, school_id, opt_in_status FROM parents WHERE phone = $1',
-      [fromPhone]
+      'SELECT id, school_id, opt_in_status FROM parents WHERE phone = ANY($1::text[])',
+      [fromCandidates]
     );
     const parent = complianceCheck.rows[0];
 
