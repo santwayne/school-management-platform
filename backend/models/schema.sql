@@ -2212,3 +2212,44 @@ CREATE TABLE IF NOT EXISTS payslips (
 INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
   ('payroll_prepare', 'Monthly payroll preparation', 'fees', NULL, false, 'PayrollQueue', 'preparePayroll', NULL)
 ON CONFLICT (automation_key) DO NOTHING;
+
+-- ============================================================
+-- Phase 4c: Certificates issued automatically
+-- Bonafide / character certificates for active students, and fee
+-- certificates when nothing is due, are issued without anyone touching
+-- them. Transfer certificates always need the principal's one-click
+-- approval and are blocked while fees are due. Each certificate has a
+-- gap-free serial per school/type/year and a public verification code;
+-- the data printed on it is frozen at issue time.
+-- ============================================================
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS principal_name VARCHAR(150);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS affiliation_number VARCHAR(60);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS board_name VARCHAR(60);
+
+CREATE TABLE IF NOT EXISTS certificate_counters (
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    cert_type VARCHAR(40) NOT NULL,
+    year INT NOT NULL,
+    last_number INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (school_id, cert_type, year)
+);
+
+CREATE TABLE IF NOT EXISTS issued_certificates (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    request_id INT REFERENCES document_requests(id) ON DELETE SET NULL,
+    cert_type VARCHAR(40) NOT NULL,
+    serial VARCHAR(40) NOT NULL,
+    verify_code VARCHAR(16) NOT NULL UNIQUE,
+    data JSONB NOT NULL, -- snapshot printed on the certificate
+    issued_by INT REFERENCES teachers(id), -- NULL = automatic
+    issued_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TIMESTAMP,
+    UNIQUE (school_id, serial)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_issued_cert_request ON issued_certificates(request_id) WHERE request_id IS NOT NULL;
+
+INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
+  ('certificates', 'Certificate issuing', 'admin', 10, false, 'CertificateQueue', 'processCertificates', 120)
+ON CONFLICT (automation_key) DO NOTHING;

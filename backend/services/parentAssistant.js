@@ -4,6 +4,7 @@ import { sendTextMessage } from './whatsappService.js';
 import { recordRun, raiseException, audit } from './opsService.js';
 import { detectLanguage, inr } from './admissionAgent.js';
 import { haversineMeters } from './busProximityService.js';
+import { processPendingRequests } from './certificateService.js';
 import { createPaymentLinkRecord } from '../routes/paymentLinks.js';
 
 // ------------------------------------------------------------------
@@ -417,6 +418,8 @@ const handlers = {
     );
     if (dup.rowCount) return { text: c.cert_dup(child.first, CERT_LABEL[type]) };
     await pool.query(`INSERT INTO document_requests (school_id, student_id, request_type) VALUES ($1, $2, $3)`, [parent.school_id, child.id, type]);
+    // Auto-issuable types are issued right away rather than on the next 10-min run.
+    processPendingRequests(parent.school_id).catch((err) => console.error('[parentAssistant] certificate processing failed:', err.message));
     await audit({ schoolId: parent.school_id, actorType: 'ai', action: 'parent.certificate_requested', entityType: 'student', entityId: child.id, detail: { type } });
     if (type === 'leaving_certificate') {
       await raiseException({

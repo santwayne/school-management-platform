@@ -80,3 +80,6 @@ export const substitutionQueue = new Queue('SubstitutionQueue', { connection });
 
 // Monthly payroll preparation (25th, 10 AM IST).
 export const payrollQueue = new Queue('PayrollQueue', { connection });
+
+// Certificate issuing (every 10 min).
+export const certificateQueue = new Queue('CertificateQueue', { connection });

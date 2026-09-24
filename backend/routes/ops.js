@@ -36,6 +36,7 @@ const RUN_NOW_ALLOWED = new Set([
   'ops_daily_digest',
   'admission_followup',
   'substitution',
+  'certificates',
 ]);
 const RUN_NOW_COOLDOWN_MINUTES = 10;
 
