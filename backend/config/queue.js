@@ -71,3 +71,6 @@ export const ESCALATION_DELAY_MS = Number(process.env.ESCALATION_DELAY_MS || 2 *
 // (The health check itself deliberately does NOT use BullMQ — it runs on an
 // in-process timer so it still fires, and reports, when Redis is down.)
 export const opsDigestQueue = new Queue('OpsDigestQueue', { connection });
+
+// Admissions: follow-ups for silent enquiries + campus-visit reminders.
+export const admissionFollowupQueue = new Queue('AdmissionFollowupQueue', { connection });

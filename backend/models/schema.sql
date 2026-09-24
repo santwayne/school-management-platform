@@ -1942,3 +1942,132 @@ INSERT INTO automation_registry (automation_key, display_name, category, expecte
   ('ops_health_check',            'Control Center health check',             'ops',           10,    true,  NULL, NULL, 60),
   ('ops_daily_digest',            'Operator daily digest',                   'ops',           1440,  false, 'OpsDigestQueue', 'dailyDigest', NULL)
 ON CONFLICT (automation_key) DO NOTHING;
+
+-- ============================================================
+-- Phase 2: Admission enquiry automation
+-- Enquiry (web form / WhatsApp / walk-in) → AI qualifies on WhatsApp →
+-- campus visit booked → application → approval → converted to a student.
+--
+-- School attribution: the platform shares one WhatsApp number across all
+-- schools, so a message from an unknown number is attributed by, in order:
+-- (1) the receiving phone_number_id, if the school has its own number;
+-- (2) the school's admission code in the message (the click-to-chat link
+--     on the school's website pre-fills it, e.g. "Admission enquiry DPS01");
+-- (3) the only active school, on a single-school deployment.
+-- ============================================================
+
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_phone_number_id VARCHAR(40);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS admission_code VARCHAR(20);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS public_slug VARCHAR(80);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS admissions_open BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS admission_followup_days VARCHAR(20) NOT NULL DEFAULT '1,3,7';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_school_settings_admission_code ON school_settings(UPPER(admission_code)) WHERE admission_code IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_school_settings_public_slug ON school_settings(public_slug) WHERE public_slug IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_school_settings_wa_phone_id ON school_settings(whatsapp_phone_number_id) WHERE whatsapp_phone_number_id IS NOT NULL;
+ALTER TABLE classes ADD COLUMN IF NOT EXISTS seat_capacity INT;
+
+CREATE TABLE IF NOT EXISTS admission_enquiries (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    source VARCHAR(30) NOT NULL, -- 'web_form' | 'whatsapp' | 'walk_in' | 'phone' | 'meta_lead'
+    phone VARCHAR(20) NOT NULL, -- E.164
+    parent_name VARCHAR(150),
+    email VARCHAR(150),
+    child_name VARCHAR(150),
+    child_dob DATE,
+    applying_class_text VARCHAR(50), -- what the parent typed ("3rd", "UKG")
+    applying_grade VARCHAR(20), -- normalised key ("3", "UKG")
+    locality VARCHAR(150),
+    needs_transport BOOLEAN,
+    stage VARCHAR(30) NOT NULL DEFAULT 'new', -- new | qualifying | qualified | visit_booked | visited | applied | approved | admitted | lost
+    lost_reason VARCHAR(100),
+    whatsapp_consent BOOLEAN NOT NULL DEFAULT FALSE,
+    consent_at TIMESTAMP,
+    opted_out BOOLEAN NOT NULL DEFAULT FALSE,
+    ai_paused_until TIMESTAMP, -- operator took over the conversation
+    convo_state JSONB NOT NULL DEFAULT '{}'::jsonb, -- { awaiting: 'child_name', offered_slot_ids: [..] }
+    last_inbound_at TIMESTAMP, -- WhatsApp 24h free-form window
+    last_outbound_at TIMESTAMP,
+    next_followup_at TIMESTAMP,
+    followup_count INT NOT NULL DEFAULT 0,
+    converted_student_id INT REFERENCES students(id) ON DELETE SET NULL,
+    notes TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+-- One open enquiry per phone per school (a parent with two children
+-- usually asks in one conversation; siblings are handled as notes).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_enquiry_open_phone ON admission_enquiries(school_id, phone)
+    WHERE stage NOT IN ('admitted', 'lost');
+CREATE INDEX IF NOT EXISTS idx_enquiries_school_stage ON admission_enquiries(school_id, stage, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_enquiries_followup ON admission_enquiries(next_followup_at) WHERE next_followup_at IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS enquiry_messages (
+    id BIGSERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    enquiry_id INT NOT NULL REFERENCES admission_enquiries(id) ON DELETE CASCADE,
+    direction VARCHAR(5) NOT NULL, -- 'in' | 'out'
+    body TEXT,
+    template_name VARCHAR(80),
+    sent_by VARCHAR(10) NOT NULL DEFAULT 'ai', -- 'ai' | 'staff' | 'system' | 'parent'
+    wa_message_id VARCHAR(100),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_enquiry_messages_enquiry ON enquiry_messages(enquiry_id, id);
+-- Meta retries webhooks; the same inbound message must never be processed twice.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_enquiry_messages_wamid ON enquiry_messages(wa_message_id) WHERE wa_message_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS campus_visit_slots (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    slot_start TIMESTAMP NOT NULL, -- IST wall-clock
+    slot_end TIMESTAMP NOT NULL,
+    capacity INT NOT NULL DEFAULT 3,
+    booked INT NOT NULL DEFAULT 0,
+    CHECK (booked >= 0 AND booked <= capacity),
+    UNIQUE (school_id, slot_start)
+);
+
+CREATE TABLE IF NOT EXISTS campus_visits (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    enquiry_id INT NOT NULL REFERENCES admission_enquiries(id) ON DELETE CASCADE,
+    slot_id INT NOT NULL REFERENCES campus_visit_slots(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL DEFAULT 'booked', -- booked | attended | no_show | cancelled
+    reminded_24h BOOLEAN NOT NULL DEFAULT FALSE,
+    reminded_2h BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_campus_visit_active ON campus_visits(enquiry_id) WHERE status = 'booked';
+
+CREATE TABLE IF NOT EXISTS admission_applications (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    enquiry_id INT NOT NULL UNIQUE REFERENCES admission_enquiries(id) ON DELETE CASCADE,
+    public_token VARCHAR(64) NOT NULL UNIQUE,
+    form_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft', -- draft | submitted | approved | rejected
+    submitted_at TIMESTAMP,
+    decided_by INT REFERENCES teachers(id),
+    decided_at TIMESTAMP,
+    decision_note TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- School-controlled facts the admission assistant may quote. The AI is
+-- never allowed to answer from anything else (no invented fees/timings).
+CREATE TABLE IF NOT EXISTS school_knowledge_base (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    topic VARCHAR(60) NOT NULL, -- 'timings' | 'board' | 'facilities' | 'transport_areas' | 'admission_process' | 'documents_required' | 'address' | 'custom'
+    answer TEXT NOT NULL,
+    audience VARCHAR(20) NOT NULL DEFAULT 'all', -- 'enquiry' | 'parent' | 'all'
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (school_id, topic)
+);
+
+INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
+  ('admission_assistant', 'Admission enquiry replies (AI)',      'admissions', NULL, true,  NULL, NULL, 60),
+  ('admission_followup',  'Admission follow-ups & visit reminders', 'admissions', 30, false, 'AdmissionFollowupQueue', 'admissionFollowups', 120)
+ON CONFLICT (automation_key) DO NOTHING;
+ALTER TABLE enquiry_messages ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(10) NOT NULL DEFAULT 'sent'; -- 'sent' | 'failed' | 'received'

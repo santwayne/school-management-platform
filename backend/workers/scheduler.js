@@ -1,4 +1,4 @@
-import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue, weeklyProgressSummaryQueue, recurringDoubtQueue, opsDigestQueue } from '../config/queue.js';
+import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue, weeklyProgressSummaryQueue, recurringDoubtQueue, opsDigestQueue, admissionFollowupQueue } from '../config/queue.js';
 
 // The worker only reacts to jobs that land on GuidanceQueue — nothing put
 // any there before. This registers a repeatable job so it actually fires
@@ -214,4 +214,11 @@ export async function scheduleOpsDailyDigest() {
     }
   );
   console.log('Operator daily digest job scheduled (8:00 AM IST).');
+}
+
+// Admission follow-ups + campus-visit reminders, every 30 min. The worker
+// itself decides what is due, so the exact tick time doesn't matter.
+export async function scheduleAdmissionFollowups() {
+  await admissionFollowupQueue.add('admissionFollowups', {}, { repeat: { every: 30 * 60 * 1000 }, removeOnComplete: true, jobId: 'admission-followups' });
+  console.log('Admission follow-up job scheduled (every 30 min).');
 }
