@@ -126,9 +126,12 @@ router.get('/overview', async (req, res) => {
     const automations = autos.rows.map((a) => {
       const staleMs = a.expected_interval_minutes ? a.expected_interval_minutes * 1.5 * 60 * 1000 : null;
       const stale = staleMs && a.last_run_at ? now - new Date(a.last_run_at) > staleMs : false;
+      // idle = hasn't had its first scheduled run yet (normal right after a
+      // deploy) — shown neutral so a fresh install doesn't look broken.
       let light = 'green';
       if (a.last_status === 'failed' || stale) light = 'red';
-      else if (a.last_status === 'partial' || !a.last_run_at) light = 'amber';
+      else if (a.last_status === 'partial') light = 'amber';
+      else if (!a.last_run_at) light = 'idle';
       return { ...a, stale, light, can_run_now: RUN_NOW_ALLOWED.has(a.automation_key) };
     });
 
@@ -138,6 +141,7 @@ router.get('/overview', async (req, res) => {
       automation_summary: {
         green: automations.filter((a) => a.light === 'green').length,
         amber: automations.filter((a) => a.light === 'amber').length,
+        idle: automations.filter((a) => a.light === 'idle').length,
         red: automations.filter((a) => a.light === 'red').length,
       },
       integrations: integ.rows,

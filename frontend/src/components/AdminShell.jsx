@@ -5,8 +5,7 @@ import {
   FileBarChart, CreditCard, Settings, Bell, Sparkles, Building2, LogOut,
   ClipboardList, CalendarClock, CalendarDays, BookOpen, GraduationCap, GalleryHorizontal,
   ListChecks, UserCheck, MessagesSquare, UploadCloud, Award, FileCheck2,
-  ClipboardEdit, FileText, NotebookPen, Menu, X,
-} from 'lucide-react';
+  ClipboardEdit, FileText, NotebookPen, Menu, X, Gauge } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
 
@@ -159,6 +158,7 @@ const LIBRARIAN_NAV = [
 
 const NAV = [
   { label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
+  { label: 'Control Center', icon: Gauge, to: '/ops' },
   { label: 'Attendance', icon: CalendarCheck2, to: '/admin/attendance' },
   { label: 'Fees', icon: Wallet, to: '/finance' },
   { label: 'Staff & Payroll', icon: Users, to: '/admin/payroll' },
