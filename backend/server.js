@@ -41,6 +41,7 @@ import optionalSubjectsRoutes from './routes/optionalSubjects.js';
 import studentLeaveRoutes from './routes/studentLeave.js';
 import studentRecordsRoutes from './routes/studentRecords.js';
 import examsRoutes from './routes/exams.js';
+import opsRoutes from './routes/ops.js';
 import './workers/gpsPollWorker.js';
 import './workers/teacherAttendanceAggregationWorker.js';
 
@@ -59,7 +60,10 @@ import './workers/eventReminderWorker.js';
 import './workers/performanceDriftWorker.js';
 import './workers/weeklyProgressSummaryWorker.js';
 import './workers/recurringDoubtWorker.js';
-import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest, scheduleFeeReminders, schedulePettyCashReminders, scheduleStaffLeaveReminders, scheduleTeachingReminders, scheduleLowAttendanceAlerts, scheduleEventReminders, schedulePerformanceDrift, scheduleWeeklyProgressSummaries, scheduleRecurringDoubtCheck } from './workers/scheduler.js';
+import './workers/dailyDigestWorker.js';
+import { instrumentWorkers } from './workers/instrumentation.js';
+import { startHealthCheckLoop } from './workers/healthCheck.js';
+import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest, scheduleFeeReminders, schedulePettyCashReminders, scheduleStaffLeaveReminders, scheduleTeachingReminders, scheduleLowAttendanceAlerts, scheduleEventReminders, schedulePerformanceDrift, scheduleWeeklyProgressSummaries, scheduleRecurringDoubtCheck, scheduleOpsDailyDigest } from './workers/scheduler.js';
 import { runBootstrap } from './scripts/autoBootstrap.js';
 
 dotenv.config();
@@ -121,6 +125,7 @@ app.use('/api/optional-subjects', optionalSubjectsRoutes);
 app.use('/api/student-leave', studentLeaveRoutes);
 app.use('/api/student-records', studentRecordsRoutes);
 app.use('/api/exams', examsRoutes);
+app.use('/api/ops', opsRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {
@@ -213,6 +218,15 @@ async function start() {
     } catch (err) {
       console.error('Failed to schedule recurring-doubt check job (is Redis running?):', err.message);
     }
+    try {
+      await scheduleOpsDailyDigest();
+    } catch (err) {
+      console.error('Failed to schedule operator daily digest job (is Redis running?):', err.message);
+    }
+    // Control Center: record every worker run, and watch health on an
+    // in-process timer (not BullMQ) so a Redis outage is itself detected.
+    instrumentWorkers();
+    startHealthCheckLoop();
   });
 }
 

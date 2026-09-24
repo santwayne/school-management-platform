@@ -1,4 +1,4 @@
-import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue, weeklyProgressSummaryQueue, recurringDoubtQueue } from '../config/queue.js';
+import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue, weeklyProgressSummaryQueue, recurringDoubtQueue, opsDigestQueue } from '../config/queue.js';
 
 // The worker only reacts to jobs that land on GuidanceQueue — nothing put
 // any there before. This registers a repeatable job so it actually fires
@@ -197,4 +197,21 @@ export async function scheduleGpsPolling() {
     }
   );
   console.log('GPS bus polling job scheduled.');
+}
+
+// Operator Control Center daily digest. Pinned to IST explicitly (tz) so
+// it lands at 8 AM for the school regardless of the server's own timezone
+// — an EC2/Render box is often UTC, where a bare '0 8 * * *' would fire
+// at 1:30 PM IST.
+export async function scheduleOpsDailyDigest() {
+  await opsDigestQueue.add(
+    'dailyDigest',
+    {},
+    {
+      repeat: { pattern: process.env.OPS_DIGEST_CRON || '0 8 * * *', tz: 'Asia/Kolkata' },
+      removeOnComplete: true,
+      jobId: 'ops-daily-digest',
+    }
+  );
+  console.log('Operator daily digest job scheduled (8:00 AM IST).');
 }
