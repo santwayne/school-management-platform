@@ -73,6 +73,14 @@ export default function DocumentRequestQueue({ requestTypes, emptyLabel = 'Nothi
     setBusyId(r.id);
     setError('');
     try {
+      if (r.document_url) {
+        // Auto-issued via Phase 4c's certificateService.js — this PDF has a
+        // real serial number and verify code baked in. Never regenerate a
+        // fresh client-side copy for these; it would silently mismatch the
+        // actual issued/registered certificate (wrong/missing serial).
+        window.open(r.document_url, '_blank');
+        return;
+      }
       const data = await apiRequest(`/api/student-records/students/${r.student_id}/certificate-data`);
       downloadLeavingCertificate(data, settings || {});
     } catch (err) {

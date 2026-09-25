@@ -71,3 +71,15 @@ export const ESCALATION_DELAY_MS = Number(process.env.ESCALATION_DELAY_MS || 2 *
 // (The health check itself deliberately does NOT use BullMQ — it runs on an
 // in-process timer so it still fires, and reports, when Redis is down.)
 export const opsDigestQueue = new Queue('OpsDigestQueue', { connection });
+
+// Admissions: follow-ups for silent enquiries + campus-visit reminders.
+export const admissionFollowupQueue = new Queue('AdmissionFollowupQueue', { connection });
+
+// Teacher substitution planner (every 15 min).
+export const substitutionQueue = new Queue('SubstitutionQueue', { connection });
+
+// Monthly payroll preparation (25th, 10 AM IST).
+export const payrollQueue = new Queue('PayrollQueue', { connection });
+
+// Certificate issuing (every 10 min).
+export const certificateQueue = new Queue('CertificateQueue', { connection });

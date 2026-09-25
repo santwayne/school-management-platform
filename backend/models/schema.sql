@@ -1942,3 +1942,359 @@ INSERT INTO automation_registry (automation_key, display_name, category, expecte
   ('ops_health_check',            'Control Center health check',             'ops',           10,    true,  NULL, NULL, 60),
   ('ops_daily_digest',            'Operator daily digest',                   'ops',           1440,  false, 'OpsDigestQueue', 'dailyDigest', NULL)
 ON CONFLICT (automation_key) DO NOTHING;
+
+-- ============================================================
+-- Phase 2: Admission enquiry automation
+-- Enquiry (web form / WhatsApp / walk-in) → AI qualifies on WhatsApp →
+-- campus visit booked → application → approval → converted to a student.
+--
+-- School attribution: the platform shares one WhatsApp number across all
+-- schools, so a message from an unknown number is attributed by, in order:
+-- (1) the receiving phone_number_id, if the school has its own number;
+-- (2) the school's admission code in the message (the click-to-chat link
+--     on the school's website pre-fills it, e.g. "Admission enquiry DPS01");
+-- (3) the only active school, on a single-school deployment.
+-- ============================================================
+
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_phone_number_id VARCHAR(40);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS admission_code VARCHAR(20);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS public_slug VARCHAR(80);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS admissions_open BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS admission_followup_days VARCHAR(20) NOT NULL DEFAULT '1,3,7';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_school_settings_admission_code ON school_settings(UPPER(admission_code)) WHERE admission_code IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_school_settings_public_slug ON school_settings(public_slug) WHERE public_slug IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_school_settings_wa_phone_id ON school_settings(whatsapp_phone_number_id) WHERE whatsapp_phone_number_id IS NOT NULL;
+ALTER TABLE classes ADD COLUMN IF NOT EXISTS seat_capacity INT;
+
+CREATE TABLE IF NOT EXISTS admission_enquiries (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    source VARCHAR(30) NOT NULL, -- 'web_form' | 'whatsapp' | 'walk_in' | 'phone' | 'meta_lead'
+    phone VARCHAR(20) NOT NULL, -- E.164
+    parent_name VARCHAR(150),
+    email VARCHAR(150),
+    child_name VARCHAR(150),
+    child_dob DATE,
+    applying_class_text VARCHAR(50), -- what the parent typed ("3rd", "UKG")
+    applying_grade VARCHAR(20), -- normalised key ("3", "UKG")
+    locality VARCHAR(150),
+    needs_transport BOOLEAN,
+    stage VARCHAR(30) NOT NULL DEFAULT 'new', -- new | qualifying | qualified | visit_booked | visited | applied | approved | admitted | lost
+    lost_reason VARCHAR(100),
+    whatsapp_consent BOOLEAN NOT NULL DEFAULT FALSE,
+    consent_at TIMESTAMP,
+    opted_out BOOLEAN NOT NULL DEFAULT FALSE,
+    ai_paused_until TIMESTAMP, -- operator took over the conversation
+    convo_state JSONB NOT NULL DEFAULT '{}'::jsonb, -- { awaiting: 'child_name', offered_slot_ids: [..] }
+    last_inbound_at TIMESTAMP, -- WhatsApp 24h free-form window
+    last_outbound_at TIMESTAMP,
+    next_followup_at TIMESTAMP,
+    followup_count INT NOT NULL DEFAULT 0,
+    converted_student_id INT REFERENCES students(id) ON DELETE SET NULL,
+    notes TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+-- One open enquiry per phone per school (a parent with two children
+-- usually asks in one conversation; siblings are handled as notes).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_enquiry_open_phone ON admission_enquiries(school_id, phone)
+    WHERE stage NOT IN ('admitted', 'lost');
+CREATE INDEX IF NOT EXISTS idx_enquiries_school_stage ON admission_enquiries(school_id, stage, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_enquiries_followup ON admission_enquiries(next_followup_at) WHERE next_followup_at IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS enquiry_messages (
+    id BIGSERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    enquiry_id INT NOT NULL REFERENCES admission_enquiries(id) ON DELETE CASCADE,
+    direction VARCHAR(5) NOT NULL, -- 'in' | 'out'
+    body TEXT,
+    template_name VARCHAR(80),
+    sent_by VARCHAR(10) NOT NULL DEFAULT 'ai', -- 'ai' | 'staff' | 'system' | 'parent'
+    wa_message_id VARCHAR(100),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_enquiry_messages_enquiry ON enquiry_messages(enquiry_id, id);
+-- Meta retries webhooks; the same inbound message must never be processed twice.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_enquiry_messages_wamid ON enquiry_messages(wa_message_id) WHERE wa_message_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS campus_visit_slots (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    slot_start TIMESTAMP NOT NULL, -- IST wall-clock
+    slot_end TIMESTAMP NOT NULL,
+    capacity INT NOT NULL DEFAULT 3,
+    booked INT NOT NULL DEFAULT 0,
+    CHECK (booked >= 0 AND booked <= capacity),
+    UNIQUE (school_id, slot_start)
+);
+
+CREATE TABLE IF NOT EXISTS campus_visits (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    enquiry_id INT NOT NULL REFERENCES admission_enquiries(id) ON DELETE CASCADE,
+    slot_id INT NOT NULL REFERENCES campus_visit_slots(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL DEFAULT 'booked', -- booked | attended | no_show | cancelled
+    reminded_24h BOOLEAN NOT NULL DEFAULT FALSE,
+    reminded_2h BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_campus_visit_active ON campus_visits(enquiry_id) WHERE status = 'booked';
+
+CREATE TABLE IF NOT EXISTS admission_applications (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    enquiry_id INT NOT NULL UNIQUE REFERENCES admission_enquiries(id) ON DELETE CASCADE,
+    public_token VARCHAR(64) NOT NULL UNIQUE,
+    form_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft', -- draft | submitted | approved | rejected
+    submitted_at TIMESTAMP,
+    decided_by INT REFERENCES teachers(id),
+    decided_at TIMESTAMP,
+    decision_note TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- School-controlled facts the admission assistant may quote. The AI is
+-- never allowed to answer from anything else (no invented fees/timings).
+CREATE TABLE IF NOT EXISTS school_knowledge_base (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    topic VARCHAR(60) NOT NULL, -- 'timings' | 'board' | 'facilities' | 'transport_areas' | 'admission_process' | 'documents_required' | 'address' | 'custom'
+    answer TEXT NOT NULL,
+    audience VARCHAR(20) NOT NULL DEFAULT 'all', -- 'enquiry' | 'parent' | 'all'
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (school_id, topic)
+);
+
+INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
+  ('admission_assistant', 'Admission enquiry replies (AI)',      'admissions', NULL, true,  NULL, NULL, 60),
+  ('admission_followup',  'Admission follow-ups & visit reminders', 'admissions', 30, false, 'AdmissionFollowupQueue', 'admissionFollowups', 120)
+ON CONFLICT (automation_key) DO NOTHING;
+ALTER TABLE enquiry_messages ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(10) NOT NULL DEFAULT 'sent'; -- 'sent' | 'failed' | 'received'
+
+-- ============================================================
+-- Phase 3: Parent WhatsApp assistant
+-- Opted-in parents' messages are routed by intent (fee, homework,
+-- attendance, bus, holidays, leave, certificate, talk to teacher, safety)
+-- instead of every message being treated as a homework doubt. Facts come
+-- from SQL scoped to the parent's own children; the model never states a
+-- number. Homework questions still go to the existing doubt pipeline.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS parent_conversations (
+    parent_id INT PRIMARY KEY REFERENCES parents(id) ON DELETE CASCADE,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    active_student_id INT REFERENCES students(id) ON DELETE SET NULL,
+    state JSONB NOT NULL DEFAULT '{}'::jsonb, -- { pending_intent, awaiting, pending_text }
+    state_expires_at TIMESTAMP,
+    human_takeover_until TIMESTAMP,
+    last_inbound_at TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS parent_messages (
+    id BIGSERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    parent_id INT NOT NULL REFERENCES parents(id) ON DELETE CASCADE,
+    student_id INT REFERENCES students(id) ON DELETE SET NULL,
+    direction VARCHAR(5) NOT NULL, -- 'in' | 'out'
+    body TEXT,
+    intent VARCHAR(40),
+    handled_by VARCHAR(20), -- 'assistant' | 'doubt_bot' | 'staff' | 'escalated' | 'fallback'
+    delivery_status VARCHAR(10) NOT NULL DEFAULT 'sent', -- 'received' | 'sent' | 'failed'
+    wa_message_id VARCHAR(100),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_parent_messages_parent ON parent_messages(parent_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_parent_messages_school_time ON parent_messages(school_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_parent_messages_wamid ON parent_messages(wa_message_id) WHERE wa_message_id IS NOT NULL;
+
+INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
+  ('parent_assistant', 'Parent WhatsApp assistant', 'communication', NULL, true, NULL, NULL, 30)
+ON CONFLICT (automation_key) DO NOTHING;
+
+-- ============================================================
+-- Phase 4a: Automatic teacher substitution
+-- A teacher on approved leave, or with no biometric punch by the cutoff,
+-- has each of that day's periods assigned to the best free teacher
+-- (same subject > teaches that class > fewest substitutions this week),
+-- within a daily cap. Unfilled periods go to the Control Center inbox.
+-- ============================================================
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS max_substitutions_per_day INT NOT NULL DEFAULT 2;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS substitution_cutoff_time TIME NOT NULL DEFAULT '08:15';
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS auto_substitution BOOLEAN NOT NULL DEFAULT TRUE;
+
+CREATE TABLE IF NOT EXISTS substitutions (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    timetable_slot_id INT NOT NULL REFERENCES timetable_slots(id) ON DELETE CASCADE,
+    absent_teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    substitute_teacher_id INT REFERENCES teachers(id) ON DELETE SET NULL, -- NULL = unfilled
+    status VARCHAR(20) NOT NULL DEFAULT 'assigned', -- assigned | unfilled | cancelled
+    reason VARCHAR(20) NOT NULL, -- 'leave' | 'no_punch' | 'manual'
+    score_detail JSONB,
+    assigned_by INT REFERENCES teachers(id), -- NULL = automatic
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+-- One live substitution per period per day (cancelled rows don't block re-planning).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_substitution_slot_date ON substitutions(timetable_slot_id, date) WHERE status <> 'cancelled';
+CREATE INDEX IF NOT EXISTS idx_substitutions_school_date ON substitutions(school_id, date);
+
+-- Operator marks a teacher absent for a day without a leave request.
+CREATE TABLE IF NOT EXISTS teacher_absence_marks (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    marked_by INT REFERENCES teachers(id),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (teacher_id, date)
+);
+
+INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
+  ('substitution', 'Teacher substitution planner', 'academics', 15, true, 'SubstitutionQueue', 'planSubstitutions', 60)
+ON CONFLICT (automation_key) DO NOTHING;
+
+-- ============================================================
+-- Phase 4d: Automatic payroll + payslips
+-- Monthly: compute each staff member's pay (base, allowances, deductions,
+-- loss of pay for unapproved absence), flag anomalies, and put ONE approval
+-- in the principal's inbox. On approval: payslips (PDF on demand), staff
+-- notified, teacher_salary_history rows written for the existing
+-- mark-paid flow, bank CSV for the accountant. Nothing is paid automatically.
+-- ============================================================
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS bank_account_name VARCHAR(150);
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS bank_account_number VARCHAR(30);
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS bank_ifsc VARCHAR(15);
+
+CREATE TABLE IF NOT EXISTS salary_components (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT REFERENCES teachers(id) ON DELETE CASCADE, -- NULL = everyone
+    name VARCHAR(60) NOT NULL,
+    kind VARCHAR(10) NOT NULL, -- 'earning' | 'deduction'
+    calc VARCHAR(20) NOT NULL, -- 'fixed' | 'percent_of_base'
+    value NUMERIC(10,2) NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    CHECK (kind IN ('earning', 'deduction')),
+    CHECK (calc IN ('fixed', 'percent_of_base'))
+);
+
+CREATE TABLE IF NOT EXISTS payroll_runs (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    period VARCHAR(7) NOT NULL, -- 'YYYY-MM'
+    status VARCHAR(20) NOT NULL DEFAULT 'draft', -- draft | approved
+    working_days INT NOT NULL,
+    totals JSONB NOT NULL DEFAULT '{}'::jsonb,
+    anomalies JSONB NOT NULL DEFAULT '[]'::jsonb,
+    approved_by INT REFERENCES teachers(id),
+    approved_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (school_id, period)
+);
+
+CREATE TABLE IF NOT EXISTS payslips (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    payroll_run_id INT NOT NULL REFERENCES payroll_runs(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    breakdown JSONB NOT NULL,
+    gross NUMERIC(10,2) NOT NULL,
+    deductions NUMERIC(10,2) NOT NULL,
+    net_pay NUMERIC(10,2) NOT NULL,
+    notified_at TIMESTAMP,
+    UNIQUE (payroll_run_id, teacher_id)
+);
+
+INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
+  ('payroll_prepare', 'Monthly payroll preparation', 'fees', NULL, false, 'PayrollQueue', 'preparePayroll', NULL)
+ON CONFLICT (automation_key) DO NOTHING;
+
+-- ============================================================
+-- Phase 4c: Certificates issued automatically
+-- Bonafide / character certificates for active students, and fee
+-- certificates when nothing is due, are issued without anyone touching
+-- them. Transfer certificates always need the principal's one-click
+-- approval and are blocked while fees are due. Each certificate has a
+-- gap-free serial per school/type/year and a public verification code;
+-- the data printed on it is frozen at issue time.
+-- ============================================================
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS principal_name VARCHAR(150);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS affiliation_number VARCHAR(60);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS board_name VARCHAR(60);
+
+CREATE TABLE IF NOT EXISTS certificate_counters (
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    cert_type VARCHAR(40) NOT NULL,
+    year INT NOT NULL,
+    last_number INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (school_id, cert_type, year)
+);
+
+CREATE TABLE IF NOT EXISTS issued_certificates (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    request_id INT REFERENCES document_requests(id) ON DELETE SET NULL,
+    cert_type VARCHAR(40) NOT NULL,
+    serial VARCHAR(40) NOT NULL,
+    verify_code VARCHAR(16) NOT NULL UNIQUE,
+    data JSONB NOT NULL, -- snapshot printed on the certificate
+    issued_by INT REFERENCES teachers(id), -- NULL = automatic
+    issued_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TIMESTAMP,
+    UNIQUE (school_id, serial)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_issued_cert_request ON issued_certificates(request_id) WHERE request_id IS NOT NULL;
+
+INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
+  ('certificates', 'Certificate issuing', 'admin', 10, false, 'CertificateQueue', 'processCertificates', 120)
+ON CONFLICT (automation_key) DO NOTHING;
+
+-- ============================================================
+-- Phase 4b: Timetable generator
+-- The school enters what each class needs (subject, teacher, periods per
+-- week) and when teachers are unavailable; the solver produces a draft with
+-- zero clashes; the principal publishes it. Publishing updates existing
+-- timetable_slots rows in place (keeping their ids, so lesson plans and
+-- substitution history stay attached) and a backup of the previous
+-- timetable is kept as a draft for rollback.
+-- ============================================================
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS periods_per_day INT NOT NULL DEFAULT 8;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS working_days VARCHAR(20) NOT NULL DEFAULT '1,2,3,4,5,6';
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS period_times JSONB; -- [{"start":"08:00","end":"08:40"}, ...]
+
+CREATE TABLE IF NOT EXISTS timetable_requirements (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    subject_id INT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    teacher_id INT REFERENCES teachers(id) ON DELETE SET NULL,
+    periods_per_week SMALLINT NOT NULL CHECK (periods_per_week BETWEEN 1 AND 20),
+    heavy BOOLEAN NOT NULL DEFAULT FALSE, -- keep out of the last period
+    UNIQUE (class_id, subject_id)
+);
+
+CREATE TABLE IF NOT EXISTS teacher_unavailability (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    day_of_week SMALLINT NOT NULL,
+    period_number SMALLINT NOT NULL,
+    UNIQUE (teacher_id, day_of_week, period_number)
+);
+
+CREATE TABLE IF NOT EXISTS timetable_drafts (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    slots JSONB NOT NULL,
+    unplaced JSONB NOT NULL DEFAULT '[]'::jsonb,
+    penalty NUMERIC NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft', -- draft | published | backup | discarded
+    created_by INT REFERENCES teachers(id),
+    published_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

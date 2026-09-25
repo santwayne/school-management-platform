@@ -1,4 +1,14 @@
 import express from 'express';
+import { planSubstitutions } from '../services/substitutionService.js';
+
+async function planCoverForLeave(schoolId, leave) {
+  const r = await pool.query(
+    `SELECT d::date::text AS d FROM generate_series(GREATEST($1::date, (NOW() AT TIME ZONE 'Asia/Kolkata')::date),
+       LEAST($2::date, (NOW() AT TIME ZONE 'Asia/Kolkata')::date + 7), INTERVAL '1 day') d`,
+    [leave.start_date, leave.end_date]
+  );
+  for (const row of r.rows) await planSubstitutions(schoolId, row.d);
+}
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
 import { send as sendNotification } from '../services/notificationService.js';
@@ -193,6 +203,11 @@ router.put('/requests/:id', requireAuth, requirePrincipal, async (req, res) => {
     }
 
     await client.query('COMMIT');
+    // Plan cover for the approved days (today and the next 7) right away,
+    // instead of waiting for the next 15-minute planner run.
+    if (status === 'APPROVED') {
+      planCoverForLeave(req.user.school_id, updated[0]).catch((err) => console.error('[substitution] plan after leave approval failed:', err.message));
+    }
     res.json(updated[0]);
 
     // Fire-and-forget, after commit — same "respond first, notify after"
