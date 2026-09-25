@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { CalendarClock, X } from 'lucide-react';
 import { apiRequest } from '../api';
+import TimetableGenerator from './staff/TimetableGenerator';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -113,6 +114,7 @@ export default function AdminTimetable() {
   const [slots, setSlots] = useState([]);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState('');
+  const [mode, setMode] = useState('manual'); // 'manual' | 'generator' — the generator publishes into the same timetable_slots this manual grid reads
 
   useEffect(() => {
     Promise.all([
@@ -139,8 +141,8 @@ export default function AdminTimetable() {
   };
 
   useEffect(() => {
-    if (classId) loadSlots(classId);
-  }, [classId]);
+    if (classId && mode === 'manual') loadSlots(classId);
+  }, [classId, mode]);
 
   const slotFor = (day, period) => slots.find((s) => s.day_of_week === day && s.period_number === period);
 
@@ -151,15 +153,27 @@ export default function AdminTimetable() {
           <h1 className="font-display text-3xl text-ink flex items-center gap-2">
             <CalendarClock className="w-7 h-7 text-terracotta" /> Timetable
           </h1>
-          <p className="text-sm text-ink-soft mt-1">Tap a cell to assign subject, teacher and room.</p>
+          <p className="text-sm text-ink-soft mt-1">{mode === 'manual' ? 'Tap a cell to assign subject, teacher and room.' : 'Generate a zero-clash timetable from each class\'s needs.'}</p>
         </div>
-        <select value={classId} onChange={(e) => setClassId(e.target.value)} className="rounded-lg border border-cream-deep/70 px-3 py-2 text-ink bg-white">
-          {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1 bg-cream-deep/40 rounded-lg p-1">
+            {[['manual', 'Manual grid'], ['generator', 'Generator']].map(([k, label]) => (
+              <button key={k} onClick={() => setMode(k)} className={`px-3 py-1.5 rounded-md text-xs font-medium ${mode === k ? 'bg-white text-ink shadow-sm' : 'text-ink-soft'}`}>{label}</button>
+            ))}
+          </div>
+          {mode === 'manual' && (
+            <select value={classId} onChange={(e) => setClassId(e.target.value)} className="rounded-lg border border-cream-deep/70 px-3 py-2 text-ink bg-white">
+              {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
+        </div>
       </div>
 
-      {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
+      {error && mode === 'manual' && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
 
+      {mode === 'generator' ? (
+        <TimetableGenerator classes={classes} subjects={subjects} teachers={teachers} />
+      ) : (
       <div className="overflow-x-auto rounded-2xl border border-cream-deep/70 bg-white">
         <table className="w-full text-sm border-collapse min-w-[720px]">
           <thead>
@@ -204,8 +218,9 @@ export default function AdminTimetable() {
           </tbody>
         </table>
       </div>
+      )}
 
-      {editing && (
+      {mode === 'manual' && editing && (
         <CellEditor
           classId={classId}
           dayOfWeek={editing.day}

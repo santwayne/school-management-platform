@@ -72,6 +72,9 @@ import VisitSlots from './components/admissions/VisitSlots';
 import AdmissionSettings from './components/admissions/AdmissionSettings';
 import PublicAdmissionEnquiry from './components/PublicAdmissionEnquiry';
 import ParentMessages from './components/parents/ParentMessages';
+import SubstitutionBoard from './components/staff/SubstitutionBoard';
+import IssuedCertificates from './components/IssuedCertificates';
+import PublicCertificateVerify from './components/PublicCertificateVerify';
 import AdminBulkUpload from './components/AdminBulkUpload';
 import AdminCertificates from './components/AdminCertificates';
 import AdminDocumentRequests from './components/AdminDocumentRequests';
@@ -138,7 +141,10 @@ function AppRoutes() {
         <Route path="/ops/admissions/settings" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, AdmissionSettings)}</ProtectedRoute>} />
         <Route path="/ops/admissions/:id" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, EnquiryDetail)}</ProtectedRoute>} />
         <Route path="/ops/parents" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, ParentMessages)}</ProtectedRoute>} />
+        <Route path="/ops/substitutions" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, SubstitutionBoard)}</ProtectedRoute>} />
+        <Route path="/ops/certificates" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, IssuedCertificates)}</ProtectedRoute>} />
         <Route path="/admissions/:slug" element={<PublicAdmissionEnquiry />} />
+        <Route path="/certificates/verify/:code" element={<PublicCertificateVerify />} />
         <Route path="/dashboard" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminHome)}</ProtectedRoute>} />
         <Route path="/dashboard-alerts" element={<ProtectedRoute principalOnly>{inShell(AdminShell, PrincipalDashboard)}</ProtectedRoute>} />
         <Route path="/finance" element={<ProtectedRoute principalOnly>{inShell(AdminShell, FinanceAdmin)}</ProtectedRoute>} />

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Play, CheckCircle2, Pencil, Plus, X, Info } from 'lucide-react';
-import { apiRequest } from '../api';
+import { ChevronLeft, ChevronRight, Play, CheckCircle2, Pencil, Plus, X, Info, Download, Trash2, AlertTriangle } from 'lucide-react';
+import { apiRequest, API_URL } from '../api';
 import { useAuth } from '../AuthContext';
 
 const INR = (n) => '₹' + Number(n).toLocaleString('en-IN');
@@ -11,13 +11,19 @@ const TABS = [
   { key: 'payroll', label: 'Payroll' },
   { key: 'salaries', label: 'Salaries' },
   { key: 'petty', label: 'Petty Cash' },
+  // New — Phase 4d, layered alongside the older flat-amount "Payroll" tab
+  // above rather than replacing it (that one keeps working exactly as
+  // before via /api/payroll; this one is the newer draft→approve→payslip
+  // system via /api/payroll-runs — see PayrollRunsTab's own comment).
+  { key: 'runs', label: 'Payroll Runs' },
+  { key: 'components', label: 'Salary Components' },
 ];
 
-function Th({ children, className = '' }) {
-  return <th className={`text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-3 bg-cream-deep/40 ${className}`}>{children}</th>;
+function Th({ children, className = '', ...rest }) {
+  return <th className={`text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-3 bg-cream-deep/40 ${className}`} {...rest}>{children}</th>;
 }
-function Td({ children, className = '' }) {
-  return <td className={`px-4 py-3 align-middle ${className}`}>{children}</td>;
+function Td({ children, className = '', ...rest }) {
+  return <td className={`px-4 py-3 align-middle ${className}`} {...rest}>{children}</td>;
 }
 
 export default function AdminPayroll() {
@@ -56,6 +62,272 @@ export default function AdminPayroll() {
       {tab === 'payroll' && <PayrollTab />}
       {tab === 'salaries' && <SalariesTab />}
       {tab === 'petty' && <PettyCashTab />}
+      {tab === 'runs' && <PayrollRunsTab />}
+      {tab === 'components' && <SalaryComponentsTab />}
+    </div>
+  );
+}
+
+// Phase 4d — the newer draft → anomalies → principal-approval → payslips
+// system (backend/routes/payrollRuns.js), entirely separate from the older
+// flat "Run payroll" tab above (which just marks a fixed amount_paid per
+// teacher with no components/breakdown). Both call different backend
+// routes and write to different tables — this doesn't touch PayrollTab.
+function PayrollRunsTab() {
+  const { user } = useAuth();
+  const [runs, setRuns] = useState(null);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [period, setPeriod] = useState(() => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [preparing, setPreparing] = useState(false);
+  const [selected, setSelected] = useState(null); // run id, drills into detail view
+  const [detail, setDetail] = useState(null);
+  const [approving, setApproving] = useState(false);
+
+  const canApprove = user?.role === 'principal';
+
+  const load = async () => {
+    try {
+      setRuns(await apiRequest('/api/payroll-runs'));
+      setError('');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+  useEffect(() => { load(); }, []);
+
+  const loadDetail = async (id) => {
+    setDetail(null);
+    try {
+      setDetail(await apiRequest(`/api/payroll-runs/${id}`));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+  useEffect(() => { if (selected) loadDetail(selected); }, [selected]);
+
+  const prepare = async () => {
+    setPreparing(true);
+    setError('');
+    setNotice('');
+    try {
+      const r = await apiRequest('/api/payroll-runs/prepare', { method: 'POST', body: { period } });
+      setNotice(`Draft prepared: ${r.totals.staff} staff, ${INR(r.totals.net)} total.`);
+      await load();
+      setSelected(r.run_id);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPreparing(false);
+    }
+  };
+
+  const approve = async () => {
+    if (!selected || !window.confirm('Approve this payroll run? Payslips will be generated and sent.')) return;
+    setApproving(true);
+    setError('');
+    try {
+      await apiRequest(`/api/payroll-runs/${selected}/approve`, { method: 'POST' });
+      setNotice('Approved — payslips are being sent.');
+      await load();
+      await loadDetail(selected);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
+      {notice && <div className="rounded-xl bg-joy-leaf/15 border border-joy-leaf/40 px-4 py-2.5 text-sm text-ink">{notice}</div>}
+
+      {!selected ? (
+        <>
+          <div className="flex items-center gap-3 flex-wrap">
+            <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} className="px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm" />
+            <button disabled={preparing} onClick={prepare} className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep disabled:opacity-50">
+              <Play className="w-4 h-4" /> {preparing ? 'Preparing…' : `Prepare draft for ${period}`}
+            </button>
+          </div>
+
+          <div className="rounded-2xl bg-white border border-cream-deep/70 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr><Th>Period</Th><Th>Staff</Th><Th>Net total</Th><Th>Anomalies</Th><Th>Status</Th><Th className="text-right"></Th></tr></thead>
+                <tbody className="divide-y divide-cream-deep/60">
+                  {!runs && <tr><Td colSpan={6} className="text-ink-soft">Loading…</Td></tr>}
+                  {runs && runs.length === 0 && <tr><Td colSpan={6} className="text-ink-soft">No payroll runs yet.</Td></tr>}
+                  {runs?.map((r) => (
+                    <tr key={r.id} className="hover:bg-cream-deep/20 cursor-pointer" onClick={() => setSelected(r.id)}>
+                      <Td className="font-medium">{r.period}</Td>
+                      <Td>{r.totals?.staff ?? '—'}</Td>
+                      <Td>{r.totals?.net != null ? INR(r.totals.net) : '—'}</Td>
+                      <Td>{r.anomalies?.length > 0 ? <span className="inline-flex items-center gap-1 text-terracotta-deep"><AlertTriangle className="w-3.5 h-3.5" /> {r.anomalies.length}</span> : '—'}</Td>
+                      <Td>{r.status === 'approved' ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700"><CheckCircle2 className="w-3 h-3" /> Approved</span> : <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/15 text-amber-700">Draft</span>}</Td>
+                      <Td className="text-right text-xs text-terracotta-deep">Open</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : !detail ? (
+        <p className="text-sm text-ink-soft">Loading…</p>
+      ) : (
+        <div className="space-y-4">
+          <button onClick={() => { setSelected(null); setDetail(null); }} className="text-sm text-ink-soft hover:text-ink">← All runs</button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-display text-xl text-ink">{detail.period}</h2>
+            <div className="flex items-center gap-2">
+              {detail.status === 'approved' && (
+                <a href={`${API_URL}/api/payroll-runs/${detail.id}/bank.csv`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border border-cream-deep text-ink-soft hover:text-ink">
+                  <Download className="w-4 h-4" /> Bank transfer CSV
+                </a>
+              )}
+              {detail.status !== 'approved' && canApprove && (
+                <button disabled={approving} onClick={approve} className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep disabled:opacity-50">
+                  <CheckCircle2 className="w-4 h-4" /> {approving ? 'Approving…' : 'Approve payroll'}
+                </button>
+              )}
+              {detail.status !== 'approved' && !canApprove && <span className="text-xs text-ink-soft">Only the Principal can approve.</span>}
+            </div>
+          </div>
+
+          {detail.anomalies?.length > 0 && (
+            <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-sm text-amber-800 space-y-1">
+              <div className="font-medium inline-flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> {detail.anomalies.length} thing{detail.anomalies.length === 1 ? '' : 's'} worth a look</div>
+              <ul className="list-disc list-inside">
+                {detail.anomalies.map((a, i) => <li key={i}>{a.text}</li>)}
+              </ul>
+            </div>
+          )}
+
+          <div className="rounded-2xl bg-white border border-cream-deep/70 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr><Th>Staff</Th><Th>Gross</Th><Th>Deductions</Th><Th>Net pay</Th><Th className="text-right">Payslip</Th></tr></thead>
+                <tbody className="divide-y divide-cream-deep/60">
+                  {detail.payslips.map((p) => (
+                    <tr key={p.id} className="hover:bg-cream-deep/20">
+                      <Td className="font-medium">{p.name} <span className="text-ink-soft font-normal capitalize">· {p.role}</span></Td>
+                      <Td>{INR(p.gross)}</Td>
+                      <Td className="text-terracotta-deep">-{INR(p.deductions)}</Td>
+                      <Td className="font-medium">{INR(p.net_pay)}</Td>
+                      <Td className="text-right">
+                        <a href={`${API_URL}/api/payroll-runs/payslips/${p.id}/pdf`} target="_blank" rel="noreferrer" className="text-ink-soft hover:text-terracotta-deep inline-flex">
+                          <Download className="w-4 h-4" />
+                        </a>
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SalaryComponentsTab() {
+  const [rows, setRows] = useState(null);
+  const [teachers, setTeachers] = useState([]);
+  const [error, setError] = useState('');
+  const [form, setForm] = useState({ name: '', kind: 'earning', calc: 'fixed', value: '', teacher_id: '' });
+
+  const load = () => apiRequest('/api/payroll-runs/config/components').then(setRows).catch((e) => setError(e.message));
+  useEffect(() => {
+    load();
+    apiRequest('/api/academics/teachers').then(setTeachers).catch(() => {});
+  }, []);
+
+  const add = async (e) => {
+    e.preventDefault();
+    setError('');
+    try {
+      await apiRequest('/api/payroll-runs/config/components', {
+        method: 'POST',
+        body: { name: form.name.trim(), kind: form.kind, calc: form.calc, value: Number(form.value), teacher_id: form.teacher_id || null },
+      });
+      setForm({ name: '', kind: 'earning', calc: 'fixed', value: '', teacher_id: '' });
+      load();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm('Remove this component?')) return;
+    try {
+      await apiRequest(`/api/payroll-runs/config/components/${id}`, { method: 'DELETE' });
+      load();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-ink-soft">HRA, PF, TDS, advance recovery — whatever your school actually pays or deducts. Applies to every staff member unless you pick one specifically.</p>
+      {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
+
+      <form onSubmit={add} className="rounded-2xl bg-white border border-cream-deep/70 p-4 flex flex-wrap items-end gap-3">
+        <FormField label="Name">
+          <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="HRA" className="w-32 px-3 py-2 text-sm rounded-lg border border-cream-deep" />
+        </FormField>
+        <FormField label="Type">
+          <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} className="px-3 py-2 text-sm rounded-lg border border-cream-deep">
+            <option value="earning">Earning</option>
+            <option value="deduction">Deduction</option>
+          </select>
+        </FormField>
+        <FormField label="Calculated as">
+          <select value={form.calc} onChange={(e) => setForm({ ...form, calc: e.target.value })} className="px-3 py-2 text-sm rounded-lg border border-cream-deep">
+            <option value="fixed">Fixed amount (₹)</option>
+            <option value="percent_of_base">% of base salary</option>
+          </select>
+        </FormField>
+        <FormField label="Value">
+          <input required type="number" min="0" max={form.calc === 'percent_of_base' ? 100 : undefined} value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} className="w-24 px-3 py-2 text-sm rounded-lg border border-cream-deep" />
+        </FormField>
+        <FormField label="Applies to">
+          <select value={form.teacher_id} onChange={(e) => setForm({ ...form, teacher_id: e.target.value })} className="px-3 py-2 text-sm rounded-lg border border-cream-deep">
+            <option value="">Everyone</option>
+            {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </FormField>
+        <button className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep">
+          <Plus className="w-4 h-4" /> Add
+        </button>
+      </form>
+
+      <div className="rounded-2xl bg-white border border-cream-deep/70 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr><Th>Name</Th><Th>Type</Th><Th>Amount</Th><Th>Applies to</Th><Th className="text-right"></Th></tr></thead>
+            <tbody className="divide-y divide-cream-deep/60">
+              {!rows && <tr><Td colSpan={5} className="text-ink-soft">Loading…</Td></tr>}
+              {rows?.length === 0 && <tr><Td colSpan={5} className="text-ink-soft">None set up yet.</Td></tr>}
+              {rows?.map((c) => (
+                <tr key={c.id} className="hover:bg-cream-deep/20">
+                  <Td className="font-medium">{c.name}</Td>
+                  <Td className="capitalize">{c.kind}</Td>
+                  <Td>{c.calc === 'percent_of_base' ? `${c.value}%` : INR(c.value)}</Td>
+                  <Td>{c.teacher_name || 'Everyone'}</Td>
+                  <Td className="text-right"><button onClick={() => remove(c.id)} className="text-ink-soft hover:text-destructive"><Trash2 className="w-4 h-4" /></button></Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
