@@ -20,7 +20,7 @@ const DEFAULT_RADIUS_METERS = 500;
 // to a genuine trip/schedule table.
 const MIDDAY_CUTOFF_HOUR = 12;
 
-function haversineMeters(lat1, lon1, lat2, lon2) {
+export function haversineMeters(lat1, lon1, lat2, lon2) {
   const toRad = (deg) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);

@@ -1,6 +1,7 @@
 import express from 'express';
 import { normalizePhone } from '../utils/phone.js';
 import { handleEnquiryMessage, resolveSchoolForUnknownSender } from '../services/admissionAgent.js';
+import { handleParentMessage } from '../services/parentAssistant.js';
 import crypto from 'crypto';
 import axios from 'axios';
 import { webhookLimiter } from '../middleware/rateLimit.js';
@@ -261,13 +262,28 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
 
     // Any reply within the escalation window cancels the pending voice call —
     // this is the piece that lets the worker's DB check actually find something.
-    await pool.query(
+    const repliedRes = await pool.query(
       `UPDATE notification_log
        SET status = 'REPLIED', replied_at = CURRENT_TIMESTAMP
        WHERE parent_id = $1 AND status = 'SENT' AND replied_at IS NULL
        AND sent_at > NOW() - INTERVAL '24 hours'`,
       [parent.id]
     );
+
+    // Phase 3: typed messages go through the parent assistant first (fees,
+    // homework list, attendance, bus, leave, certificates, safety, ...).
+    // Anything it doesn't recognise falls through to the doubt pipeline
+    // below, exactly as before. Photos still go straight to the doubt flow.
+    if (message.type === 'text' && message.text?.body) {
+      const fullParent = await pool.query('SELECT id, school_id, name, phone, preferred_language FROM parents WHERE id = $1', [parent.id]);
+      const outcome = await handleParentMessage({
+        parent: fullParent.rows[0],
+        text: message.text.body,
+        waMessageId: message.id,
+        repliedToAbsence: repliedRes.rowCount > 0,
+      });
+      if (outcome.handled) return res.sendStatus(200);
+    }
 
     let userMessageText = '';
     if (message.type === 'text') {

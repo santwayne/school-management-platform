@@ -2071,3 +2071,44 @@ INSERT INTO automation_registry (automation_key, display_name, category, expecte
   ('admission_followup',  'Admission follow-ups & visit reminders', 'admissions', 30, false, 'AdmissionFollowupQueue', 'admissionFollowups', 120)
 ON CONFLICT (automation_key) DO NOTHING;
 ALTER TABLE enquiry_messages ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(10) NOT NULL DEFAULT 'sent'; -- 'sent' | 'failed' | 'received'
+
+-- ============================================================
+-- Phase 3: Parent WhatsApp assistant
+-- Opted-in parents' messages are routed by intent (fee, homework,
+-- attendance, bus, holidays, leave, certificate, talk to teacher, safety)
+-- instead of every message being treated as a homework doubt. Facts come
+-- from SQL scoped to the parent's own children; the model never states a
+-- number. Homework questions still go to the existing doubt pipeline.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS parent_conversations (
+    parent_id INT PRIMARY KEY REFERENCES parents(id) ON DELETE CASCADE,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    active_student_id INT REFERENCES students(id) ON DELETE SET NULL,
+    state JSONB NOT NULL DEFAULT '{}'::jsonb, -- { pending_intent, awaiting, pending_text }
+    state_expires_at TIMESTAMP,
+    human_takeover_until TIMESTAMP,
+    last_inbound_at TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS parent_messages (
+    id BIGSERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    parent_id INT NOT NULL REFERENCES parents(id) ON DELETE CASCADE,
+    student_id INT REFERENCES students(id) ON DELETE SET NULL,
+    direction VARCHAR(5) NOT NULL, -- 'in' | 'out'
+    body TEXT,
+    intent VARCHAR(40),
+    handled_by VARCHAR(20), -- 'assistant' | 'doubt_bot' | 'staff' | 'escalated' | 'fallback'
+    delivery_status VARCHAR(10) NOT NULL DEFAULT 'sent', -- 'received' | 'sent' | 'failed'
+    wa_message_id VARCHAR(100),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_parent_messages_parent ON parent_messages(parent_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_parent_messages_school_time ON parent_messages(school_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_parent_messages_wamid ON parent_messages(wa_message_id) WHERE wa_message_id IS NOT NULL;
+
+INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
+  ('parent_assistant', 'Parent WhatsApp assistant', 'communication', NULL, true, NULL, NULL, 30)
+ON CONFLICT (automation_key) DO NOTHING;

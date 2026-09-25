@@ -71,6 +71,7 @@ import EnquiryDetail from './components/admissions/EnquiryDetail';
 import VisitSlots from './components/admissions/VisitSlots';
 import AdmissionSettings from './components/admissions/AdmissionSettings';
 import PublicAdmissionEnquiry from './components/PublicAdmissionEnquiry';
+import ParentMessages from './components/parents/ParentMessages';
 import AdminBulkUpload from './components/AdminBulkUpload';
 import AdminCertificates from './components/AdminCertificates';
 import AdminDocumentRequests from './components/AdminDocumentRequests';
@@ -136,6 +137,7 @@ function AppRoutes() {
         <Route path="/ops/admissions/slots" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, VisitSlots)}</ProtectedRoute>} />
         <Route path="/ops/admissions/settings" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, AdmissionSettings)}</ProtectedRoute>} />
         <Route path="/ops/admissions/:id" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, EnquiryDetail)}</ProtectedRoute>} />
+        <Route path="/ops/parents" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, ParentMessages)}</ProtectedRoute>} />
         <Route path="/admissions/:slug" element={<PublicAdmissionEnquiry />} />
         <Route path="/dashboard" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminHome)}</ProtectedRoute>} />
         <Route path="/dashboard-alerts" element={<ProtectedRoute principalOnly>{inShell(AdminShell, PrincipalDashboard)}</ProtectedRoute>} />
