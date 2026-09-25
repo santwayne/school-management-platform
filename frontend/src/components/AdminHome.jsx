@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarCheck2, Bus, MessageSquare, IndianRupee, Send, UserPlus, FilePlus2, TrendingUp } from 'lucide-react';
+import { CalendarCheck2, Bus, MessageSquare, IndianRupee, Send, UserPlus, FilePlus2, TrendingUp, UserPlus2 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from 'recharts';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
@@ -40,6 +40,9 @@ export default function AdminHome() {
   const [attendanceTrend, setAttendanceTrend] = useState([]);
   const [feesTrend, setFeesTrend] = useState([]);
   const [error, setError] = useState('');
+  // Admissions funnel is fetched separately (own endpoint, own failure mode)
+  // so a hiccup there never blocks the rest of the dashboard from loading.
+  const [funnel, setFunnel] = useState(null);
 
   useEffect(() => {
     Promise.all([
@@ -53,6 +56,7 @@ export default function AdminHome() {
         setFeesTrend(f.map((r) => ({ d: new Date(r.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }), v: Number(r.total) })));
       })
       .catch((err) => setError(err.message));
+    apiRequest('/api/admissions/stats?days=30').then(setFunnel).catch(() => {});
   }, []);
 
   return (
@@ -152,6 +156,29 @@ export default function AdminHome() {
           </div>
         </Card>
       </div>
+
+      {funnel && funnel.funnel.enquiries > 0 && (
+        <Card title="Admissions" subtitle={`Last ${funnel.days} days`}>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+            {[
+              ['Enquiries', funnel.funnel.enquiries],
+              ['Qualified', funnel.funnel.qualified],
+              ['Visits booked', funnel.funnel.visits_booked],
+              ['Visited', funnel.funnel.visited],
+              ['Admitted', funnel.funnel.admitted],
+              ['Lost', funnel.funnel.lost],
+            ].map(([label, value]) => (
+              <div key={label} className="text-center">
+                <div className="font-display text-xl text-ink">{value}</div>
+                <div className="text-[11px] text-ink-soft mt-0.5">{label}</div>
+              </div>
+            ))}
+          </div>
+          <Link to="/ops/admissions" className="mt-4 inline-flex items-center gap-1.5 text-sm text-terracotta-deep hover:underline">
+            <UserPlus2 className="w-4 h-4" /> Open admissions pipeline
+          </Link>
+        </Card>
+      )}
     </div>
   );
 }
