@@ -8,7 +8,7 @@ const router = express.Router();
 // query — teachers/principal/accountant are all 'staff' rows in `teachers`.
 function recipientFromUser(user) {
   if (user.role === 'student') return { recipientType: 'student', recipientId: user.student_id };
-  if (['teacher', 'principal', 'accountant'].includes(user.role)) return { recipientType: 'staff', recipientId: user.teacher_id };
+  if (['teacher', 'principal', 'accountant', 'operator'].includes(user.role)) return { recipientType: 'staff', recipientId: user.teacher_id };
   return null;
 }
 

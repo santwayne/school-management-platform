@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS teachers (
     email VARCHAR(255) UNIQUE NOT NULL,
     phone VARCHAR(20) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(20) NOT NULL DEFAULT 'teacher', -- 'teacher' | 'principal' | 'accountant' | 'librarian'
+    role VARCHAR(20) NOT NULL DEFAULT 'teacher', -- 'teacher' | 'principal' | 'accountant' | 'librarian' | 'operator'
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -1821,3 +1821,124 @@ ALTER TABLE students ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT F
 -- body and never did anything with it — nowhere was it persisted, so the
 -- choice had no visible effect anywhere afterwards.
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS attendance_method VARCHAR(20) NOT NULL DEFAULT 'biometric';
+
+-- ============================================================
+-- Phase 1: Operator Control Center
+-- (health monitoring + exception inbox + daily digest + audit log)
+-- One operator runs the school by watching this instead of watching every
+-- module. Everything an automation or AI step could not finish lands in
+-- ops_exceptions; every automation reports into automation_runs so a silent
+-- failure (the PR #21 class of bug) becomes visible within minutes.
+-- ============================================================
+
+-- One row per known automation. last_* columns are updated on EVERY run
+-- (cheap heartbeat); automation_runs only keeps a row per run for
+-- low-frequency jobs, and for high-frequency ones (GPS every 30s) only
+-- failures plus one row per record_every_minutes, so the table doesn't
+-- grow by thousands of rows a day.
+CREATE TABLE IF NOT EXISTS automation_registry (
+    automation_key VARCHAR(80) PRIMARY KEY,
+    display_name VARCHAR(120) NOT NULL,
+    category VARCHAR(40) NOT NULL, -- 'attendance' | 'fees' | 'communication' | 'academics' | 'transport' | 'admin' | 'ai' | 'ops'
+    expected_interval_minutes INT, -- NULL = event-driven, no staleness check
+    critical BOOLEAN NOT NULL DEFAULT false,
+    queue_name VARCHAR(80), -- BullMQ queue, enables "Run now"
+    job_name VARCHAR(80),
+    record_every_minutes INT, -- NULL = record every run
+    last_run_at TIMESTAMP,
+    last_status VARCHAR(20),
+    last_success_at TIMESTAMP,
+    last_error TEXT
+);
+
+CREATE TABLE IF NOT EXISTS automation_runs (
+    id BIGSERIAL PRIMARY KEY,
+    school_id INT REFERENCES schools(id) ON DELETE CASCADE, -- NULL = platform-wide job
+    automation_key VARCHAR(80) NOT NULL,
+    status VARCHAR(20) NOT NULL, -- 'success' | 'partial' | 'failed' | 'skipped'
+    started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at TIMESTAMP,
+    items_total INT DEFAULT 0,
+    items_succeeded INT DEFAULT 0,
+    items_failed INT DEFAULT 0,
+    error_summary TEXT,
+    meta JSONB DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_key_time ON automation_runs(automation_key, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_school_time ON automation_runs(school_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS integration_health (
+    id SERIAL PRIMARY KEY,
+    school_id INT REFERENCES schools(id) ON DELETE CASCADE, -- NULL = platform-wide (postgres, redis, anthropic, whatsapp token)
+    integration VARCHAR(40) NOT NULL, -- 'postgres' | 'redis' | 'whatsapp' | 'anthropic' | 'razorpay' | 'vapi' | 's3' | 'gps' | 'biometric'
+    status VARCHAR(20) NOT NULL, -- 'ok' | 'degraded' | 'down' | 'not_configured'
+    detail TEXT,
+    checked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_integration_health ON integration_health((COALESCE(school_id, 0)), integration);
+
+-- The operator's inbox. Named ops_exceptions (not "exceptions") to avoid
+-- confusion with JS/SQL exception handling in grep results.
+CREATE TABLE IF NOT EXISTS ops_exceptions (
+    id BIGSERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    source VARCHAR(60) NOT NULL, -- 'automation_failure' | 'integration' | 'attendance' | 'ocr_grading' | 'fee_reconciliation' | 'parent_assistant' | 'admission' | ...
+    severity VARCHAR(10) NOT NULL DEFAULT 'medium', -- 'low' | 'medium' | 'high' | 'critical'
+    title VARCHAR(255) NOT NULL,
+    body TEXT,
+    entity_type VARCHAR(40),
+    entity_id INT,
+    suggested_action JSONB, -- { "label": "...", "action": "registered.action.key", "params": {...} }
+    status VARCHAR(20) NOT NULL DEFAULT 'open', -- 'open' | 'snoozed' | 'resolved' | 'dismissed'
+    occurrences INT NOT NULL DEFAULT 1,
+    last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    snoozed_until TIMESTAMP,
+    resolved_by INT REFERENCES teachers(id),
+    resolved_at TIMESTAMP,
+    resolution_note TEXT,
+    dedupe_key VARCHAR(200),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ops_exceptions_open_dedupe ON ops_exceptions(school_id, dedupe_key)
+    WHERE status IN ('open', 'snoozed') AND dedupe_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ops_exceptions_inbox ON ops_exceptions(school_id, status, severity, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id BIGSERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    actor_type VARCHAR(20) NOT NULL, -- 'system' | 'ai' | 'user'
+    actor_id INT,
+    action VARCHAR(80) NOT NULL,
+    entity_type VARCHAR(40),
+    entity_id INT,
+    detail JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_audit_log_school_time ON audit_log(school_id, created_at DESC);
+
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS operator_digest_phone VARCHAR(20);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS principal_digest_phone VARCHAR(20);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS digest_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS digest_language VARCHAR(10) NOT NULL DEFAULT 'hinglish'; -- 'en' | 'hinglish'
+
+-- Idempotent registry seed. Intervals are the defaults in workers/scheduler.js;
+-- if a school overrides a *_CRON env var, update expected_interval_minutes too.
+INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
+  ('attendance_alert',            'Absence alerts to parents (on marking)',  'attendance',    NULL,  true,  NULL, NULL, NULL),
+  ('attendance_escalation',       'Absence voice-call escalation',           'attendance',    NULL,  true,  'AttendanceQueue', NULL, NULL),
+  ('daily_guidance',              'Daily teacher guidance nudge',            'academics',     1440,  false, 'GuidanceQueue', 'dailyNudge', NULL),
+  ('teacher_attendance_rollup',   'Teacher biometric attendance roll-up',    'attendance',    1440,  false, 'TeacherAttendanceQueue', 'aggregateDaily', NULL),
+  ('gps_poll',                    'Bus GPS polling',                         'transport',     5,     true,  'GpsPollQueue', 'pollBuses', 15),
+  ('library_digest',              'Library due/overdue digest',              'admin',         1440,  false, 'LibraryQueue', 'dailyLibraryDigest', NULL),
+  ('fee_reminder',                'Fee reminders with payment links',        'fees',          1440,  true,  'FeeReminderQueue', 'dailyFeeReminders', NULL),
+  ('petty_cash_reminder',         'Petty cash approval reminders',           'fees',          1440,  false, 'PettyCashReminderQueue', 'dailyPettyCashReminders', NULL),
+  ('staff_leave_reminder',        'Staff leave approval reminders',          'admin',         1440,  false, 'StaffLeaveReminderQueue', 'dailyStaffLeaveReminders', NULL),
+  ('teaching_reminder',           'Upcoming-period teacher reminders',       'academics',     10,    false, 'TeachingReminderQueue', 'checkUpcomingClasses', 60),
+  ('low_attendance_alert',        'Weekly low-attendance alerts',            'attendance',    10080, false, 'LowAttendanceAlertQueue', 'weeklyLowAttendanceCheck', NULL),
+  ('event_reminder',              'Event reminders',                         'communication', 1440,  false, 'EventReminderQueue', 'dailyEventReminders', NULL),
+  ('performance_drift',           'Weekly student performance drift (AI)',   'ai',            10080, false, 'PerformanceDriftQueue', 'weeklyPerformanceSnapshot', NULL),
+  ('weekly_progress_summary',     'Weekly class progress summaries (AI)',    'ai',            10080, false, 'WeeklyProgressSummaryQueue', 'weeklyClassSummaries', NULL),
+  ('recurring_doubt',             'Recurring doubt alerts',                  'ai',            10080, false, 'RecurringDoubtQueue', 'weeklyRecurringDoubtCheck', NULL),
+  ('ops_health_check',            'Control Center health check',             'ops',           10,    true,  NULL, NULL, 60),
+  ('ops_daily_digest',            'Operator daily digest',                   'ops',           1440,  false, 'OpsDigestQueue', 'dailyDigest', NULL)
+ON CONFLICT (automation_key) DO NOTHING;

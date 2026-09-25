@@ -66,3 +66,8 @@ export const recurringDoubtQueue = new Queue('RecurringDoubtQueue', { connection
 
 // How long to wait for a parent reply before escalating to a voice call (ms)
 export const ESCALATION_DELAY_MS = Number(process.env.ESCALATION_DELAY_MS || 2 * 60 * 60 * 1000); // default 2 hrs
+
+// Operator Control Center: daily WhatsApp digest to the operator/principal.
+// (The health check itself deliberately does NOT use BullMQ — it runs on an
+// in-process timer so it still fires, and reports, when Redis is down.)
+export const opsDigestQueue = new Queue('OpsDigestQueue', { connection });

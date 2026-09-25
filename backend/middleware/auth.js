@@ -90,3 +90,12 @@ export function requireLibrary(req, res, next) {
   }
   next();
 }
+
+// Operator Control Center: the school's single software operator, plus the
+// principal (who can always see what the operator sees).
+export function requireOperator(req, res, next) {
+  if (!req.user || (req.user.role !== 'principal' && req.user.role !== 'operator')) {
+    return res.status(403).json({ error: 'Operator or Principal role required' });
+  }
+  next();
+}

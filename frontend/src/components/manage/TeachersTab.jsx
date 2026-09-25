@@ -144,6 +144,7 @@ export default function TeachersTab() {
                   <option value="teacher">Teacher</option>
                   <option value="accountant">Accountant</option>
                   <option value="librarian">Librarian</option>
+                  <option value="operator">Operator (Control Center)</option>
                 </select>
               )}
               {modal === 'add' && (

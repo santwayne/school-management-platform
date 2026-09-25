@@ -328,7 +328,7 @@ router.post('/teachers', requireAuth, requirePrincipal, async (req, res) => {
   if (!normalizedPhone) {
     return res.status(400).json({ error: 'phone must be a valid Indian mobile number (10 digits, optionally with +91)' });
   }
-  const finalRole = ['accountant', 'librarian'].includes(role) ? role : 'teacher';
+  const finalRole = ['accountant', 'librarian', 'operator'].includes(role) ? role : 'teacher';
   try {
     const password_hash = await bcrypt.hash(password, 10);
     const result = await pool.query(

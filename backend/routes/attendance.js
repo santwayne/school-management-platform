@@ -3,6 +3,7 @@ import pool from '../config/db.js';
 import { attendanceQueue, ESCALATION_DELAY_MS } from '../config/queue.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sendTemplateMessage } from '../services/whatsappService.js';
+import { recordRun, raiseException, audit } from '../services/opsService.js';
 
 const router = express.Router();
 
@@ -63,6 +64,67 @@ async function sendAbsentNotificationNow({ attendanceId, parent, studentId }) {
   return { student_id: studentId, whatsapp_status: status, notification_log_id: notificationLogId };
 }
 
+// Control Center reporting for the inline absence-alert send. Never throws.
+async function reportAbsenceAlertOutcome({ schoolId, notifications, unreachable, toNotify, startedAt, userId }) {
+  try {
+    const failed = notifications.filter((n) => n.whatsapp_status !== 'SENT');
+    const total = notifications.length + unreachable.length;
+    if (total === 0) return;
+    const succeeded = notifications.length - failed.length;
+    await recordRun({
+      key: 'attendance_alert',
+      schoolId,
+      status: failed.length + unreachable.length === 0 ? 'success' : succeeded > 0 ? 'partial' : 'failed',
+      startedAt,
+      itemsTotal: total,
+      itemsSucceeded: succeeded,
+      itemsFailed: failed.length + unreachable.length,
+    });
+
+    for (const n of notifications) {
+      await audit({ schoolId, actorType: 'system', action: n.whatsapp_status === 'SENT' ? 'whatsapp.absence_alert_sent' : 'whatsapp.absence_alert_failed', entityType: 'student', entityId: n.student_id, detail: { triggered_by: userId, error: n.error || null } });
+    }
+
+    const nameOf = new Map(toNotify.map((t) => [t.studentId, t.parent.student_name]));
+    const missingNames = unreachable.filter((u) => !u.studentName).map((u) => u.studentId);
+    if (missingNames.length) {
+      const r = await pool.query('SELECT id, name FROM students WHERE id = ANY($1::int[]) AND school_id = $2', [missingNames, schoolId]);
+      for (const row of r.rows) {
+        const u = unreachable.find((x) => x.studentId === row.id);
+        if (u) u.studentName = row.name;
+      }
+    }
+    for (const n of failed) {
+      await raiseException({
+        schoolId,
+        source: 'attendance',
+        severity: 'high',
+        title: `Absence alert not delivered: ${nameOf.get(n.student_id) || `student #${n.student_id}`}`,
+        body: `The WhatsApp absence alert for today could not be sent${n.error ? ` (${n.error})` : ''}. Please call the parent directly.`,
+        entityType: 'student',
+        entityId: n.student_id,
+        dedupeKey: `absence_alert_failed:${n.student_id}:${new Date().toISOString().slice(0, 10)}`,
+      });
+    }
+    for (const u of unreachable) {
+      await raiseException({
+        schoolId,
+        source: 'attendance',
+        severity: 'medium',
+        title: `Absent student's parent can't be messaged: ${u.studentName || `student #${u.studentId}`}`,
+        body: u.reason === 'no_parent_linked'
+          ? 'This student has no parent linked, so no absence alert was sent. Link a parent with a phone number in the student record, and call home today.'
+          : 'The parent has not opted in to WhatsApp, so no absence alert was sent. Call the parent today and ask them to opt in.',
+        entityType: 'student',
+        entityId: u.studentId,
+        dedupeKey: `absence_unreachable:${u.studentId}:${new Date().toISOString().slice(0, 10)}`,
+      });
+    }
+  } catch (err) {
+    console.error('[ops] reportAbsenceAlertOutcome failed:', err.message);
+  }
+}
+
 // Mark attendance & send the WhatsApp -> (delayed) voice-call escalation
 // flow for any student marked absent whose parent is OPTED_IN.
 router.post('/mark', requireAuth, async (req, res) => {
@@ -75,6 +137,7 @@ router.post('/mark', requireAuth, async (req, res) => {
 
   const client = await pool.connect();
   let toNotify = [];
+  const unreachable = [];
   try {
     await client.query('BEGIN');
 
@@ -102,6 +165,10 @@ router.post('/mark', requireAuth, async (req, res) => {
         // enforced here at the query/insert level, not just in the UI.
         if (parent && parent.opt_in_status === 'OPTED_IN') {
           toNotify.push({ attendanceId, parent, studentId: record.student_id });
+        } else {
+          // Previously skipped silently: the child is absent and nobody at
+          // home will hear about it. Surfaced to the operator after COMMIT.
+          unreachable.push({ studentId: record.student_id, attendanceId, reason: parent ? 'parent_not_opted_in' : 'no_parent_linked', studentName: parent?.student_name || null });
         }
       }
     }
@@ -120,7 +187,18 @@ router.post('/mark', requireAuth, async (req, res) => {
   // back attendance that was already successfully recorded. Sent in
   // parallel rather than one-by-one so marking a full class's absences
   // doesn't serialize N sequential WhatsApp API calls into one slow request.
-  const notifications = await Promise.all(toNotify.map(sendAbsentNotificationNow));
+  const startedAt = new Date();
+  // allSettled, not all: one parent's escalation-queue failure (e.g. Redis
+  // down) must not turn the whole request into a 500 after attendance has
+  // already been committed, nor hide the other parents' results.
+  const settled = await Promise.allSettled(toNotify.map(sendAbsentNotificationNow));
+  const notifications = settled.map((r, i) =>
+    r.status === 'fulfilled'
+      ? r.value
+      : { student_id: toNotify[i].studentId, whatsapp_status: 'ERROR', error: r.reason?.message || String(r.reason) }
+  );
+
+  await reportAbsenceAlertOutcome({ schoolId: school_id, notifications, unreachable, toNotify, startedAt, userId: req.user.teacher_id });
 
   res.status(200).json({ success: true, message: 'Attendance processed.', notifications });
 });

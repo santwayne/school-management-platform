@@ -45,6 +45,12 @@ import StudentRewards from './components/StudentRewards';
 import AdminShell from './components/AdminShell';
 import AccountantShell from './components/AccountantShell';
 import SuperAdminShell from './components/SuperAdminShell';
+import OperatorShell from './components/OperatorShell';
+import OpsOverview from './components/ops/OpsOverview';
+import ExceptionInbox from './components/ops/ExceptionInbox';
+import { AutomationsList, AutomationDetail } from './components/ops/Automations';
+import AuditLog from './components/ops/AuditLog';
+import OpsSettings from './components/ops/OpsSettings';
 import AdminStaffLeave from './components/AdminStaffLeave';
 import TeacherLeave from './components/TeacherLeave';
 import AdminTimetable from './components/AdminTimetable';
@@ -83,6 +89,7 @@ function homeFor(role) {
   if (role === 'student') return '/student';
   if (role === 'super_admin') return '/super-admin';
   if (role === 'accountant') return '/accountant';
+  if (role === 'operator') return '/ops';
   if (role === 'librarian') return '/admin/library';
   if (role === 'principal') return '/dashboard';
   return '/teacher';
@@ -113,6 +120,13 @@ function AppRoutes() {
         <Route path="/teacher/leave" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherLeave /></ProtectedRoute>} />
         <Route path="/teacher/lesson-plans" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherLessonPlans /></ProtectedRoute>} />
 
+        {/* Operator Control Center — operator and principal */}
+        <Route path="/ops" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, OpsOverview)}</ProtectedRoute>} />
+        <Route path="/ops/inbox" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, ExceptionInbox)}</ProtectedRoute>} />
+        <Route path="/ops/automations" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, AutomationsList)}</ProtectedRoute>} />
+        <Route path="/ops/automations/:key" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, AutomationDetail)}</ProtectedRoute>} />
+        <Route path="/ops/audit" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, AuditLog)}</ProtectedRoute>} />
+        <Route path="/ops/settings" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, OpsSettings)}</ProtectedRoute>} />
         <Route path="/dashboard" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminHome)}</ProtectedRoute>} />
         <Route path="/dashboard-alerts" element={<ProtectedRoute principalOnly>{inShell(AdminShell, PrincipalDashboard)}</ProtectedRoute>} />
         <Route path="/finance" element={<ProtectedRoute principalOnly>{inShell(AdminShell, FinanceAdmin)}</ProtectedRoute>} />
