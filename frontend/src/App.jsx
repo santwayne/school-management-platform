@@ -66,6 +66,11 @@ import StudentProfile from './components/StudentProfile';
 import AdminOptionalSubjects from './components/AdminOptionalSubjects';
 import AdminStudentLeave from './components/AdminStudentLeave';
 import StudentLeave from './components/StudentLeave';
+import AdmissionsPipeline from './components/admissions/AdmissionsPipeline';
+import EnquiryDetail from './components/admissions/EnquiryDetail';
+import VisitSlots from './components/admissions/VisitSlots';
+import AdmissionSettings from './components/admissions/AdmissionSettings';
+import PublicAdmissionEnquiry from './components/PublicAdmissionEnquiry';
 import AdminBulkUpload from './components/AdminBulkUpload';
 import AdminCertificates from './components/AdminCertificates';
 import AdminDocumentRequests from './components/AdminDocumentRequests';
@@ -127,6 +132,11 @@ function AppRoutes() {
         <Route path="/ops/automations/:key" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, AutomationDetail)}</ProtectedRoute>} />
         <Route path="/ops/audit" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, AuditLog)}</ProtectedRoute>} />
         <Route path="/ops/settings" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, OpsSettings)}</ProtectedRoute>} />
+        <Route path="/ops/admissions" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, AdmissionsPipeline)}</ProtectedRoute>} />
+        <Route path="/ops/admissions/slots" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, VisitSlots)}</ProtectedRoute>} />
+        <Route path="/ops/admissions/settings" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, AdmissionSettings)}</ProtectedRoute>} />
+        <Route path="/ops/admissions/:id" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, EnquiryDetail)}</ProtectedRoute>} />
+        <Route path="/admissions/:slug" element={<PublicAdmissionEnquiry />} />
         <Route path="/dashboard" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminHome)}</ProtectedRoute>} />
         <Route path="/dashboard-alerts" element={<ProtectedRoute principalOnly>{inShell(AdminShell, PrincipalDashboard)}</ProtectedRoute>} />
         <Route path="/finance" element={<ProtectedRoute principalOnly>{inShell(AdminShell, FinanceAdmin)}</ProtectedRoute>} />
