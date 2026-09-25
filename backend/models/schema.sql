@@ -2112,3 +2112,189 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_parent_messages_wamid ON parent_messages(wa
 INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
   ('parent_assistant', 'Parent WhatsApp assistant', 'communication', NULL, true, NULL, NULL, 30)
 ON CONFLICT (automation_key) DO NOTHING;
+
+-- ============================================================
+-- Phase 4a: Automatic teacher substitution
+-- A teacher on approved leave, or with no biometric punch by the cutoff,
+-- has each of that day's periods assigned to the best free teacher
+-- (same subject > teaches that class > fewest substitutions this week),
+-- within a daily cap. Unfilled periods go to the Control Center inbox.
+-- ============================================================
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS max_substitutions_per_day INT NOT NULL DEFAULT 2;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS substitution_cutoff_time TIME NOT NULL DEFAULT '08:15';
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS auto_substitution BOOLEAN NOT NULL DEFAULT TRUE;
+
+CREATE TABLE IF NOT EXISTS substitutions (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    timetable_slot_id INT NOT NULL REFERENCES timetable_slots(id) ON DELETE CASCADE,
+    absent_teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    substitute_teacher_id INT REFERENCES teachers(id) ON DELETE SET NULL, -- NULL = unfilled
+    status VARCHAR(20) NOT NULL DEFAULT 'assigned', -- assigned | unfilled | cancelled
+    reason VARCHAR(20) NOT NULL, -- 'leave' | 'no_punch' | 'manual'
+    score_detail JSONB,
+    assigned_by INT REFERENCES teachers(id), -- NULL = automatic
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+-- One live substitution per period per day (cancelled rows don't block re-planning).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_substitution_slot_date ON substitutions(timetable_slot_id, date) WHERE status <> 'cancelled';
+CREATE INDEX IF NOT EXISTS idx_substitutions_school_date ON substitutions(school_id, date);
+
+-- Operator marks a teacher absent for a day without a leave request.
+CREATE TABLE IF NOT EXISTS teacher_absence_marks (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    marked_by INT REFERENCES teachers(id),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (teacher_id, date)
+);
+
+INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
+  ('substitution', 'Teacher substitution planner', 'academics', 15, true, 'SubstitutionQueue', 'planSubstitutions', 60)
+ON CONFLICT (automation_key) DO NOTHING;
+
+-- ============================================================
+-- Phase 4d: Automatic payroll + payslips
+-- Monthly: compute each staff member's pay (base, allowances, deductions,
+-- loss of pay for unapproved absence), flag anomalies, and put ONE approval
+-- in the principal's inbox. On approval: payslips (PDF on demand), staff
+-- notified, teacher_salary_history rows written for the existing
+-- mark-paid flow, bank CSV for the accountant. Nothing is paid automatically.
+-- ============================================================
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS bank_account_name VARCHAR(150);
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS bank_account_number VARCHAR(30);
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS bank_ifsc VARCHAR(15);
+
+CREATE TABLE IF NOT EXISTS salary_components (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT REFERENCES teachers(id) ON DELETE CASCADE, -- NULL = everyone
+    name VARCHAR(60) NOT NULL,
+    kind VARCHAR(10) NOT NULL, -- 'earning' | 'deduction'
+    calc VARCHAR(20) NOT NULL, -- 'fixed' | 'percent_of_base'
+    value NUMERIC(10,2) NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    CHECK (kind IN ('earning', 'deduction')),
+    CHECK (calc IN ('fixed', 'percent_of_base'))
+);
+
+CREATE TABLE IF NOT EXISTS payroll_runs (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    period VARCHAR(7) NOT NULL, -- 'YYYY-MM'
+    status VARCHAR(20) NOT NULL DEFAULT 'draft', -- draft | approved
+    working_days INT NOT NULL,
+    totals JSONB NOT NULL DEFAULT '{}'::jsonb,
+    anomalies JSONB NOT NULL DEFAULT '[]'::jsonb,
+    approved_by INT REFERENCES teachers(id),
+    approved_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (school_id, period)
+);
+
+CREATE TABLE IF NOT EXISTS payslips (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    payroll_run_id INT NOT NULL REFERENCES payroll_runs(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    breakdown JSONB NOT NULL,
+    gross NUMERIC(10,2) NOT NULL,
+    deductions NUMERIC(10,2) NOT NULL,
+    net_pay NUMERIC(10,2) NOT NULL,
+    notified_at TIMESTAMP,
+    UNIQUE (payroll_run_id, teacher_id)
+);
+
+INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
+  ('payroll_prepare', 'Monthly payroll preparation', 'fees', NULL, false, 'PayrollQueue', 'preparePayroll', NULL)
+ON CONFLICT (automation_key) DO NOTHING;
+
+-- ============================================================
+-- Phase 4c: Certificates issued automatically
+-- Bonafide / character certificates for active students, and fee
+-- certificates when nothing is due, are issued without anyone touching
+-- them. Transfer certificates always need the principal's one-click
+-- approval and are blocked while fees are due. Each certificate has a
+-- gap-free serial per school/type/year and a public verification code;
+-- the data printed on it is frozen at issue time.
+-- ============================================================
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS principal_name VARCHAR(150);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS affiliation_number VARCHAR(60);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS board_name VARCHAR(60);
+
+CREATE TABLE IF NOT EXISTS certificate_counters (
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    cert_type VARCHAR(40) NOT NULL,
+    year INT NOT NULL,
+    last_number INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (school_id, cert_type, year)
+);
+
+CREATE TABLE IF NOT EXISTS issued_certificates (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    request_id INT REFERENCES document_requests(id) ON DELETE SET NULL,
+    cert_type VARCHAR(40) NOT NULL,
+    serial VARCHAR(40) NOT NULL,
+    verify_code VARCHAR(16) NOT NULL UNIQUE,
+    data JSONB NOT NULL, -- snapshot printed on the certificate
+    issued_by INT REFERENCES teachers(id), -- NULL = automatic
+    issued_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TIMESTAMP,
+    UNIQUE (school_id, serial)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_issued_cert_request ON issued_certificates(request_id) WHERE request_id IS NOT NULL;
+
+INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
+  ('certificates', 'Certificate issuing', 'admin', 10, false, 'CertificateQueue', 'processCertificates', 120)
+ON CONFLICT (automation_key) DO NOTHING;
+
+-- ============================================================
+-- Phase 4b: Timetable generator
+-- The school enters what each class needs (subject, teacher, periods per
+-- week) and when teachers are unavailable; the solver produces a draft with
+-- zero clashes; the principal publishes it. Publishing updates existing
+-- timetable_slots rows in place (keeping their ids, so lesson plans and
+-- substitution history stay attached) and a backup of the previous
+-- timetable is kept as a draft for rollback.
+-- ============================================================
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS periods_per_day INT NOT NULL DEFAULT 8;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS working_days VARCHAR(20) NOT NULL DEFAULT '1,2,3,4,5,6';
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS period_times JSONB; -- [{"start":"08:00","end":"08:40"}, ...]
+
+CREATE TABLE IF NOT EXISTS timetable_requirements (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    class_id INT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    subject_id INT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    teacher_id INT REFERENCES teachers(id) ON DELETE SET NULL,
+    periods_per_week SMALLINT NOT NULL CHECK (periods_per_week BETWEEN 1 AND 20),
+    heavy BOOLEAN NOT NULL DEFAULT FALSE, -- keep out of the last period
+    UNIQUE (class_id, subject_id)
+);
+
+CREATE TABLE IF NOT EXISTS teacher_unavailability (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    day_of_week SMALLINT NOT NULL,
+    period_number SMALLINT NOT NULL,
+    UNIQUE (teacher_id, day_of_week, period_number)
+);
+
+CREATE TABLE IF NOT EXISTS timetable_drafts (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    slots JSONB NOT NULL,
+    unplaced JSONB NOT NULL DEFAULT '[]'::jsonb,
+    penalty NUMERIC NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft', -- draft | published | backup | discarded
+    created_by INT REFERENCES teachers(id),
+    published_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

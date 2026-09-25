@@ -74,3 +74,12 @@ export const opsDigestQueue = new Queue('OpsDigestQueue', { connection });
 
 // Admissions: follow-ups for silent enquiries + campus-visit reminders.
 export const admissionFollowupQueue = new Queue('AdmissionFollowupQueue', { connection });
+
+// Teacher substitution planner (every 15 min).
+export const substitutionQueue = new Queue('SubstitutionQueue', { connection });
+
+// Monthly payroll preparation (25th, 10 AM IST).
+export const payrollQueue = new Queue('PayrollQueue', { connection });
+
+// Certificate issuing (every 10 min).
+export const certificateQueue = new Queue('CertificateQueue', { connection });

@@ -42,6 +42,10 @@ import studentLeaveRoutes from './routes/studentLeave.js';
 import studentRecordsRoutes from './routes/studentRecords.js';
 import examsRoutes from './routes/exams.js';
 import opsRoutes from './routes/ops.js';
+import timetableGeneratorRoutes from './routes/timetableGenerator.js';
+import certificatesRoutes, { publicRouter as publicCertificatesRoutes } from './routes/certificates.js';
+import payrollRunsRoutes from './routes/payrollRuns.js';
+import substitutionsRoutes from './routes/substitutions.js';
 import parentConversationsRoutes from './routes/parentConversations.js';
 import admissionsRoutes, { publicRouter as publicAdmissionsRoutes } from './routes/admissions.js';
 import './workers/gpsPollWorker.js';
@@ -66,7 +70,7 @@ import './workers/dailyDigestWorker.js';
 import admissionFollowupWorker from './workers/admissionFollowupWorker.js';
 import { instrumentWorkers } from './workers/instrumentation.js';
 import { startHealthCheckLoop } from './workers/healthCheck.js';
-import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest, scheduleFeeReminders, schedulePettyCashReminders, scheduleStaffLeaveReminders, scheduleTeachingReminders, scheduleLowAttendanceAlerts, scheduleEventReminders, schedulePerformanceDrift, scheduleWeeklyProgressSummaries, scheduleRecurringDoubtCheck, scheduleOpsDailyDigest, scheduleAdmissionFollowups } from './workers/scheduler.js';
+import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest, scheduleFeeReminders, schedulePettyCashReminders, scheduleStaffLeaveReminders, scheduleTeachingReminders, scheduleLowAttendanceAlerts, scheduleEventReminders, schedulePerformanceDrift, scheduleWeeklyProgressSummaries, scheduleRecurringDoubtCheck, scheduleOpsDailyDigest, scheduleAdmissionFollowups, scheduleSubstitutions, schedulePayroll, scheduleCertificates } from './workers/scheduler.js';
 import { runBootstrap } from './scripts/autoBootstrap.js';
 
 dotenv.config();
@@ -129,6 +133,11 @@ app.use('/api/student-leave', studentLeaveRoutes);
 app.use('/api/student-records', studentRecordsRoutes);
 app.use('/api/exams', examsRoutes);
 app.use('/api/ops', opsRoutes);
+app.use('/api/timetable-generator', timetableGeneratorRoutes);
+app.use('/api/certificates', certificatesRoutes);
+app.use('/api/public/certificates', publicCertificatesRoutes);
+app.use('/api/payroll-runs', payrollRunsRoutes);
+app.use('/api/substitutions', substitutionsRoutes);
 app.use('/api/parent-conversations', parentConversationsRoutes);
 app.use('/api/admissions', admissionsRoutes);
 app.use('/api/public/admissions', publicAdmissionsRoutes);
@@ -235,6 +244,21 @@ async function start() {
       await scheduleAdmissionFollowups();
     } catch (err) {
       console.error('Failed to schedule admission follow-up job (is Redis running?):', err.message);
+    }
+    try {
+      await scheduleSubstitutions();
+    } catch (err) {
+      console.error('Failed to schedule substitution planner (is Redis running?):', err.message);
+    }
+    try {
+      await schedulePayroll();
+    } catch (err) {
+      console.error('Failed to schedule payroll preparation (is Redis running?):', err.message);
+    }
+    try {
+      await scheduleCertificates();
+    } catch (err) {
+      console.error('Failed to schedule certificate issuing (is Redis running?):', err.message);
     }
     instrumentWorkers();
     startHealthCheckLoop();

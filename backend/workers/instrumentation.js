@@ -16,6 +16,9 @@ import performanceDriftWorker from './performanceDriftWorker.js';
 import weeklyProgressSummaryWorker from './weeklyProgressSummaryWorker.js';
 import recurringDoubtWorker from './recurringDoubtWorker.js';
 import admissionFollowupWorker from './admissionFollowupWorker.js';
+import substitutionWorker from './substitutionWorker.js';
+import payrollWorker from './payrollWorker.js';
+import certificateWorker from './certificateWorker.js';
 
 // ------------------------------------------------------------------
 // Every existing worker already `export default`s its Worker instance, so
@@ -45,6 +48,9 @@ const WORKERS = [
   { worker: weeklyProgressSummaryWorker, keyFor: () => 'weekly_progress_summary' },
   { worker: recurringDoubtWorker, keyFor: () => 'recurring_doubt' },
   { worker: admissionFollowupWorker, keyFor: () => 'admission_followup' },
+  { worker: substitutionWorker, keyFor: () => 'substitution' },
+  { worker: payrollWorker, keyFor: () => 'payroll_prepare' },
+  { worker: certificateWorker, keyFor: () => 'certificates' },
 ];
 
 let registryCache = { at: 0, rows: new Map() };

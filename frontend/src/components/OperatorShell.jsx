@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Gauge, Inbox, Workflow, ScrollText, Settings2, LogOut, Menu, X, UserPlus2, MessagesSquare } from 'lucide-react';
+import { Gauge, Inbox, Workflow, ScrollText, Settings2, LogOut, Menu, X, UserPlus2, MessagesSquare, Repeat, Award } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
 import AdminShell from './AdminShell';
@@ -10,6 +10,8 @@ const NAV = [
   { label: 'Inbox', icon: Inbox, to: '/ops/inbox', badge: true },
   { label: 'Admissions', icon: UserPlus2, to: '/ops/admissions' },
   { label: 'Parent messages', icon: MessagesSquare, to: '/ops/parents' },
+  { label: 'Substitution', icon: Repeat, to: '/ops/substitutions' },
+  { label: 'Issued certificates', icon: Award, to: '/ops/certificates' },
   { label: 'Automations', icon: Workflow, to: '/ops/automations' },
   { label: 'Activity log', icon: ScrollText, to: '/ops/audit' },
   { label: 'Daily report', icon: Settings2, to: '/ops/settings' },

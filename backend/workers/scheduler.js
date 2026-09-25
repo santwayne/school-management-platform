@@ -1,4 +1,4 @@
-import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue, weeklyProgressSummaryQueue, recurringDoubtQueue, opsDigestQueue, admissionFollowupQueue } from '../config/queue.js';
+import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue, weeklyProgressSummaryQueue, recurringDoubtQueue, opsDigestQueue, admissionFollowupQueue, substitutionQueue, payrollQueue, certificateQueue } from '../config/queue.js';
 
 // The worker only reacts to jobs that land on GuidanceQueue — nothing put
 // any there before. This registers a repeatable job so it actually fires
@@ -221,4 +221,21 @@ export async function scheduleOpsDailyDigest() {
 export async function scheduleAdmissionFollowups() {
   await admissionFollowupQueue.add('admissionFollowups', {}, { repeat: { every: 30 * 60 * 1000 }, removeOnComplete: true, jobId: 'admission-followups' });
   console.log('Admission follow-up job scheduled (every 30 min).');
+}
+
+// Substitution planner, every 15 min. Cheap when nobody is absent.
+export async function scheduleSubstitutions() {
+  await substitutionQueue.add('planSubstitutions', {}, { repeat: { every: 15 * 60 * 1000 }, removeOnComplete: true, jobId: 'substitution-planner' });
+  console.log('Substitution planner scheduled (every 15 min).');
+}
+
+// Payroll draft on the 25th at 10 AM IST, so the principal has days to review.
+export async function schedulePayroll() {
+  await payrollQueue.add('preparePayroll', {}, { repeat: { pattern: process.env.PAYROLL_CRON || '0 10 25 * *', tz: 'Asia/Kolkata' }, removeOnComplete: true, jobId: 'payroll-prepare' });
+  console.log('Monthly payroll preparation scheduled (25th, 10 AM IST).');
+}
+
+export async function scheduleCertificates() {
+  await certificateQueue.add('processCertificates', {}, { repeat: { every: 10 * 60 * 1000 }, removeOnComplete: true, jobId: 'certificate-issuing' });
+  console.log('Certificate issuing scheduled (every 10 min).');
 }
