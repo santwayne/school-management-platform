@@ -1,8 +1,31 @@
 import crypto from 'crypto';
 import PDFDocument from 'pdfkit';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import pool from '../config/db.js';
-import { sendTemplateMessage } from './whatsappService.js';
+import { sendTemplateMessage, sendMediaMessage } from './whatsappService.js';
 import { raiseException, audit, autoResolve } from './opsService.js';
+
+// Same S3 client/config as routes/profiles.js and routes/settings.js —
+// reused, not reconfigured, so a single AWS_S3_BUCKET/AWS_REGION pair backs
+// every upload this app makes.
+const s3 = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
+
+async function uploadCertificatePdf(buffer, filename) {
+  const key = `waynur/certificates/${Date.now()}-${filename}`;
+  await s3.send(new PutObjectCommand({
+    Bucket: process.env.AWS_S3_BUCKET,
+    Key: key,
+    Body: buffer,
+    ContentType: 'application/pdf',
+  }));
+  return `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+}
 
 // ------------------------------------------------------------------
 // Automatic certificates.
@@ -108,16 +131,45 @@ export async function issueCertificate(schoolId, requestId, { issuedBy = null } 
     await client.query('COMMIT');
 
     await audit({ schoolId, actorType: issuedBy ? 'user' : 'system', actorId: issuedBy, action: 'certificate.issued', entityType: 'student', entityId: request.student_id, detail: { serial, type: request.request_type } });
+
+    // Render the actual PDF once here (same renderer the download route
+    // uses) and upload it to S3, so the family can be sent the real document
+    // over WhatsApp instead of only a text notification. Best-effort: a
+    // missing AWS config or an S3 hiccup must never fail certificate
+    // issuance itself — the on-demand /pdf route still works either way,
+    // regenerating fresh from `data` if pdf_url never got set.
+    let pdfUrl = null;
+    try {
+      const rendered = await renderCertificatePdf({ cert_type: request.request_type, serial, verify_code: verifyCode, data, revoked_at: null, student_id: request.student_id });
+      pdfUrl = await uploadCertificatePdf(rendered.buffer, rendered.filename);
+      await client.query('UPDATE issued_certificates SET pdf_url = $1 WHERE id = $2', [pdfUrl, certId]);
+    } catch (err) {
+      console.error(`[certificates] PDF render/S3 upload failed for request ${requestId}:`, err.message);
+    }
+
     // Template (Utility, en): certificate_ready {{1}} child name, {{2}} certificate, {{3}} serial
     // "The {{2}} for {{1}} (No. {{3}}) is ready. Please collect it from the school office or download it from the student portal."
     if (student.opt_in_status === 'OPTED_IN' && student.parent_phone) {
+      const phone = String(student.parent_phone).replace(/^\+/, '');
       try {
-        await sendTemplateMessage(String(student.parent_phone).replace(/^\+/, ''), process.env.WHATSAPP_CERTIFICATE_TEMPLATE || 'certificate_ready', 'en', [student.name, data.title, serial]);
+        await sendTemplateMessage(phone, process.env.WHATSAPP_CERTIFICATE_TEMPLATE || 'certificate_ready', 'en', [student.name, data.title, serial]);
       } catch (err) {
-        console.error(`[certificates] WhatsApp for request ${requestId} failed:`, err.response?.data?.error?.message || err.message);
+        console.error(`[certificates] WhatsApp template for request ${requestId} failed:`, err.response?.data?.error?.message || err.message);
+      }
+      // Best-effort bonus: also hand over the actual file, if there's an
+      // open free-form conversation window with this parent (same
+      // constraint sendMediaMessage always has — see classNoteService.js).
+      // Never fatal: the template above already told the family it's ready
+      // and where else to get it, whether or not this succeeds.
+      if (pdfUrl) {
+        try {
+          await sendMediaMessage(phone, pdfUrl, `${data.title} — ${student.name} (No. ${serial})`);
+        } catch (err) {
+          console.error(`[certificates] WhatsApp document for request ${requestId} failed (expected if the 24h window is closed):`, err.response?.data?.error?.message || err.message);
+        }
       }
     }
-    return { id: certId, serial, verify_code: verifyCode };
+    return { id: certId, serial, verify_code: verifyCode, pdf_url: pdfUrl };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
@@ -199,10 +251,13 @@ export async function approveCertificate(schoolId, requestId, user) {
 
 const fmt = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '—');
 
-export async function certificatePdf(certId, schoolId) {
-  const r = await pool.query(`SELECT * FROM issued_certificates WHERE id = $1 AND school_id = $2`, [certId, schoolId]);
-  const c = r.rows[0];
-  if (!c) return null;
+// Pure-ish rendering: takes the same shape as an issued_certificates row
+// (cert_type, serial, verify_code, data, revoked_at) and draws the PDF.
+// Shared by the on-demand download route (certificatePdf, below) and
+// issueCertificate (which renders once at issuance time to upload to S3 and
+// WhatsApp the actual file, rather than only a "your certificate is ready"
+// text notification).
+async function renderCertificatePdf(c) {
   const { data } = c;
   const s = data.student;
   const he = s.gender === 'female' ? 'she' : s.gender === 'male' ? 'he' : 'they';
@@ -232,4 +287,11 @@ export async function certificatePdf(certId, schoolId) {
   if (c.revoked_at) doc.fontSize(40).fillColor('#c00').opacity(0.3).text('REVOKED', 150, 350, { rotate: -30 });
   doc.end();
   return { buffer: await done, filename: `${c.serial.replace(/\//g, '-')}.pdf`, studentId: c.student_id };
+}
+
+export async function certificatePdf(certId, schoolId) {
+  const r = await pool.query(`SELECT * FROM issued_certificates WHERE id = $1 AND school_id = $2`, [certId, schoolId]);
+  const c = r.rows[0];
+  if (!c) return null;
+  return renderCertificatePdf(c);
 }

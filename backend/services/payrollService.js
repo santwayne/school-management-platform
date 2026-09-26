@@ -24,7 +24,14 @@ export function countWorkingDays(period, holidayIsoDates = []) {
   return n;
 }
 
-export function computePay({ base, workingDays, lopDays = 0, components = [] }) {
+// Statutory formulas (India). PF wage ceiling and the ESI eligibility
+// threshold are fixed by law, not configurable per school.
+const PF_WAGE_CEILING = 15000;
+const PF_RATE = 0.12;
+const ESI_ELIGIBILITY_CEILING = 21000; // gross above this: outside the scheme, not just capped
+const ESI_RATE = 0.0075;
+
+export function computePay({ base, workingDays, lopDays = 0, components = [], pfEnabled = false, esiEnabled = false }) {
   const baseAmt = Number(base) || 0;
   const earnings = [];
   const deductions = [];
@@ -36,6 +43,16 @@ export function computePay({ base, workingDays, lopDays = 0, components = [] }) 
   const lopAmount = workingDays > 0 && lopDays > 0 ? r2((baseAmt / workingDays) * Math.min(lopDays, workingDays)) : 0;
   if (lopAmount) deductions.push({ name: `Loss of pay (${lopDays} day${lopDays === 1 ? '' : 's'})`, amount: lopAmount });
   const gross = r2(baseAmt + earnings.reduce((a, e) => a + e.amount, 0));
+
+  if (pfEnabled) {
+    const pfAmount = r2(Math.min(baseAmt, PF_WAGE_CEILING) * PF_RATE);
+    if (pfAmount) deductions.push({ name: 'Provident Fund (PF)', amount: pfAmount });
+  }
+  if (esiEnabled && gross > 0 && gross <= ESI_ELIGIBILITY_CEILING) {
+    const esiAmount = r2(gross * ESI_RATE);
+    if (esiAmount) deductions.push({ name: 'ESI', amount: esiAmount });
+  }
+
   const totalDeductions = r2(deductions.reduce((a, d) => a + d.amount, 0));
   const net = gross - totalDeductions;
   return { base: r2(baseAmt), earnings, deductions, gross, deductions_total: totalDeductions, net: Math.max(0, net), negative: net < 0, working_days: workingDays, lop_days: lopDays };
@@ -63,6 +80,10 @@ export async function preparePayroll(schoolId, period) {
   );
   const holidaySet = holidays.rows.map((h) => h.d);
   const workingDays = countWorkingDays(period, holidaySet);
+
+  const settings = await pool.query(`SELECT pf_enabled, esi_enabled FROM school_settings WHERE school_id = $1`, [schoolId]);
+  const pfEnabled = settings.rows[0]?.pf_enabled || false;
+  const esiEnabled = settings.rows[0]?.esi_enabled || false;
 
   const staff = await pool.query(
     `SELECT t.id, t.name, t.role, t.bank_account_number, t.bank_ifsc, s.monthly_amount
@@ -117,7 +138,7 @@ export async function preparePayroll(schoolId, period) {
       }
       const components = comps.rows.filter((c) => c.teacher_id == null || c.teacher_id === s.id);
       const lopDays = attendanceTracked ? lopMap.get(s.id) || 0 : 0;
-      const pay = computePay({ base: s.monthly_amount, workingDays, lopDays, components });
+      const pay = computePay({ base: s.monthly_amount, workingDays, lopDays, components, pfEnabled, esiEnabled });
       if (pay.negative) anomalies.push({ type: 'negative', teacher_id: s.id, text: `${s.name}: deductions exceed pay; net set to ₹0.` });
       if (lopDays >= 5) anomalies.push({ type: 'high_lop', teacher_id: s.id, text: `${s.name}: ${lopDays} days loss of pay.` });
       const before = prevMap.get(s.id);

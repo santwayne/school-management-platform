@@ -29,11 +29,16 @@ export function mulberry32(seed) {
 /**
  * input: {
  *   days: [1..6], periodsPerDay: 8,
- *   requirements: [{ class_id, subject_id, teacher_id, periods_per_week, heavy?: bool }],
+ *   requirements: [{ class_id, subject_id, teacher_id, room_id?, periods_per_week, heavy?: bool }],
  *   unavailable: [{ teacher_id, day, period }],
  *   maxConsecutive: 3, maxSameSubjectPerDay: 2, seed: 1, timeLimitMs: 5000
  * }
- * output: { slots: [{ class_id, day, period, subject_id, teacher_id }], unplaced: [...], penalty, stats }
+ * output: { slots: [{ class_id, day, period, subject_id, teacher_id, room_id }], unplaced: [...], penalty, stats }
+ *
+ * room_id is optional per requirement — a lesson with none is placed exactly
+ * as before (no room constraint at all). One with a room_id can never be
+ * placed in the same room, same day, same period as another such lesson,
+ * same hard-gate treatment as teacher double-booking.
  */
 export function solveTimetable(input) {
   const days = input.days?.length ? input.days : [1, 2, 3, 4, 5, 6];
@@ -49,12 +54,13 @@ export function solveTimetable(input) {
   const unavailable = new Set((input.unavailable || []).map((u) => `${u.teacher_id}:${u.day}:${u.period}`));
   const classGrid = new Map(); // `${class}:${day}:${period}` -> lesson
   const teacherGrid = new Map(); // `${teacher}:${day}:${period}` -> lesson
+  const roomGrid = new Map(); // `${room}:${day}:${period}` -> lesson
   const sameCount = new Map(); // `${class}:${subject}:${day}` -> n
 
   // Expand requirements into individual lessons.
   const lessons = [];
   for (const r of input.requirements || []) {
-    for (let i = 0; i < r.periods_per_week; i++) lessons.push({ id: lessons.length, class_id: r.class_id, subject_id: r.subject_id, teacher_id: r.teacher_id ?? null, heavy: !!r.heavy, ppw: r.periods_per_week });
+    for (let i = 0; i < r.periods_per_week; i++) lessons.push({ id: lessons.length, class_id: r.class_id, subject_id: r.subject_id, teacher_id: r.teacher_id ?? null, room_id: r.room_id ?? null, heavy: !!r.heavy, ppw: r.periods_per_week });
   }
 
   // Most-constrained first: teachers with the most lessons, then subjects
@@ -73,6 +79,7 @@ export function solveTimetable(input) {
   const canPlace = (l, day, period) => {
     if (classGrid.has(k(l.class_id, day, period))) return false;
     if (l.teacher_id && (teacherGrid.has(k(l.teacher_id, day, period)) || unavailable.has(k(l.teacher_id, day, period)))) return false;
+    if (l.room_id && roomGrid.has(k(l.room_id, day, period))) return false;
     if ((sameCount.get(k(l.class_id, l.subject_id, day)) || 0) >= maxSame) return false;
     return true;
   };
@@ -81,11 +88,13 @@ export function solveTimetable(input) {
     l.period = period;
     classGrid.set(k(l.class_id, day, period), l);
     if (l.teacher_id) teacherGrid.set(k(l.teacher_id, day, period), l);
+    if (l.room_id) roomGrid.set(k(l.room_id, day, period), l);
     sameCount.set(k(l.class_id, l.subject_id, day), (sameCount.get(k(l.class_id, l.subject_id, day)) || 0) + 1);
   };
   const unplace = (l) => {
     classGrid.delete(k(l.class_id, l.day, l.period));
     if (l.teacher_id) teacherGrid.delete(k(l.teacher_id, l.day, l.period));
+    if (l.room_id) roomGrid.delete(k(l.room_id, l.day, l.period));
     sameCount.set(k(l.class_id, l.subject_id, l.day), (sameCount.get(k(l.class_id, l.subject_id, l.day)) || 1) - 1);
     l.day = undefined;
     l.period = undefined;
@@ -208,8 +217,8 @@ export function solveTimetable(input) {
   }
 
   return {
-    slots: lessons.filter((l) => l.day !== undefined).map((l) => ({ class_id: l.class_id, day: l.day, period: l.period, subject_id: l.subject_id, teacher_id: l.teacher_id })),
-    unplaced: unplaced.map((l) => ({ class_id: l.class_id, subject_id: l.subject_id, teacher_id: l.teacher_id })),
+    slots: lessons.filter((l) => l.day !== undefined).map((l) => ({ class_id: l.class_id, day: l.day, period: l.period, subject_id: l.subject_id, teacher_id: l.teacher_id, room_id: l.room_id })),
+    unplaced: unplaced.map((l) => ({ class_id: l.class_id, subject_id: l.subject_id, teacher_id: l.teacher_id, room_id: l.room_id })),
     penalty: totalPenalty(),
     stats: { lessons: lessons.length, iterations },
   };
@@ -220,6 +229,7 @@ export function hardViolations(slots, unavailableList = [], maxSame = 2) {
   const v = [];
   const seenClass = new Set();
   const seenTeacher = new Set();
+  const seenRoom = new Set();
   const same = new Map();
   const unavailable = new Set(unavailableList.map((u) => `${u.teacher_id}:${u.day}:${u.period}`));
   for (const s of slots) {
@@ -231,6 +241,11 @@ export function hardViolations(slots, unavailableList = [], maxSame = 2) {
       if (seenTeacher.has(tk)) v.push(`teacher ${s.teacher_id} double-booked day ${s.day} period ${s.period}`);
       if (unavailable.has(tk)) v.push(`teacher ${s.teacher_id} placed while unavailable day ${s.day} period ${s.period}`);
       seenTeacher.add(tk);
+    }
+    if (s.room_id) {
+      const rk = `${s.room_id}:${s.day}:${s.period}`;
+      if (seenRoom.has(rk)) v.push(`room ${s.room_id} double-booked day ${s.day} period ${s.period}`);
+      seenRoom.add(rk);
     }
     const sk = `${s.class_id}:${s.subject_id}:${s.day}`;
     same.set(sk, (same.get(sk) || 0) + 1);
