@@ -9,6 +9,39 @@ function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+const AUTH_ENDPOINT_RE = /\/api\/(auth\/login|auth\/student-login|auth\/refresh|super-admin\/login)$/;
+
+// A single in-flight refresh is shared by every request that hits a 401 at
+// the same time, so a page that fires several requests right as the access
+// token expires doesn't burn through several refresh-token rotations (each
+// of which invalidates the previous one) for what is really one renewal.
+let refreshPromise = null;
+
+function refreshAccessToken() {
+  const storedRefreshToken = localStorage.getItem('refreshToken');
+  if (!storedRefreshToken) return Promise.resolve(false);
+
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${API_URL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: storedRefreshToken }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return false;
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('refreshToken', data.refreshToken);
+        return true;
+      })
+      .catch(() => false)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
 // QA fix (T-1): a missing/expired token produced a 401 with a body like
 // {"error":"Missing Authorization bearer token"} — every caller just threw
 // that as a generic Error and rendered it in whatever error banner it had,
@@ -20,9 +53,9 @@ function authHeaders() {
 // themselves, where a 401 is an expected "wrong password" response, not an
 // expired session.
 function handleUnauthorized(path) {
-  const isAuthEndpoint = /\/api\/(auth\/login|auth\/student-login|super-admin\/login)$/.test(path);
-  if (isAuthEndpoint || window.location.pathname === '/login') return;
+  if (AUTH_ENDPOINT_RE.test(path) || window.location.pathname === '/login') return;
   localStorage.removeItem('token');
+  localStorage.removeItem('refreshToken');
   localStorage.removeItem('user');
   window.location.assign('/login');
 }
@@ -46,7 +79,12 @@ async function fetchWithRetry(url, options) {
   }
 }
 
-export async function apiRequest(path, { method = 'GET', body } = {}) {
+// A 401 on anything other than the login/refresh endpoints themselves means
+// "your access token expired," not "you're logged out" — try one silent
+// refresh-and-retry before falling back to the hard redirect-to-login that
+// handleUnauthorized does. `_retried` caps this at one attempt per call so
+// a refresh token that's itself invalid can't loop.
+export async function apiRequest(path, { method = 'GET', body } = {}, _retried = false) {
   const res = await fetchWithRetry(`${API_URL}${path}`, {
     method,
     headers: {
@@ -56,6 +94,10 @@ export async function apiRequest(path, { method = 'GET', body } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
 
+  if (res.status === 401 && !_retried && !AUTH_ENDPOINT_RE.test(path)) {
+    if (await refreshAccessToken()) return apiRequest(path, { method, body }, true);
+  }
+
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401) handleUnauthorized(path);
@@ -64,18 +106,53 @@ export async function apiRequest(path, { method = 'GET', body } = {}) {
   return data;
 }
 
-export async function apiUpload(path, formData) {
+export async function apiUpload(path, formData, _retried = false) {
   const res = await fetch(`${API_URL}${path}`, {
     method: 'POST',
     headers: { ...authHeaders() }, // no Content-Type — browser sets multipart boundary
     body: formData,
   });
+
+  if (res.status === 401 && !_retried) {
+    if (await refreshAccessToken()) return apiUpload(path, formData, true);
+  }
+
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401) handleUnauthorized(path);
     throw new Error(data.error || `Upload failed (${res.status})`);
   }
   return data;
+}
+
+// Downloads a file from an authenticated endpoint (payslip/certificate PDFs,
+// the payroll bank CSV, ...). A plain <a href="/api/..."> can't work for
+// these — browser navigation never sends the stored Bearer token, so every
+// such link was silently hitting a 401 instead of the file. This fetches
+// with the same auth (and the same silent-refresh-on-401 as apiRequest)
+// and hands the browser a same-origin blob: URL to save instead.
+export async function apiDownload(path, filename, _retried = false) {
+  const res = await fetch(`${API_URL}${path}`, { headers: { ...authHeaders() } });
+
+  if (res.status === 401 && !_retried) {
+    if (await refreshAccessToken()) return apiDownload(path, filename, true);
+  }
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) handleUnauthorized(path);
+    throw new Error(data.error || `Download failed (${res.status})`);
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export { API_URL };

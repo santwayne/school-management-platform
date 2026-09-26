@@ -12,6 +12,7 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     const data = await apiRequest('/api/auth/login', { method: 'POST', body: { email, password } });
     localStorage.setItem('token', data.token);
+    localStorage.setItem('refreshToken', data.refreshToken);
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
     return data.user;
@@ -23,6 +24,7 @@ export function AuthProvider({ children }) {
       body: { login_id: loginId, pin },
     });
     localStorage.setItem('token', data.token);
+    localStorage.setItem('refreshToken', data.refreshToken);
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
     return data.user;
@@ -31,13 +33,21 @@ export function AuthProvider({ children }) {
   const superAdminLogin = async (email, password) => {
     const data = await apiRequest('/api/super-admin/login', { method: 'POST', body: { email, password } });
     localStorage.setItem('token', data.token);
+    localStorage.setItem('refreshToken', data.refreshToken);
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
     return data.user;
   };
 
   const logout = () => {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (refreshToken) {
+      // Best-effort: revoke server-side so a copy left in this browser can't
+      // keep renewing access. Logout itself must never block on this.
+      apiRequest('/api/auth/logout', { method: 'POST', body: { refreshToken } }).catch(() => {});
+    }
     localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
     setUser(null);
   };

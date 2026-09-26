@@ -53,6 +53,7 @@ import AuditLog from './components/ops/AuditLog';
 import OpsSettings from './components/ops/OpsSettings';
 import AdminStaffLeave from './components/AdminStaffLeave';
 import TeacherLeave from './components/TeacherLeave';
+import MyPayslips from './components/MyPayslips';
 import AdminTimetable from './components/AdminTimetable';
 import TeacherLessonPlans from './components/TeacherLessonPlans';
 import AdminLessonPlans from './components/AdminLessonPlans';
@@ -127,6 +128,7 @@ function AppRoutes() {
 
         <Route path="/teacher" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherPortal /></ProtectedRoute>} />
         <Route path="/teacher/leave" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherLeave /></ProtectedRoute>} />
+        <Route path="/teacher/payslips" element={<ProtectedRoute teacherOrPrincipalOnly><MyPayslips /></ProtectedRoute>} />
         <Route path="/teacher/lesson-plans" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherLessonPlans /></ProtectedRoute>} />
 
         {/* Operator Control Center — operator and principal */}
