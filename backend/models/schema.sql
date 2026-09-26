@@ -2298,3 +2298,95 @@ CREATE TABLE IF NOT EXISTS timetable_drafts (
     published_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ============================================================
+-- Refresh tokens (Priority 1 gap): access JWTs expire hard at 12h with
+-- no way to renew short of a full re-login. This adds a long-lived,
+-- rotating refresh token per session so the frontend can silently mint
+-- a new access token instead of forcing the user back to the login
+-- screen every 12 hours.
+--
+-- Only the SHA-256 hash is stored, never the raw token (same principle
+-- as password_hash) — a DB leak alone can't be replayed. subject_type/
+-- subject_id is polymorphic (teacher | student | super_admin) rather
+-- than three separate tables, matching the actor_type/actor_id pattern
+-- audit_log already uses for the same reason.
+--
+-- Rotation: /auth/refresh deletes the row it consumed and inserts a new
+-- one for the same subject inside one transaction, so a refresh token
+-- can only be used once — a stolen-and-replayed old token simply stops
+-- working the moment the legitimate client rotates past it.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    id BIGSERIAL PRIMARY KEY,
+    subject_type VARCHAR(20) NOT NULL, -- 'teacher' | 'student' | 'super_admin'
+    subject_id INT NOT NULL,
+    school_id INT REFERENCES schools(id) ON DELETE CASCADE,
+    token_hash CHAR(64) NOT NULL UNIQUE,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_subject ON refresh_tokens(subject_type, subject_id);
+
+-- Certificate PDFs were only ever generated on the fly for the download
+-- button — never persisted anywhere, so there was nothing stable to WhatsApp
+-- to the family directly (only a text notification with the serial number
+-- went out). This stores the exact PDF generated at issuance time in S3, so
+-- the same bytes can be re-served instantly and handed to sendMediaMessage.
+ALTER TABLE issued_certificates ADD COLUMN IF NOT EXISTS pdf_url TEXT;
+
+-- Opt-in statutory payroll deductions. Off by default: not every school
+-- wants these auto-applied on day one, and turning them on silently would
+-- change already-approved-looking draft numbers underneath an accountant.
+-- Formulas are the standard statutory ones (PF: 12% of basic capped at the
+-- ₹15,000 wage ceiling; ESI: 0.75% of gross, only when gross <= ₹21,000/mo —
+-- above that an employee is outside the scheme entirely, not just capped).
+-- TDS is deliberately NOT auto-calculated here: correct TDS needs each
+-- employee's projected annual income and investment declarations, which
+-- this system doesn't collect — an accountant enters it manually as a fixed
+-- deduction via the existing salary_components mechanism instead.
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS pf_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS esi_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- ============================================================
+-- Timetable: rooms as a real constraint. Previously the solver only ever
+-- checked class/teacher availability — two classes needing the same lab in
+-- the same period could both get placed there with nothing to stop it.
+-- room_id on a requirement is optional: a subject with no room requirement
+-- (most of them — a home-class lesson needs no dedicated room) is placed
+-- exactly as before, so this is purely additive for schools that use it.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS rooms (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    name VARCHAR(60) NOT NULL,
+    room_type VARCHAR(20) NOT NULL DEFAULT 'classroom', -- 'classroom' | 'lab' | 'other'
+    capacity INT,
+    UNIQUE (school_id, name)
+);
+ALTER TABLE timetable_requirements ADD COLUMN IF NOT EXISTS room_id INT REFERENCES rooms(id) ON DELETE SET NULL;
+ALTER TABLE timetable_slots ADD COLUMN IF NOT EXISTS room_id INT REFERENCES rooms(id) ON DELETE SET NULL;
+
+-- ============================================================
+-- Admissions: an online application fee, paid the same way student fees
+-- already are (a Razorpay payment link, sent over WhatsApp, reconciled by
+-- the existing webhook). Mirrors fee_payment_links exactly, but keyed to an
+-- enquiry instead of a student_id — there is no student row yet at
+-- application stage, that's only created on "Admit".
+-- ============================================================
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS admission_fee_amount NUMERIC(10,2);
+CREATE TABLE IF NOT EXISTS admission_payment_links (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    enquiry_id INT NOT NULL REFERENCES admission_enquiries(id) ON DELETE CASCADE,
+    amount NUMERIC(10,2) NOT NULL,
+    reference_id VARCHAR(80) NOT NULL UNIQUE,
+    razorpay_link_id VARCHAR(80),
+    razorpay_link_url TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'CREATED', -- CREATED | PAID
+    paid_at TIMESTAMP,
+    created_by INT REFERENCES teachers(id),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_admission_payment_links_enquiry ON admission_payment_links(enquiry_id);
