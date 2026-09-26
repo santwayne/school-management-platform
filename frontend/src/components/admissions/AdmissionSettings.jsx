@@ -92,7 +92,7 @@ function SettingsTab() {
     try {
       await apiRequest('/api/admissions/settings', {
         method: 'PUT',
-        body: { admission_code: form.admission_code, public_slug: form.public_slug, admissions_open: form.admissions_open, admission_followup_days: form.admission_followup_days },
+        body: { admission_code: form.admission_code, public_slug: form.public_slug, admissions_open: form.admissions_open, admission_followup_days: form.admission_followup_days, admission_fee_amount: form.admission_fee_amount || null },
       });
       setNotice('Saved.');
       load();
@@ -127,6 +127,11 @@ function SettingsTab() {
         <label className="block text-sm max-w-xs">
           <span className="text-ink-soft">Follow up on days (comma-separated)</span>
           <input value={form.admission_followup_days || ''} onChange={set('admission_followup_days')} placeholder="1,3,7" className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep" />
+        </label>
+        <label className="block text-sm max-w-xs">
+          <span className="text-ink-soft">Application fee (₹, optional)</span>
+          <input type="number" min="0" value={form.admission_fee_amount || ''} onChange={set('admission_fee_amount')} placeholder="e.g. 500" className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep" />
+          <span className="text-xs text-ink-soft">Lets you send a payment link from an enquiry's page once they're ready to formally apply. Leave blank if you don't charge one.</span>
         </label>
         <button disabled={saving} className="px-4 py-2 rounded-lg bg-terracotta text-white text-sm font-medium hover:bg-terracotta-deep disabled:opacity-50">
           {saving ? 'Saving…' : 'Save'}
