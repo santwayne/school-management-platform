@@ -83,15 +83,20 @@ only the outbound WhatsApp/voice/AI calls will log an error and fail gracefully.
 
 ## Known gaps still open (be upfront about these before pitching to a school)
 
-- **Image OCR is not wired in.** The webhook detects an image message and downloads it, but text extraction
-  from the image itself needs a real OCR/vision provider plugged into `routes/whatsapp.js`.
-- **No admin UI to create schools/classes/students/parents yet** — currently only `scripts/seed.js`. Needed
-  before onboarding a second real school.
-- **`test_rubrics` has no authoring UI** — a teacher currently can't add the correct answer for OCR grading
-  through the app; it must be inserted directly for now.
-- **No refresh-token flow** — JWTs expire after 12h and the user is simply logged out; fine for MVP.
+- **`test_rubrics` has no manual authoring UI** — rubrics are AI-generated as part of test creation; a teacher
+  can't currently hand-edit one independent of that generation flow.
 - Per the original spec's own risk note: prototype OCR grading against real handwriting samples before
   promising it to any school — accuracy has not been validated here.
+- Admissions Autopilot's WhatsApp replies have no dedicated Punjabi copy yet — it falls back to Hindi.
+- Automated test coverage for the Admissions/Parent Assistant/Staff Automation modules is unit-tests-only
+  (pure helper/decision functions); nothing yet exercises their DB-backed orchestration functions end-to-end.
+
+The public signup wizard (`Onboarding.jsx` / `routes/onboarding.js`) still only creates the school, the
+principal's account, and a bare class list — it deliberately doesn't try to collect subjects, staff, students
+or parents pre-approval (the school starts `pending` until a super admin activates it, so there's no session
+to build a real staff/student roster against yet). Once the principal logs in, `AdminHome`'s **Setup
+Checklist** picks up exactly there and links straight to the Manage School tab for whatever's still empty,
+reusing the same Classes/Staff/Students/Parents CRUD screens rather than duplicating that logic in the wizard.
 
 ## Deploying live
 
