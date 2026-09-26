@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck, NotebookPen, X, Users, MessageCircleQuestion, Bell } from 'lucide-react';
+import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck, NotebookPen, X, Users, MessageCircleQuestion, Bell, Receipt } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
@@ -250,6 +250,13 @@ export default function TeacherPortal() {
             aria-label="Leave requests"
           >
             <ClipboardList className="w-5 h-5" />
+          </Link>
+          <Link
+            to="/teacher/payslips"
+            className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition"
+            aria-label="My payslips"
+          >
+            <Receipt className="w-5 h-5" />
           </Link>
           <button
             onClick={logout}

@@ -4,6 +4,7 @@ import { CalendarCheck2, Bus, MessageSquare, IndianRupee, Send, UserPlus, FilePl
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from 'recharts';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
+import SetupChecklist from './SetupChecklist';
 
 const INR = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
 
@@ -69,6 +70,8 @@ export default function AdminHome() {
       </div>
 
       {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
+
+      <SetupChecklist />
 
       {overview && (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
