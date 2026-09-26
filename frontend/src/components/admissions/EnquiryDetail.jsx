@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Send, Pause, Play, UserCheck2 } from 'lucide-react';
+import { ArrowLeft, Send, Pause, Play, UserCheck2, IndianRupee } from 'lucide-react';
 import { apiRequest } from '../../api';
 import { ErrorBanner, Notice, STAGE_LABELS, STAGES, SourceChip, formatDateTime, formatDate } from './admissionsUi';
 
@@ -152,6 +152,20 @@ export default function EnquiryDetail() {
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   };
 
+  const requestPayment = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await apiRequest(`/api/admissions/enquiries/${id}/request-payment`, { method: 'POST' });
+      setNotice('Payment link sent over WhatsApp.');
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const markVisit = async (visitId, status) => {
     setBusy(true);
     try {
@@ -204,6 +218,27 @@ export default function EnquiryDetail() {
             <button disabled={busy} onClick={() => markVisit(openVisit.id, 'no_show')} className="px-3 py-1.5 rounded-lg border border-cream-deep text-sm text-ink-soft hover:text-ink disabled:opacity-50">No-show</button>
             <button disabled={busy} onClick={() => markVisit(openVisit.id, 'cancelled')} className="px-3 py-1.5 rounded-lg text-sm text-ink-soft hover:text-destructive disabled:opacity-50">Cancel</button>
           </div>
+        </div>
+      )}
+
+      {data.stage !== 'admitted' && data.stage !== 'lost' && (
+        <div className="bg-white rounded-2xl border border-cream-deep/70 px-5 py-3.5 flex flex-wrap items-center justify-between gap-3">
+          {data.payment ? (
+            <span className="text-sm text-ink">
+              Application fee ₹{data.payment.amount}: {data.payment.status === 'PAID' ? (
+                <span className="text-emerald-700 font-medium">Paid {formatDateTime(data.payment.paid_at)}</span>
+              ) : (
+                <span className="text-amber-700 font-medium">Link sent, awaiting payment</span>
+              )}
+            </span>
+          ) : (
+            <span className="text-sm text-ink-soft">No application fee requested yet.</span>
+          )}
+          {(!data.payment || data.payment.status !== 'PAID') && (
+            <button disabled={busy} onClick={requestPayment} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cream-deep text-sm text-ink-soft hover:text-ink disabled:opacity-50">
+              <IndianRupee className="w-3.5 h-3.5" /> {data.payment ? 'Resend payment link' : 'Request application fee'}
+            </button>
+          )}
         </div>
       )}
 
