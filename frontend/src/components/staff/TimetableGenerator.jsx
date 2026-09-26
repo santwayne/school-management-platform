@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Sparkles, Save, Trash2, Plus, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Save, Trash2, Plus, CheckCircle2, Wand2 } from 'lucide-react';
 import { apiRequest } from '../../api';
 import { useAuth } from '../../AuthContext';
 
@@ -14,13 +14,75 @@ function ConfigPanel({ classes, subjects, teachers }) {
   const [reqs, setReqs] = useState(null);
   const [unavail, setUnavail] = useState(null);
   const [newUnavail, setNewUnavail] = useState({ teacher_id: '', day_of_week: 1, period_number: 1 });
+  const [rooms, setRooms] = useState(null);
+  const [newRoom, setNewRoom] = useState({ name: '', room_type: 'classroom' });
+  const [pasteText, setPasteText] = useState('');
+  const [parsing, setParsing] = useState(false);
 
   const loadAll = () => {
     apiRequest('/api/timetable-generator/config').then(setConfig).catch((e) => setError(e.message));
     apiRequest('/api/timetable-generator/requirements').then(setReqs).catch((e) => setError(e.message));
     apiRequest('/api/timetable-generator/unavailability').then(setUnavail).catch((e) => setError(e.message));
+    apiRequest('/api/timetable-generator/rooms').then(setRooms).catch((e) => setError(e.message));
   };
   useEffect(() => { loadAll(); }, []);
+
+  const addRoom = async () => {
+    if (!newRoom.name.trim()) return;
+    setSaving(true);
+    setError('');
+    try {
+      await apiRequest('/api/timetable-generator/rooms', { method: 'POST', body: newRoom });
+      setNewRoom({ name: '', room_type: 'classroom' });
+      loadAll();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const removeRoom = async (id) => {
+    try {
+      await apiRequest(`/api/timetable-generator/rooms/${id}`, { method: 'DELETE' });
+      loadAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // Best-effort name -> id matching for whatever the AI parse couldn't
+  // already resolve server-side (it only sees names as of when it ran;
+  // this re-checks against the freshest lists in state).
+  const matchByLabel = (list, text) => {
+    if (!text) return '';
+    const hit = list.find((x) => (x.label || x.name || '').toLowerCase() === String(text).toLowerCase());
+    return hit ? hit.id : '';
+  };
+
+  const parseWithAi = async () => {
+    if (!pasteText.trim()) return;
+    setParsing(true);
+    setError('');
+    try {
+      const { items } = await apiRequest('/api/timetable-generator/parse-requirements-text', { method: 'POST', body: { text: pasteText } });
+      const mapped = items.map((it) => ({
+        class_id: it.class_id || matchByLabel(classes, it.class_text) || (classes[0]?.id ?? ''),
+        subject_id: it.subject_id || matchByLabel(subjects, it.subject_text) || (subjects[0]?.id ?? ''),
+        teacher_id: it.teacher_id || matchByLabel(teachers, it.teacher_text) || '',
+        room_id: it.room_id || matchByLabel(rooms || [], it.room_text) || '',
+        periods_per_week: it.periods_per_week || 5,
+        heavy: !!it.heavy,
+        _unmatched: (!it.class_id && it.class_text) || (!it.subject_id && it.subject_text) ? 'Check this row — AI could not confidently match everything.' : null,
+      }));
+      setReqs([...(reqs || []), ...mapped]);
+      setPasteText('');
+      setNotice(`Added ${mapped.length} row${mapped.length === 1 ? '' : 's'} below — review before saving, especially any marked in amber.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setParsing(false);
+    }
+  };
 
   const saveConfig = async () => {
     setSaving(true);
@@ -44,9 +106,9 @@ function ConfigPanel({ classes, subjects, teachers }) {
 
   const addRequirement = () => {
     if (!classes[0] || !subjects[0]) return;
-    setReqs([...reqs, { class_id: classes[0].id, subject_id: subjects[0].id, teacher_id: '', periods_per_week: 4, heavy: false }]);
+    setReqs([...reqs, { class_id: classes[0].id, subject_id: subjects[0].id, teacher_id: '', room_id: '', periods_per_week: 4, heavy: false }]);
   };
-  const updateReq = (i, patch) => setReqs(reqs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const updateReq = (i, patch) => setReqs(reqs.map((r, idx) => (idx === i ? { ...r, ...patch, _unmatched: null } : r)));
   const removeReq = (i) => setReqs(reqs.filter((_, idx) => idx !== i));
 
   const saveReqs = async () => {
@@ -55,7 +117,7 @@ function ConfigPanel({ classes, subjects, teachers }) {
     try {
       await apiRequest('/api/timetable-generator/requirements', {
         method: 'PUT',
-        body: { items: reqs.map((r) => ({ class_id: Number(r.class_id), subject_id: Number(r.subject_id), teacher_id: r.teacher_id || null, periods_per_week: Number(r.periods_per_week), heavy: !!r.heavy })) },
+        body: { items: reqs.map((r) => ({ class_id: Number(r.class_id), subject_id: Number(r.subject_id), teacher_id: r.teacher_id || null, room_id: r.room_id || null, periods_per_week: Number(r.periods_per_week), heavy: !!r.heavy })) },
       });
       setNotice('Requirements saved.');
       loadAll();
@@ -133,13 +195,55 @@ function ConfigPanel({ classes, subjects, teachers }) {
       </div>
 
       <div className="bg-white rounded-2xl border border-cream-deep/70 p-5 space-y-3">
+        <h2 className="font-display text-lg text-ink">Rooms</h2>
+        <p className="text-xs text-ink-soft">Optional — only add rooms that are actually a limited resource (a lab, the computer room). Most subjects need none.</p>
+        <div className="flex flex-wrap gap-2">
+          {(rooms || []).map((r) => (
+            <span key={r.id} className="inline-flex items-center gap-1.5 pl-3 pr-2 py-1 rounded-full bg-cream-deep/50 text-sm text-ink">
+              {r.name} <span className="text-xs text-ink-soft">({r.room_type})</span>
+              <button onClick={() => removeRoom(r.id)} className="text-ink-soft hover:text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
+            </span>
+          ))}
+          {rooms?.length === 0 && <span className="text-sm text-ink-soft">No rooms added yet.</span>}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input value={newRoom.name} onChange={(e) => setNewRoom({ ...newRoom, name: e.target.value })} placeholder="e.g. Science Lab" className="px-2 py-1.5 rounded-lg border border-cream-deep text-sm" />
+          <select value={newRoom.room_type} onChange={(e) => setNewRoom({ ...newRoom, room_type: e.target.value })} className="px-2 py-1.5 rounded-lg border border-cream-deep text-sm">
+            <option value="classroom">Classroom</option>
+            <option value="lab">Lab</option>
+            <option value="other">Other</option>
+          </select>
+          <button disabled={saving} onClick={addRoom} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cream-deep text-sm text-ink-soft hover:text-ink"><Plus className="w-3.5 h-3.5" /> Add room</button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-cream-deep/70 p-5 space-y-3">
+        <h2 className="font-display text-lg text-ink">Paste requirements, let AI draft the rows</h2>
+        <p className="text-xs text-ink-soft">
+          e.g. "Class 5 needs Maths 8 periods a week with Mrs Sharma, Science 6 periods in the Science Lab, English 6
+          periods." It only ever uses your real classes/subjects/teachers/rooms below — anything it can't match
+          confidently comes back blank for you to fix.
+        </p>
+        <textarea
+          value={pasteText}
+          onChange={(e) => setPasteText(e.target.value)}
+          rows={4}
+          placeholder="Paste or type your requirements in plain English…"
+          className="w-full px-3 py-2 rounded-lg border border-cream-deep text-sm"
+        />
+        <button disabled={parsing || !pasteText.trim()} onClick={parseWithAi} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-terracotta text-white text-sm font-medium hover:bg-terracotta-deep disabled:opacity-50">
+          <Wand2 className="w-4 h-4" /> {parsing ? 'Parsing…' : 'Parse with AI'}
+        </button>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-cream-deep/70 p-5 space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h2 className="font-display text-lg text-ink">Class requirements</h2>
           <button onClick={seedFromCurrent} className="text-xs text-terracotta-deep hover:underline">Seed from current timetable</button>
         </div>
         <div className="space-y-2">
           {reqs.map((r, i) => (
-            <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
+            <div key={i} className={`flex flex-wrap items-center gap-2 text-sm rounded-lg ${r._unmatched ? 'bg-amber-500/10 p-2 -m-2' : ''}`}>
               <select value={r.class_id} onChange={(e) => updateReq(i, { class_id: e.target.value })} className="px-2 py-1.5 rounded-lg border border-cream-deep">
                 {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
@@ -150,9 +254,14 @@ function ConfigPanel({ classes, subjects, teachers }) {
                 <option value="">Any teacher</option>
                 {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
+              <select value={r.room_id || ''} onChange={(e) => updateReq(i, { room_id: e.target.value })} className="px-2 py-1.5 rounded-lg border border-cream-deep">
+                <option value="">No room</option>
+                {(rooms || []).map((rm) => <option key={rm.id} value={rm.id}>{rm.name}</option>)}
+              </select>
               <input type="number" min="1" max="20" value={r.periods_per_week} onChange={(e) => updateReq(i, { periods_per_week: e.target.value })} className="w-16 px-2 py-1.5 rounded-lg border border-cream-deep" title="Periods per week" />
               <label className="flex items-center gap-1 text-xs text-ink-soft"><input type="checkbox" checked={r.heavy} onChange={(e) => updateReq(i, { heavy: e.target.checked })} className="accent-terracotta" /> heavy</label>
               <button onClick={() => removeReq(i)} className="text-ink-soft hover:text-destructive"><Trash2 className="w-4 h-4" /></button>
+              {r._unmatched && <span className="text-xs text-amber-700 basis-full">{r._unmatched}</span>}
             </div>
           ))}
         </div>
@@ -240,15 +349,19 @@ function DraftDetail({ draftId, onBack, onPublished }) {
 
       <div className="bg-white rounded-2xl border border-cream-deep/70 overflow-x-auto max-h-[420px] overflow-y-auto">
         <table className="w-full text-sm">
-          <thead className="text-left text-xs text-ink-soft sticky top-0 bg-white"><tr className="border-b border-cream-deep/60"><th className="px-4 py-2.5">Day</th><th className="px-4 py-2.5">Period</th><th className="px-4 py-2.5">Class</th><th className="px-4 py-2.5">Subject</th><th className="px-4 py-2.5">Teacher</th></tr></thead>
+          <thead className="text-left text-xs text-ink-soft sticky top-0 bg-white"><tr className="border-b border-cream-deep/60"><th className="px-4 py-2.5">Day</th><th className="px-4 py-2.5">Period</th><th className="px-4 py-2.5">Class</th><th className="px-4 py-2.5">Subject</th><th className="px-4 py-2.5">Teacher</th><th className="px-4 py-2.5">Room</th></tr></thead>
           <tbody>
             {draft.slots.map((s, i) => (
               <tr key={i} className="border-b border-cream-deep/40 last:border-0">
-                <td className="px-4 py-2 text-ink-soft">{DAY_NAMES[s.day_of_week]}</td>
-                <td className="px-4 py-2 text-ink-soft">P{s.period_number}</td>
+                {/* A draft's slots come straight from solveTimetable()'s own
+                    output shape (day/period) — only the published
+                    timetable_slots table uses day_of_week/period_number. */}
+                <td className="px-4 py-2 text-ink-soft">{DAY_NAMES[s.day]}</td>
+                <td className="px-4 py-2 text-ink-soft">P{s.period}</td>
                 <td className="px-4 py-2 text-ink">{label('c', s.class_id)}</td>
                 <td className="px-4 py-2 text-ink-soft">{label('s', s.subject_id)}</td>
                 <td className="px-4 py-2 text-ink-soft">{s.teacher_id ? label('t', s.teacher_id) : '—'}</td>
+                <td className="px-4 py-2 text-ink-soft">{s.room_id ? label('rm', s.room_id) : '—'}</td>
               </tr>
             ))}
           </tbody>
