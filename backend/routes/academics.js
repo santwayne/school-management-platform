@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal, requireLibrary } from '../middleware/auth.js';
 import { normalizePhone } from '../utils/phone.js';
+import { audit } from '../services/opsService.js';
 
 const router = express.Router();
 
@@ -336,6 +337,7 @@ router.post('/teachers', requireAuth, requirePrincipal, async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, email, phone, role, created_at`,
       [req.user.school_id, name, email, normalizedPhone, password_hash, finalRole]
     );
+    await audit({ schoolId: req.user.school_id, actorType: 'user', actorId: req.user.teacher_id, action: 'staff.created', entityType: 'teacher', entityId: result.rows[0].id, detail: { name, email, role: finalRole } });
     res.status(201).json(result.rows[0]);
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'A staff member with this email already exists' });
@@ -370,6 +372,7 @@ router.patch('/teachers/:id', requireAuth, requirePrincipal, async (req, res) =>
       [name, normalizedPhone, req.params.id, req.user.school_id]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Staff member not found' });
+    await audit({ schoolId: req.user.school_id, actorType: 'user', actorId: req.user.teacher_id, action: 'staff.edited', entityType: 'teacher', entityId: result.rows[0].id, detail: { name, phone: normalizedPhone } });
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -380,10 +383,11 @@ router.delete('/teachers/:id', requireAuth, requirePrincipal, async (req, res) =
   try {
     // role='teacher' guard so this can never be used to delete the Principal's own account
     const result = await pool.query(
-      `DELETE FROM teachers WHERE id = $1 AND school_id = $2 AND role = 'teacher' RETURNING id`,
+      `DELETE FROM teachers WHERE id = $1 AND school_id = $2 AND role = 'teacher' RETURNING id, name, email`,
       [req.params.id, req.user.school_id]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Teacher not found' });
+    await audit({ schoolId: req.user.school_id, actorType: 'user', actorId: req.user.teacher_id, action: 'staff.deleted', entityType: 'teacher', entityId: result.rows[0].id, detail: { name: result.rows[0].name, email: result.rows[0].email } });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -463,7 +467,10 @@ router.patch('/students/:id', requireAuth, requirePrincipal, async (req, res) =>
 
 router.delete('/students/:id', requireAuth, requirePrincipal, async (req, res) => {
   try {
-    await pool.query('DELETE FROM students WHERE id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
+    const result = await pool.query('DELETE FROM students WHERE id = $1 AND school_id = $2 RETURNING id, name', [req.params.id, req.user.school_id]);
+    if (result.rowCount > 0) {
+      await audit({ schoolId: req.user.school_id, actorType: 'user', actorId: req.user.teacher_id, action: 'student.deleted', entityType: 'student', entityId: result.rows[0].id, detail: { name: result.rows[0].name } });
+    }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -568,7 +575,10 @@ router.patch('/parents/:id', requireAuth, requirePrincipal, async (req, res) => 
 
 router.delete('/parents/:id', requireAuth, requirePrincipal, async (req, res) => {
   try {
-    await pool.query('DELETE FROM parents WHERE id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
+    const result = await pool.query('DELETE FROM parents WHERE id = $1 AND school_id = $2 RETURNING id, name', [req.params.id, req.user.school_id]);
+    if (result.rowCount > 0) {
+      await audit({ schoolId: req.user.school_id, actorType: 'user', actorId: req.user.teacher_id, action: 'parent.deleted', entityType: 'parent', entityId: result.rows[0].id, detail: { name: result.rows[0].name } });
+    }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

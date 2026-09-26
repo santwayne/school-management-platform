@@ -1,13 +1,44 @@
 import express from 'express';
+import Anthropic from '@anthropic-ai/sdk';
 import pool from '../config/db.js';
 import { requireAuth, requireOperator } from '../middleware/auth.js';
 import { audit } from '../services/opsService.js';
 import { solveTimetable, hardViolations } from '../services/timetableSolver.js';
 import { planSubstitutions } from '../services/substitutionService.js';
 
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
 const router = express.Router();
 router.use(requireAuth, requireOperator);
 const fail = (res, err) => res.status(err.status || 500).json({ error: err.message });
+
+// Rooms — an optional resource a requirement can be tied to (labs, the
+// computer room, ...). Most subjects need none at all, so this is purely
+// additive: nothing here changes behaviour for a class/requirement that
+// never sets a room_id.
+router.get('/rooms', async (req, res) => {
+  const r = await pool.query(`SELECT * FROM rooms WHERE school_id = $1 ORDER BY name`, [req.user.school_id]);
+  res.json(r.rows);
+});
+router.post('/rooms', async (req, res) => {
+  const { name, room_type, capacity } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'name is required' });
+  if (room_type && !['classroom', 'lab', 'other'].includes(room_type)) return res.status(400).json({ error: "room_type must be 'classroom', 'lab' or 'other'" });
+  try {
+    const r = await pool.query(
+      `INSERT INTO rooms (school_id, name, room_type, capacity) VALUES ($1,$2,$3,$4) RETURNING *`,
+      [req.user.school_id, String(name).trim(), room_type || 'classroom', capacity || null]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'A room with this name already exists' });
+    fail(res, err);
+  }
+});
+router.delete('/rooms/:id', async (req, res) => {
+  await pool.query(`DELETE FROM rooms WHERE id = $1 AND school_id = $2`, [req.params.id, req.user.school_id]);
+  res.json({ ok: true });
+});
 
 async function config(schoolId) {
   const r = await pool.query(
@@ -37,8 +68,9 @@ router.put('/config', async (req, res) => {
 
 router.get('/requirements', async (req, res) => {
   const r = await pool.query(
-    `SELECT r.*, c.name || COALESCE(' ' || c.section, '') AS class_label, s.name AS subject_name, t.name AS teacher_name
-     FROM timetable_requirements r JOIN classes c ON c.id = r.class_id JOIN subjects s ON s.id = r.subject_id LEFT JOIN teachers t ON t.id = r.teacher_id
+    `SELECT r.*, c.name || COALESCE(' ' || c.section, '') AS class_label, s.name AS subject_name, t.name AS teacher_name, rm.name AS room_name
+     FROM timetable_requirements r JOIN classes c ON c.id = r.class_id JOIN subjects s ON s.id = r.subject_id
+     LEFT JOIN teachers t ON t.id = r.teacher_id LEFT JOIN rooms rm ON rm.id = r.room_id
      WHERE r.school_id = $1 ORDER BY class_label, s.name`,
     [req.user.school_id]
   );
@@ -58,8 +90,8 @@ router.put('/requirements', async (req, res) => {
     await client.query(`DELETE FROM timetable_requirements WHERE school_id = $1 AND class_id = ANY($2::int[])`, [req.user.school_id, classIds]);
     for (const i of items) {
       await client.query(
-        `INSERT INTO timetable_requirements (school_id, class_id, subject_id, teacher_id, periods_per_week, heavy) VALUES ($1,$2,$3,$4,$5,$6)`,
-        [req.user.school_id, i.class_id, i.subject_id, i.teacher_id || null, i.periods_per_week, !!i.heavy]
+        `INSERT INTO timetable_requirements (school_id, class_id, subject_id, teacher_id, room_id, periods_per_week, heavy) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [req.user.school_id, i.class_id, i.subject_id, i.teacher_id || null, i.room_id || null, i.periods_per_week, !!i.heavy]
       );
     }
     await client.query('COMMIT');
@@ -84,6 +116,57 @@ router.post('/requirements/from-current', async (req, res) => {
   res.json({ imported: r.rowCount });
 });
 
+// Paste freeform notes ("Class 5 needs Maths 8 periods with Mrs Sharma,
+// Science 6 periods in the lab...") and get back a structured, reviewable
+// draft of requirements rows — never saved directly. The model is only ever
+// allowed to pick ids from this school's REAL classes/subjects/teachers/
+// rooms (given to it in the prompt); anything it can't confidently match
+// comes back with a null id and the original text, for a human to fix
+// before anything is saved via the existing PUT /requirements.
+router.post('/parse-requirements-text', async (req, res) => {
+  const text = (req.body?.text || '').trim();
+  if (!text) return res.status(400).json({ error: 'text is required' });
+  if (!process.env.ANTHROPIC_API_KEY) return res.status(503).json({ error: 'AI parsing is not configured on this server (ANTHROPIC_API_KEY missing).' });
+
+  const schoolId = req.user.school_id;
+  try {
+    const [classes, subjects, teachers, rooms] = await Promise.all([
+      pool.query(`SELECT id, name || COALESCE(' ' || section, '') AS label FROM classes WHERE school_id = $1`, [schoolId]),
+      pool.query(`SELECT id, name AS label FROM subjects WHERE school_id = $1`, [schoolId]),
+      pool.query(`SELECT id, name AS label FROM teachers WHERE school_id = $1 AND role IN ('teacher', 'principal')`, [schoolId]),
+      pool.query(`SELECT id, name AS label FROM rooms WHERE school_id = $1`, [schoolId]),
+    ]);
+
+    const systemPrompt = `You convert a school's freeform timetable-requirements notes into structured JSON rows.
+
+You are given this school's REAL classes, subjects, teachers and rooms below, each with its id. You may ONLY use an id from these exact lists — never invent one, never guess a close-but-not-listed name. If the text doesn't clearly match anything in a list, set that id to null and still fill in the *_text field with what the input said.
+
+Classes: ${JSON.stringify(classes.rows)}
+Subjects: ${JSON.stringify(subjects.rows)}
+Teachers: ${JSON.stringify(teachers.rows)}
+Rooms: ${JSON.stringify(rooms.rows)}
+
+Return ONLY a JSON array, no other text, of objects shaped exactly like:
+{ "class_id": <int|null>, "class_text": "<string>", "subject_id": <int|null>, "subject_text": "<string>", "teacher_id": <int|null>, "teacher_text": "<string|null>", "room_id": <int|null>, "room_text": "<string|null>", "periods_per_week": <int>, "heavy": <bool> }
+"heavy" means a subject that shouldn't be scheduled in the last period of the day (only set true if the text says so or it's an unusually demanding subject like Maths/Science and the text implies it). Default periods_per_week to 5 if the text doesn't give a number.`;
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-5',
+      max_tokens: 4000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: text }],
+    });
+    const textBlock = response.content.find((b) => b.type === 'text');
+    const cleaned = (textBlock?.text || '[]').trim().replace(/^```json\s*|\s*```$/g, '');
+    const items = JSON.parse(cleaned);
+    if (!Array.isArray(items)) throw new Error('Model did not return a JSON array');
+    res.json({ items });
+  } catch (err) {
+    console.error('[timetable] AI requirements parse failed:', err.message);
+    res.status(502).json({ error: "Couldn't parse that text — try rephrasing, or enter requirements manually below." });
+  }
+});
+
 router.get('/unavailability', async (req, res) => {
   const r = await pool.query(`SELECT u.*, t.name AS teacher_name FROM teacher_unavailability u JOIN teachers t ON t.id = u.teacher_id WHERE u.school_id = $1 ORDER BY t.name, day_of_week, period_number`, [req.user.school_id]);
   res.json(r.rows);
@@ -104,7 +187,7 @@ router.post('/generate', async (req, res) => {
   const schoolId = req.user.school_id;
   try {
     const cfg = await config(schoolId);
-    const reqs = await pool.query(`SELECT class_id, subject_id, teacher_id, periods_per_week, heavy FROM timetable_requirements WHERE school_id = $1`, [schoolId]);
+    const reqs = await pool.query(`SELECT class_id, subject_id, teacher_id, room_id, periods_per_week, heavy FROM timetable_requirements WHERE school_id = $1`, [schoolId]);
     if (!reqs.rowCount) return res.status(400).json({ error: 'Add what each class needs first (subjects, teachers, periods per week).' });
     // Capacity check up front: clearer than a pile of unplaced lessons.
     const perClass = new Map();
@@ -149,7 +232,8 @@ router.get('/drafts/:id', async (req, res) => {
   const names = await pool.query(
     `SELECT 'c' || id AS k, name || COALESCE(' ' || section, '') AS v FROM classes WHERE school_id = $1
      UNION ALL SELECT 's' || id, name FROM subjects WHERE school_id = $1
-     UNION ALL SELECT 't' || id, name FROM teachers WHERE school_id = $1`,
+     UNION ALL SELECT 't' || id, name FROM teachers WHERE school_id = $1
+     UNION ALL SELECT 'rm' || id, name FROM rooms WHERE school_id = $1`,
     [req.user.school_id]
   );
   res.json({ ...d.rows[0], names: Object.fromEntries(names.rows.map((n) => [n.k, n.v])) });
@@ -173,7 +257,7 @@ router.post('/drafts/:id/publish', async (req, res) => {
     const times = Array.isArray(cfg.period_times) ? cfg.period_times : [];
 
     // Backup of the current timetable for rollback.
-    const current = await client.query(`SELECT class_id, day_of_week AS day, period_number AS period, subject_id, teacher_id FROM timetable_slots WHERE school_id = $1`, [schoolId]);
+    const current = await client.query(`SELECT class_id, day_of_week AS day, period_number AS period, subject_id, teacher_id, room_id FROM timetable_slots WHERE school_id = $1`, [schoolId]);
     await client.query(`INSERT INTO timetable_drafts (school_id, slots, status, created_by) VALUES ($1, $2, 'backup', $3)`, [schoolId, JSON.stringify(current.rows), req.user.teacher_id]);
 
     const before = new Map(current.rows.map((s) => [`${s.class_id}:${s.day}:${s.period}`, s.teacher_id]));
@@ -181,11 +265,11 @@ router.post('/drafts/:id/publish', async (req, res) => {
     for (const s of draft.slots) {
       const t = times[s.period - 1] || {};
       await client.query(
-        `INSERT INTO timetable_slots (school_id, class_id, day_of_week, period_number, start_time, end_time, subject_id, teacher_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-         ON CONFLICT (class_id, day_of_week, period_number) DO UPDATE SET subject_id = EXCLUDED.subject_id, teacher_id = EXCLUDED.teacher_id,
+        `INSERT INTO timetable_slots (school_id, class_id, day_of_week, period_number, start_time, end_time, subject_id, teacher_id, room_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         ON CONFLICT (class_id, day_of_week, period_number) DO UPDATE SET subject_id = EXCLUDED.subject_id, teacher_id = EXCLUDED.teacher_id, room_id = EXCLUDED.room_id,
            start_time = COALESCE(EXCLUDED.start_time, timetable_slots.start_time), end_time = COALESCE(EXCLUDED.end_time, timetable_slots.end_time)`,
-        [schoolId, s.class_id, s.day, s.period, t.start || null, t.end || null, s.subject_id, s.teacher_id]
+        [schoolId, s.class_id, s.day, s.period, t.start || null, t.end || null, s.subject_id, s.teacher_id, s.room_id || null]
       );
       const key = `${s.class_id}:${s.day}:${s.period}`;
       if (before.has(key) && before.get(key) !== s.teacher_id) changedTeacherKeys.push(key);

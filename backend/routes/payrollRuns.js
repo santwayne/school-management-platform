@@ -61,6 +61,22 @@ router.get('/:id/bank.csv', guard, async (req, res) => {
   res.send(lines.join('\n'));
 });
 
+// A staff member's own payslip history across every approved run — the
+// list view "my-payslips" that was missing alongside the existing
+// per-payslip PDF download. Draft (unapproved) runs are excluded: a
+// staff member shouldn't see a number that could still change before
+// the principal approves it.
+router.get('/my-payslips', async (req, res) => {
+  const r = await pool.query(
+    `SELECT p.id, r.period, r.status, p.gross, p.deductions, p.net_pay, p.notified_at
+     FROM payslips p JOIN payroll_runs r ON r.id = p.payroll_run_id
+     WHERE p.teacher_id = $1 AND p.school_id = $2 AND r.status = 'approved'
+     ORDER BY r.period DESC`,
+    [req.user.teacher_id, req.user.school_id]
+  );
+  res.json(r.rows);
+});
+
 // A staff member can download their own payslip; managers can download any.
 router.get('/payslips/:id/pdf', async (req, res) => {
   try {
