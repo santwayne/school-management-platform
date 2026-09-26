@@ -5,6 +5,7 @@ import pool from '../config/db.js';
 import { requireAuth, requireFinance } from '../middleware/auth.js';
 import { sendTextMessage } from '../services/whatsappService.js';
 import { send as sendNotification } from '../services/notificationService.js';
+import { audit } from '../services/opsService.js';
 
 const router = express.Router();
 
@@ -13,7 +14,7 @@ const router = express.Router();
 // RAZORPAY_KEY_SECRET to be set in the environment. Without real Razorpay
 // credentials this will fail at request time with a clear auth error rather
 // than silently pretending to succeed — nothing here is mocked.
-function razorpayClient() {
+export function razorpayClient() {
   return axios.create({
     baseURL: 'https://api.razorpay.com/v1',
     auth: {
@@ -120,6 +121,42 @@ router.get('/', requireAuth, requireFinance, async (req, res) => {
   }
 });
 
+// Marks an admission application-fee link paid and moves the enquiry on to
+// 'applied' — same idempotency guard as the student-fee path (status =
+// 'CREATED' in the WHERE clause means a retried webhook delivery is a no-op
+// the second time, not a double-processed payment).
+async function handleAdmissionPaymentWebhook(referenceId, res) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const linkRes = await client.query(`SELECT * FROM admission_payment_links WHERE reference_id = $1 AND status = 'CREATED'`, [referenceId]);
+    if (linkRes.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.sendStatus(200);
+    }
+    const link = linkRes.rows[0];
+    await client.query(`UPDATE admission_payment_links SET status = 'PAID', paid_at = CURRENT_TIMESTAMP WHERE id = $1`, [link.id]);
+    // Only advance the stage forward — an enquiry already further along
+    // (visited, approved, admitted) shouldn't be pulled backward by a fee
+    // that happens to clear late.
+    const advanced = await client.query(
+      `UPDATE admission_enquiries SET stage = 'applied', updated_at = NOW()
+       WHERE id = $1 AND stage IN ('new', 'qualifying', 'qualified', 'visit_booked', 'visited') RETURNING id`,
+      [link.enquiry_id]
+    );
+    await client.query('COMMIT');
+    res.sendStatus(200);
+
+    await audit({ schoolId: link.school_id, actorType: 'system', action: 'admission.fee_paid', entityType: 'admission_enquiry', entityId: link.enquiry_id, detail: { amount: link.amount, reference_id: referenceId, stage_advanced: advanced.rowCount > 0 } });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Admission payment webhook error:', err);
+    res.sendStatus(500);
+  } finally {
+    client.release();
+  }
+}
+
 // Razorpay webhook — fires on payment.captured. Verifies the signature
 // against RAZORPAY_WEBHOOK_SECRET before trusting anything in the payload.
 router.post('/webhook', async (req, res) => {
@@ -142,6 +179,13 @@ router.post('/webhook', async (req, res) => {
 
     const referenceId = req.body.payload?.payment_link?.entity?.reference_id;
     if (!referenceId) return res.sendStatus(200);
+
+    // Admission application-fee links use their own table (there's no
+    // student_id yet at that stage) but the same Razorpay account/webhook —
+    // route on the reference_id prefix rather than running two webhooks.
+    if (referenceId.startsWith('waynur-admission-')) {
+      return handleAdmissionPaymentWebhook(referenceId, res);
+    }
 
     const client = await pool.connect();
     try {

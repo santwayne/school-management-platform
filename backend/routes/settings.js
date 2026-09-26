@@ -6,6 +6,7 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
 import { sendTemplateMessage } from '../services/whatsappService.js';
+import { audit } from '../services/opsService.js';
 
 // Meta requires an approved template for the first outbound message in a
 // conversation window — a brand-new number being verified here has no open
@@ -255,6 +256,32 @@ router.patch('/petty-cash-limit', requireAuth, requirePrincipal, async (req, res
   } catch (err) {
     console.error('Petty cash limit update error:', err);
     res.status(500).json({ error: 'Failed to update petty cash limit' });
+  }
+});
+
+// Statutory payroll deductions (PF/ESI) — off by default, see the schema.sql
+// comment next to these columns for why and for the exact formulas applied
+// in services/payrollService.js's computePay(). Audited: this silently
+// changes every future payroll run's net-pay numbers.
+router.patch('/payroll-deductions', requireAuth, requirePrincipal, async (req, res) => {
+  const school_id = req.user.school_id;
+  const { pf_enabled, esi_enabled } = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO school_settings (school_id, pf_enabled, esi_enabled)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (school_id) DO UPDATE SET
+         pf_enabled = EXCLUDED.pf_enabled,
+         esi_enabled = EXCLUDED.esi_enabled,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [school_id, !!pf_enabled, !!esi_enabled]
+    );
+    await audit({ schoolId: school_id, actorType: 'user', actorId: req.user.teacher_id, action: 'settings.payroll_deductions_updated', detail: { pf_enabled: !!pf_enabled, esi_enabled: !!esi_enabled } });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Payroll deductions update error:', err);
+    res.status(500).json({ error: 'Failed to update payroll deduction settings' });
   }
 });
 

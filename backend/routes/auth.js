@@ -3,6 +3,7 @@ import { loginLimiter } from '../middleware/rateLimit.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
+import { issueRefreshToken, rotateRefreshToken, revokeRefreshToken } from '../services/refreshTokenService.js';
 
 const router = express.Router();
 
@@ -40,10 +41,12 @@ router.post('/login', loginLimiter, async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '12h' }
     );
+    const refreshToken = await issueRefreshToken({ subjectType: 'teacher', subjectId: user.id, schoolId: user.school_id });
 
     res.json({
       success: true,
       token,
+      refreshToken,
       user: { id: user.id, name: user.name, email: user.email, role: user.role, school_id: user.school_id },
     });
   } catch (err) {
@@ -82,10 +85,12 @@ router.post('/student-login', loginLimiter, async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '12h' }
     );
+    const refreshToken = await issueRefreshToken({ subjectType: 'student', subjectId: student.id, schoolId: student.school_id });
 
     res.json({
       success: true,
       token,
+      refreshToken,
       user: {
         id: student.id,
         name: student.name,
@@ -98,6 +103,60 @@ router.post('/student-login', loginLimiter, async (req, res) => {
     console.error('Student login error:', err);
     res.status(500).json({ error: 'Login failed' });
   }
+});
+
+// Exchanges a still-valid refresh token for a new 12h access token, without
+// requiring the password again. Rebuilds the JWT payload from a fresh DB
+// read (not from anything cached in the refresh token itself) so a role
+// change or account deletion since the last login takes effect immediately
+// on the next refresh, exactly as it already does on the next full login.
+router.post('/refresh', async (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) {
+    return res.status(400).json({ error: 'refreshToken is required' });
+  }
+
+  try {
+    const rotated = await rotateRefreshToken(refreshToken);
+    if (!rotated) {
+      return res.status(401).json({ error: 'Invalid or expired refresh token' });
+    }
+
+    let payload;
+    if (rotated.subjectType === 'teacher') {
+      const { rows } = await pool.query('SELECT id, school_id, role FROM teachers WHERE id = $1', [rotated.subjectId]);
+      if (!rows[0]) return res.status(401).json({ error: 'Account no longer exists' });
+      payload = { teacher_id: rows[0].id, school_id: rows[0].school_id, role: rows[0].role };
+    } else if (rotated.subjectType === 'student') {
+      const { rows } = await pool.query('SELECT id, school_id FROM students WHERE id = $1', [rotated.subjectId]);
+      if (!rows[0]) return res.status(401).json({ error: 'Account no longer exists' });
+      payload = { student_id: rows[0].id, school_id: rows[0].school_id, role: 'student' };
+    } else if (rotated.subjectType === 'super_admin') {
+      const { rows } = await pool.query('SELECT id FROM super_admins WHERE id = $1', [rotated.subjectId]);
+      if (!rows[0]) return res.status(401).json({ error: 'Account no longer exists' });
+      payload = { super_admin_id: rows[0].id, role: 'super_admin' };
+    } else {
+      return res.status(401).json({ error: 'Invalid refresh token' });
+    }
+
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '12h' });
+    res.json({ success: true, token, refreshToken: rotated.refreshToken });
+  } catch (err) {
+    console.error('Refresh token error:', err);
+    res.status(500).json({ error: 'Could not refresh session' });
+  }
+});
+
+// Revokes a refresh token on explicit logout, so a copy left in a stolen
+// device/browser can't silently keep renewing access forever. Always
+// succeeds (even with no/invalid token) — logging out should never itself
+// error, and there's nothing more to reveal by distinguishing the cases.
+router.post('/logout', async (req, res) => {
+  const { refreshToken } = req.body;
+  if (refreshToken) {
+    await revokeRefreshToken(refreshToken).catch((err) => console.error('Logout revoke error:', err.message));
+  }
+  res.json({ success: true });
 });
 
 export default router;

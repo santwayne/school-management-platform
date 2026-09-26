@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth, requireFinance } from '../middleware/auth.js';
+import { audit } from '../services/opsService.js';
 
 const router = express.Router();
 
@@ -67,6 +68,9 @@ router.post('/run', requireAuth, requireFinance, async (req, res) => {
        RETURNING *`,
       [period, schoolId]
     );
+    if (result.rowCount > 0) {
+      await audit({ schoolId, actorType: 'user', actorId: req.user.teacher_id, action: 'payroll.run', entityType: 'teacher_salary_history', detail: { period, generated_count: result.rowCount } });
+    }
     res.status(201).json({ success: true, generated_count: result.rowCount, rows: result.rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -85,6 +89,7 @@ router.patch('/:id/mark-paid', requireAuth, requireFinance, async (req, res) => 
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Payroll row not found' });
     }
+    await audit({ schoolId: req.user.school_id, actorType: 'user', actorId: req.user.teacher_id, action: 'payroll.marked_paid', entityType: 'teacher_salary_history', entityId: result.rows[0].id, detail: { period: result.rows[0].period, teacher_id: result.rows[0].teacher_id } });
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });

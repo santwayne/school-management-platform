@@ -4,6 +4,7 @@ import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
 import { send as sendNotification } from '../services/notificationService.js';
 import { normalizePhone } from '../utils/phone.js';
+import { audit } from '../services/opsService.js';
 
 const router = express.Router();
 
@@ -394,6 +395,7 @@ router.patch('/document-requests/:id', requireAuth, requirePrincipal, async (req
       [status || null, review_note || null, document_url || null, req.user.teacher_id, req.params.id, schoolId]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Request not found' });
+    await audit({ schoolId, actorType: 'user', actorId: req.user.teacher_id, action: 'document_request.reviewed', entityType: 'document_request', entityId: result.rows[0].id, detail: { status: result.rows[0].status, request_type: result.rows[0].request_type } });
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Update document request error:', err);

@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 import { normalizePhone } from '../utils/phone.js';
+import { issueRefreshToken } from '../services/refreshTokenService.js';
 
 const router = express.Router();
 
@@ -28,8 +29,9 @@ router.post('/login', loginLimiter, async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '12h' }
     );
+    const refreshToken = await issueRefreshToken({ subjectType: 'super_admin', subjectId: admin.id, schoolId: null });
 
-    res.json({ token, user: { id: admin.id, name: admin.name, email: admin.email, role: 'super_admin' } });
+    res.json({ token, refreshToken, user: { id: admin.id, name: admin.name, email: admin.email, role: 'super_admin' } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

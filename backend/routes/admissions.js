@@ -7,6 +7,7 @@ import { normalizePhone } from '../utils/phone.js';
 import { sendTemplateMessage } from '../services/whatsappService.js';
 import { audit, registerAction, raiseException } from '../services/opsService.js';
 import { gradeKey, gradeLabel, classesForGrade, sendEnquiryText } from '../services/admissionAgent.js';
+import { razorpayClient } from './paymentLinks.js';
 
 // ------------------------------------------------------------------
 // Admissions API.
@@ -163,18 +164,63 @@ router.get('/enquiries', async (req, res) => {
 router.get('/enquiries/:id', async (req, res) => {
   try {
     const e = await ownEnquiry(req.user.school_id, req.params.id);
-    const [messages, visits, matchingClasses] = await Promise.all([
+    const [messages, visits, matchingClasses, payment] = await Promise.all([
       pool.query('SELECT id, direction, body, template_name, sent_by, delivery_status, created_at FROM enquiry_messages WHERE enquiry_id = $1 ORDER BY id', [e.id]),
       pool.query(
         `SELECT cv.id, cv.status, cs.slot_start, cs.slot_end FROM campus_visits cv JOIN campus_visit_slots cs ON cs.id = cv.slot_id WHERE cv.enquiry_id = $1 ORDER BY cv.id DESC`,
         [e.id]
       ),
       e.applying_grade ? classesForGrade(req.user.school_id, e.applying_grade) : Promise.resolve([]),
+      pool.query('SELECT amount, status, razorpay_link_url, paid_at, created_at FROM admission_payment_links WHERE enquiry_id = $1 ORDER BY id DESC LIMIT 1', [e.id]),
     ]);
     const windowOpen = e.last_inbound_at && Date.now() - new Date(e.last_inbound_at) < 24 * 3600 * 1000;
-    res.json({ ...e, applying_class_label: gradeLabel(e.applying_grade), messages: messages.rows, visits: visits.rows, matching_classes: matchingClasses, can_reply: !!windowOpen && !e.opted_out });
+    res.json({ ...e, applying_class_label: gradeLabel(e.applying_grade), messages: messages.rows, visits: visits.rows, matching_classes: matchingClasses, can_reply: !!windowOpen && !e.opted_out, payment: payment.rows[0] || null });
   } catch (err) {
     sendError(res, err);
+  }
+});
+
+// One-click "send an application fee payment link" — same Razorpay
+// payment-link mechanism the accountant already uses for student fees
+// (routes/paymentLinks.js), just keyed to an enquiry instead of a student
+// since there's no student row yet. Requires an open WhatsApp window,
+// same as every other free-form reply this screen sends (sendEnquiryText).
+router.post('/enquiries/:id/request-payment', async (req, res) => {
+  const schoolId = req.user.school_id;
+  try {
+    const e = await ownEnquiry(schoolId, req.params.id);
+    let amount = Number(req.body?.amount);
+    if (!amount) {
+      const s = await pool.query('SELECT admission_fee_amount FROM school_settings WHERE school_id = $1', [schoolId]);
+      amount = Number(s.rows[0]?.admission_fee_amount);
+    }
+    if (!amount || amount <= 0) return res.status(400).json({ error: 'Set an application fee amount first (Admissions settings), or pass one explicitly.' });
+
+    const referenceId = `waynur-admission-${schoolId}-${e.id}-${Date.now()}`;
+    const razorRes = await razorpayClient().post('/payment_links', {
+      amount: Math.round(amount * 100), // paise
+      currency: 'INR',
+      reference_id: referenceId,
+      description: `Admission application fee — ${e.child_name || e.parent_name || 'enquiry'}`,
+      customer: { name: e.parent_name || 'Parent', contact: e.phone },
+      notify: { sms: false, email: false },
+      callback_method: 'get',
+    });
+    const link = razorRes.data;
+
+    const ins = await pool.query(
+      `INSERT INTO admission_payment_links (school_id, enquiry_id, amount, reference_id, razorpay_link_id, razorpay_link_url, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [schoolId, e.id, amount, referenceId, link.id, link.short_url, req.user.teacher_id]
+    );
+
+    await sendEnquiryText(e, `Application fee for admission: ₹${amount}. Pay securely here: ${link.short_url}`, { sentBy: 'staff' });
+    await audit({ schoolId, actorType: 'user', actorId: req.user.teacher_id, action: 'admission.payment_requested', entityType: 'admission_enquiry', entityId: e.id, detail: { amount } });
+    res.status(201).json(ins.rows[0]);
+  } catch (err) {
+    if (err.status) return sendError(res, err);
+    console.error('Admission payment link creation error:', err.response?.data || err.message);
+    res.status(500).json({ error: 'Failed to create payment link — check RAZORPAY_KEY_ID/SECRET are set correctly' });
   }
 });
 
@@ -393,7 +439,7 @@ router.put('/knowledge-base', async (req, res) => {
 router.get('/settings', async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT admission_code, public_slug, COALESCE(admissions_open, TRUE) AS admissions_open, COALESCE(admission_followup_days, '1,3,7') AS admission_followup_days, whatsapp_phone_number_id
+      `SELECT admission_code, public_slug, COALESCE(admissions_open, TRUE) AS admissions_open, COALESCE(admission_followup_days, '1,3,7') AS admission_followup_days, whatsapp_phone_number_id, admission_fee_amount
        FROM school_settings WHERE school_id = $1`,
       [req.user.school_id]
     );
@@ -411,17 +457,19 @@ router.get('/settings', async (req, res) => {
 });
 
 router.put('/settings', async (req, res) => {
-  const { admission_code, public_slug, admissions_open, admission_followup_days } = req.body || {};
+  const { admission_code, public_slug, admissions_open, admission_followup_days, admission_fee_amount } = req.body || {};
   if (admission_code && !/^[A-Za-z0-9]{3,12}$/.test(admission_code)) return res.status(400).json({ error: 'Admission code must be 3–12 letters/numbers' });
   if (public_slug && !/^[a-z0-9-]{3,60}$/.test(public_slug)) return res.status(400).json({ error: 'Web address must be 3–60 lowercase letters, numbers or dashes' });
   if (admission_followup_days && !/^\d{1,2}(,\d{1,2}){0,5}$/.test(admission_followup_days)) return res.status(400).json({ error: 'Follow-up days must look like 1,3,7' });
+  if (admission_fee_amount !== undefined && admission_fee_amount !== null && !(Number(admission_fee_amount) >= 0)) return res.status(400).json({ error: 'Application fee amount must be a non-negative number' });
   try {
     await pool.query(
-      `INSERT INTO school_settings (school_id, admission_code, public_slug, admissions_open, admission_followup_days)
-       VALUES ($1, $2, $3, COALESCE($4, TRUE), COALESCE($5, '1,3,7'))
+      `INSERT INTO school_settings (school_id, admission_code, public_slug, admissions_open, admission_followup_days, admission_fee_amount)
+       VALUES ($1, $2, $3, COALESCE($4, TRUE), COALESCE($5, '1,3,7'), $6)
        ON CONFLICT (school_id) DO UPDATE SET admission_code = EXCLUDED.admission_code, public_slug = EXCLUDED.public_slug,
-         admissions_open = EXCLUDED.admissions_open, admission_followup_days = EXCLUDED.admission_followup_days, updated_at = NOW()`,
-      [req.user.school_id, admission_code ? admission_code.toUpperCase() : null, public_slug || null, typeof admissions_open === 'boolean' ? admissions_open : null, admission_followup_days || null]
+         admissions_open = EXCLUDED.admissions_open, admission_followup_days = EXCLUDED.admission_followup_days,
+         admission_fee_amount = COALESCE($6, school_settings.admission_fee_amount), updated_at = NOW()`,
+      [req.user.school_id, admission_code ? admission_code.toUpperCase() : null, public_slug || null, typeof admissions_open === 'boolean' ? admissions_open : null, admission_followup_days || null, admission_fee_amount ?? null]
     );
     res.json({ ok: true });
   } catch (err) {
