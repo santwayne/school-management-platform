@@ -59,3 +59,35 @@ test('hardViolations catches clashes', () => {
   assert.equal(v.length, 1);
   assert.match(v[0], /teacher 5 double-booked/);
 });
+
+test('a shared room is never double-booked, even under real demand', () => {
+  // Two classes, different teachers, same lab (room_id 50) — nothing else
+  // stops them wanting the same period, so this only stays clash-free if
+  // the room constraint is actually being enforced.
+  const requirements = [
+    { class_id: 1, subject_id: 1, teacher_id: 1, room_id: 50, periods_per_week: 8 },
+    { class_id: 2, subject_id: 1, teacher_id: 2, room_id: 50, periods_per_week: 8 },
+  ];
+  const r = solveTimetable({ days: [1, 2, 3, 4, 5, 6], periodsPerDay: 8, requirements, seed: 1, timeLimitMs: 3000 });
+  assert.deepEqual(hardViolations(r.slots), []);
+  const seen = new Set();
+  for (const s of r.slots) {
+    const key = `${s.room_id}:${s.day}:${s.period}`;
+    assert.ok(!seen.has(key), `room double-booked at ${key}`);
+    seen.add(key);
+  }
+});
+
+test('a lesson with no room_id is placed with no room constraint at all', () => {
+  const r = solveTimetable({ requirements: [{ class_id: 1, subject_id: 1, teacher_id: 1, periods_per_week: 4 }], timeLimitMs: 300 });
+  assert.equal(r.slots.every((s) => s.room_id == null), true);
+  assert.deepEqual(hardViolations(r.slots), []);
+});
+
+test('hardViolations catches a room double-booking', () => {
+  const v = hardViolations([
+    { class_id: 1, day: 1, period: 1, subject_id: 1, teacher_id: 5, room_id: 9 },
+    { class_id: 2, day: 1, period: 1, subject_id: 2, teacher_id: 6, room_id: 9 },
+  ]);
+  assert.ok(v.some((m) => /room 9 double-booked/.test(m)));
+});
