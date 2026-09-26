@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Play, CheckCircle2, Pencil, Plus, X, Info, Download, Trash2, AlertTriangle } from 'lucide-react';
-import { apiRequest, API_URL } from '../api';
+import { apiRequest, apiDownload } from '../api';
 import { useAuth } from '../AuthContext';
 
 const INR = (n) => '₹' + Number(n).toLocaleString('en-IN');
@@ -186,9 +186,12 @@ function PayrollRunsTab() {
             <h2 className="font-display text-xl text-ink">{detail.period}</h2>
             <div className="flex items-center gap-2">
               {detail.status === 'approved' && (
-                <a href={`${API_URL}/api/payroll-runs/${detail.id}/bank.csv`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border border-cream-deep text-ink-soft hover:text-ink">
+                <button
+                  onClick={() => apiDownload(`/api/payroll-runs/${detail.id}/bank.csv`, `salary-${detail.period}.csv`).catch((err) => setError(err.message))}
+                  className="inline-flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border border-cream-deep text-ink-soft hover:text-ink"
+                >
                   <Download className="w-4 h-4" /> Bank transfer CSV
-                </a>
+                </button>
               )}
               {detail.status !== 'approved' && canApprove && (
                 <button disabled={approving} onClick={approve} className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep disabled:opacity-50">
@@ -220,9 +223,12 @@ function PayrollRunsTab() {
                       <Td className="text-terracotta-deep">-{INR(p.deductions)}</Td>
                       <Td className="font-medium">{INR(p.net_pay)}</Td>
                       <Td className="text-right">
-                        <a href={`${API_URL}/api/payroll-runs/payslips/${p.id}/pdf`} target="_blank" rel="noreferrer" className="text-ink-soft hover:text-terracotta-deep inline-flex">
+                        <button
+                          onClick={() => apiDownload(`/api/payroll-runs/payslips/${p.id}/pdf`, `payslip-${detail.period}-${p.name.replace(/\W+/g, '_')}.pdf`).catch((err) => setError(err.message))}
+                          className="text-ink-soft hover:text-terracotta-deep inline-flex"
+                        >
                           <Download className="w-4 h-4" />
-                        </a>
+                        </button>
                       </Td>
                     </tr>
                   ))}
@@ -232,6 +238,53 @@ function PayrollRunsTab() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function StatutoryDeductionsCard() {
+  const [settings, setSettings] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiRequest('/api/settings').then(setSettings).catch((e) => setError(e.message));
+  }, []);
+
+  const toggle = async (key) => {
+    const next = { pf_enabled: settings.pf_enabled, esi_enabled: settings.esi_enabled, [key]: !settings[key] };
+    setSaving(true);
+    setError('');
+    try {
+      const updated = await apiRequest('/api/settings/payroll-deductions', { method: 'PATCH', body: next });
+      setSettings(updated);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!settings) return null;
+
+  return (
+    <div className="rounded-2xl bg-white border border-cream-deep/70 p-4 space-y-3">
+      <div>
+        <div className="font-display text-base text-ink">Statutory deductions</div>
+        <p className="text-xs text-ink-soft mt-0.5">
+          Off by default. When on, applied automatically on top of anything below — don't also add a manual PF/ESI
+          component, or it'll be deducted twice.
+        </p>
+      </div>
+      {error && <div className="rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs px-3 py-2">{error}</div>}
+      <label className="flex items-center gap-2 text-sm text-ink">
+        <input type="checkbox" checked={!!settings.pf_enabled} disabled={saving} onChange={() => toggle('pf_enabled')} />
+        Provident Fund (PF) — 12% of basic, capped at ₹15,000 wage
+      </label>
+      <label className="flex items-center gap-2 text-sm text-ink">
+        <input type="checkbox" checked={!!settings.esi_enabled} disabled={saving} onChange={() => toggle('esi_enabled')} />
+        ESI — 0.75% of gross, only while gross is ₹21,000/month or less
+      </label>
     </div>
   );
 }
@@ -275,7 +328,13 @@ function SalaryComponentsTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-ink-soft">HRA, PF, TDS, advance recovery — whatever your school actually pays or deducts. Applies to every staff member unless you pick one specifically.</p>
+      <StatutoryDeductionsCard />
+      <p className="text-xs text-ink-soft">
+        HRA, TDS, advance recovery — whatever else your school actually pays or deducts. TDS especially needs a
+        person to work it out (it depends on each employee's full-year income and declarations) and enter it here
+        as a fixed amount; this app doesn't compute it automatically. Applies to every staff member unless you pick
+        one specifically.
+      </p>
       {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
 
       <form onSubmit={add} className="rounded-2xl bg-white border border-cream-deep/70 p-4 flex flex-wrap items-end gap-3">

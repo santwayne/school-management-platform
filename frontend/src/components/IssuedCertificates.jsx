@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Download, ShieldOff, CheckCircle2 } from 'lucide-react';
-import { apiRequest, API_URL } from '../api';
+import { apiRequest, apiDownload } from '../api';
 
 const TYPE_LABELS = {
   bonafide: 'Bonafide', character_certificate: 'Character', fee_certificate: 'Fee certificate', leaving_certificate: 'Transfer certificate',
@@ -98,9 +98,13 @@ export default function IssuedCertificates() {
                   </td>
                   <td className="px-5 py-3">
                     <div className="flex items-center justify-end gap-2">
-                      <a href={`${API_URL}/api/certificates/${c.id}/pdf`} target="_blank" rel="noreferrer" className="text-ink-soft hover:text-terracotta-deep" title="Download PDF">
+                      <button
+                        onClick={() => apiDownload(`/api/certificates/${c.id}/pdf`, `${c.cert_type}-${c.serial}.pdf`).catch((err) => setError(err.message))}
+                        className="text-ink-soft hover:text-terracotta-deep"
+                        title="Download PDF"
+                      >
                         <Download className="w-4 h-4" />
-                      </a>
+                      </button>
                       {!c.revoked_at && (
                         <button disabled={busyId === c.id} onClick={() => revoke(c.id)} className="text-ink-soft hover:text-destructive disabled:opacity-50" title="Revoke">
                           <ShieldOff className="w-4 h-4" />

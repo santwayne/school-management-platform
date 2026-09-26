@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import ClassManager from './ClassManager';
 import SyllabusManager from './SyllabusManager';
 import FeeCollectorsCard from './FeeCollectorsCard';
@@ -14,9 +15,16 @@ const TABS = [
   { key: 'parents', label: 'Parents' },
   { key: 'collectors', label: 'Fee Collectors' },
 ];
+const TAB_KEYS = new Set(TABS.map((t) => t.key));
 
 export default function ManageSchool() {
-  const [tab, setTab] = useState('classes');
+  // Lets other screens (the post-signup setup checklist on the dashboard)
+  // deep-link straight to a tab here, e.g. /admin/manage?tab=teachers,
+  // instead of dropping a principal on "Classes" and making them find
+  // Staff/Students/Parents themselves.
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const [tab, setTab] = useState(TAB_KEYS.has(requestedTab) ? requestedTab : 'classes');
 
   return (
     <div className="space-y-6">
