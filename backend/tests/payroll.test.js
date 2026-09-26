@@ -36,3 +36,34 @@ test('negative net is floored and flagged', () => {
 });
 
 test('periodLabel', () => assert.equal(periodLabel('2026-09'), 'September 2026'));
+
+test('PF/ESI are off by default, even at wages that would qualify', () => {
+  const p = computePay({ base: 10000, workingDays: 25 });
+  assert.equal(p.deductions.length, 0);
+  assert.equal(p.net, 10000);
+});
+
+test('PF is 12% of basic, capped at the 15,000 wage ceiling', () => {
+  const below = computePay({ base: 10000, workingDays: 25, pfEnabled: true });
+  assert.equal(below.deductions.find((d) => d.name.includes('Provident Fund')).amount, 1200);
+
+  const above = computePay({ base: 30000, workingDays: 25, pfEnabled: true });
+  assert.equal(above.deductions.find((d) => d.name.includes('Provident Fund')).amount, 1800, '12% of the 15,000 ceiling, not of the full 30,000 basic');
+});
+
+test('ESI applies only when gross is at or below 21,000/month', () => {
+  const eligible = computePay({ base: 20000, workingDays: 25, esiEnabled: true });
+  assert.equal(eligible.deductions.find((d) => d.name === 'ESI').amount, 150);
+
+  const overThreshold = computePay({ base: 25000, workingDays: 25, esiEnabled: true });
+  assert.equal(overThreshold.deductions.find((d) => d.name === 'ESI'), undefined, 'above 21,000 gross is outside the scheme entirely, not capped');
+});
+
+test('PF and ESI stack correctly with each other and with loss-of-pay', () => {
+  const p = computePay({ base: 10000, workingDays: 25, lopDays: 1, pfEnabled: true, esiEnabled: true });
+  const pf = p.deductions.find((d) => d.name.includes('Provident Fund')).amount;
+  const esi = p.deductions.find((d) => d.name === 'ESI').amount;
+  assert.equal(pf, 1200);
+  assert.equal(esi, 75); // 0.75% of the 10,000 gross (LOP reduces net pay, not the ESI wage base)
+  assert.equal(p.deductions_total, pf + esi + 400); // 400 = one day's LOP on a 25-working-day month
+});
