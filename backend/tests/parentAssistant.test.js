@@ -72,3 +72,15 @@ test('replyLanguage keeps the conversation language for short messages', () => {
   assert.equal(replyLanguage('When is the next holiday?', 'hinglish', 'hi'), 'en');
   assert.equal(replyLanguage('फीस कितनी है', null, 'en'), 'hi');
 });
+
+test('Punjabi parents get full Punjabi copy for every message', async () => {
+  const { copy } = await import('../services/parentAssistant.js');
+  const pa = copy('pa');
+  const en = copy('en');
+  for (const key of Object.keys(en)) {
+    assert.ok(key in pa, `missing Punjabi key ${key}`);
+  }
+  assert.match(pa.menu, /[਀-੿]/);
+  assert.match(pa.fee_due('Aman', '₹500', null), /[਀-੿]/);
+  assert.notEqual(pa.safety, copy('hi').safety);
+});

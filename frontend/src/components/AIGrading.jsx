@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { GraduationCap, Plus, X, Upload, CheckCircle2, AlertTriangle, ClipboardCheck } from 'lucide-react';
+import { GraduationCap, Plus, X, Upload, CheckCircle2, AlertTriangle, ClipboardCheck, PencilLine, Trash2 } from 'lucide-react';
 import { apiRequest } from '../api';
 
 const CONFIDENCE_STYLE = {
@@ -70,6 +70,72 @@ function GenerateTestModal({ classes, onClose, onCreated }) {
         <button disabled={saving} onClick={save} className="w-full px-4 py-2 rounded-lg bg-terracotta text-white text-sm font-medium hover:bg-terracotta-deep disabled:opacity-50">
           {saving ? 'Generating…' : 'Generate test'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// Teachers can hand-edit the answer key and marks the AI drafted (or write
+// one from scratch). Grading always uses whatever is saved here.
+function RubricEditor({ test, onClose, onSaved }) {
+  const [rows, setRows] = useState(() =>
+    (test.rubric || []).length
+      ? test.rubric.map((r) => ({ question_num: r.question_num, max_marks: r.max_marks, correct_answer: r.correct_answer || '' }))
+      : [{ question_num: 1, max_marks: 10, correct_answer: '' }]
+  );
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const update = (i, patch) => setRows(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const addRow = () => setRows([...rows, { question_num: Math.max(0, ...rows.map((r) => Number(r.question_num) || 0)) + 1, max_marks: 10, correct_answer: '' }]);
+  const removeRow = (i) => setRows(rows.filter((_, idx) => idx !== i));
+
+  const save = async () => {
+    setError('');
+    if (rows.some((r) => !String(r.correct_answer).trim())) return setError('Every question needs a model answer.');
+    setSaving(true);
+    try {
+      await apiRequest(`/api/grading/tests/${test.id}/rubric`, {
+        method: 'PUT',
+        body: { items: rows.map((r) => ({ question_num: Number(r.question_num), max_marks: Number(r.max_marks), correct_answer: String(r.correct_answer).trim() })) },
+      });
+      onSaved?.();
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-30 bg-black/30 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-5 w-full max-w-2xl max-h-[90vh] overflow-y-auto space-y-3" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <div className="font-display text-base text-ink">Answer key & marks — {test.title}</div>
+          <button onClick={onClose}><X className="w-4 h-4 text-ink-soft" /></button>
+        </div>
+        {error && <div className="rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs px-3 py-2">{error}</div>}
+        {rows.map((r, i) => (
+          <div key={i} className="rounded-xl border border-cream-deep/70 p-3 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <label className="text-xs text-ink-soft">Q
+                <input type="number" min={1} value={r.question_num} onChange={(e) => update(i, { question_num: e.target.value })} className="ml-1 w-16 rounded-lg border border-cream-deep/70 px-2 py-1 text-ink" />
+              </label>
+              <label className="text-xs text-ink-soft">Marks
+                <input type="number" min={0.5} step={0.5} max={999} value={r.max_marks} onChange={(e) => update(i, { max_marks: e.target.value })} className="ml-1 w-20 rounded-lg border border-cream-deep/70 px-2 py-1 text-ink" />
+              </label>
+              <button onClick={() => removeRow(i)} className="ml-auto text-ink-soft hover:text-destructive" aria-label="Remove question"><Trash2 className="w-4 h-4" /></button>
+            </div>
+            <textarea rows={3} placeholder="Model answer / marking points" value={r.correct_answer} onChange={(e) => update(i, { correct_answer: e.target.value })} className="w-full rounded-lg border border-cream-deep/70 px-3 py-2 text-sm text-ink" />
+          </div>
+        ))}
+        <div className="flex items-center gap-2">
+          <button onClick={addRow} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-cream-deep text-sm text-ink hover:bg-cream-deep/40"><Plus className="w-4 h-4" /> Add question</button>
+          <button disabled={saving} onClick={save} className="ml-auto px-4 py-2 rounded-lg bg-terracotta text-white text-sm font-medium hover:bg-terracotta-deep disabled:opacity-50">
+            {saving ? 'Saving…' : 'Save answer key'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -268,6 +334,7 @@ export default function AIGrading() {
   const [error, setError] = useState('');
   const [showGenerate, setShowGenerate] = useState(false);
   const [gradingTest, setGradingTest] = useState(null);
+  const [editingTest, setEditingTest] = useState(null);
 
   const loadTests = async () => {
     setError('');
@@ -287,6 +354,14 @@ export default function AIGrading() {
     try {
       const full = await apiRequest(`/api/grading/tests/${test.id}`);
       setGradingTest(full);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const openRubric = async (test) => {
+    try {
+      setEditingTest(await apiRequest(`/api/grading/tests/${test.id}`));
     } catch (err) {
       setError(err.message);
     }
@@ -322,9 +397,14 @@ export default function AIGrading() {
                   <div className="font-medium text-ink">{t.title}</div>
                   <div className="text-xs text-ink-soft">{t.subject_id} · {t.chapter_id} · {t.difficulty} · {t.question_count} question{t.question_count === 1 ? '' : 's'}</div>
                 </div>
-                <button onClick={() => openForGrading(t)} className="px-3 py-1.5 rounded-lg bg-white border border-cream-deep text-ink text-sm font-medium hover:bg-cream-deep/40 shrink-0">
-                  Grade answers
-                </button>
+                <div className="flex gap-2 shrink-0">
+                  <button onClick={() => openRubric(t)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-cream-deep text-ink text-sm font-medium hover:bg-cream-deep/40">
+                    <PencilLine className="w-4 h-4" /> Answer key
+                  </button>
+                  <button onClick={() => openForGrading(t)} className="px-3 py-1.5 rounded-lg bg-white border border-cream-deep text-ink text-sm font-medium hover:bg-cream-deep/40">
+                    Grade answers
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -334,6 +414,7 @@ export default function AIGrading() {
       <PendingReviewQueue />
 
       {showGenerate && <GenerateTestModal classes={classes} onClose={() => setShowGenerate(false)} onCreated={loadTests} />}
+      {editingTest && <RubricEditor test={editingTest} onClose={() => setEditingTest(null)} onSaved={loadTests} />}
       {gradingTest && <SubmitAnswerPanel test={gradingTest} onClose={() => setGradingTest(null)} onSubmitted={() => {}} />}
     </div>
   );

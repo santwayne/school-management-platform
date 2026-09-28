@@ -1,5 +1,7 @@
 import express from 'express';
 import { normalizePhone } from '../utils/phone.js';
+import { consentKeyword } from '../utils/consent.js';
+import { audit } from '../services/opsService.js';
 import { handleEnquiryMessage, resolveSchoolForUnknownSender } from '../services/admissionAgent.js';
 import { handleParentMessage } from '../services/parentAssistant.js';
 import crypto from 'crypto';
@@ -234,6 +236,35 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
       [fromCandidates]
     );
     const parent = complianceCheck.rows[0];
+
+    // Consent: "Anyone can reply STOP at any time" (feature guide, Trust).
+    // Until now only admission enquiries honoured STOP — an existing
+    // parent's STOP fell through to the parent assistant. Handle STOP /
+    // START for every parent row on this number (a parent can be linked to
+    // more than one school) before anything else touches the message.
+    if (parent && message.type === 'text' && message.text?.body) {
+      const keyword = consentKeyword(message.text.body);
+      if (keyword) {
+        const newStatus = keyword === 'stop' ? 'OPTED_OUT' : 'OPTED_IN';
+        const updated = await pool.query(
+          `UPDATE parents SET opt_in_status = $1 WHERE phone = ANY($2::text[]) RETURNING id, school_id`,
+          [newStatus, fromCandidates]
+        );
+        for (const row of updated.rows) {
+          await audit({
+            schoolId: row.school_id, actorType: 'parent', actorId: row.id,
+            action: keyword === 'stop' ? 'parent.opted_out' : 'parent.opted_in',
+            entityType: 'parent', entityId: row.id, detail: { via: 'whatsapp_keyword' },
+          }).catch(() => {});
+        }
+        // One confirmation reply is allowed (they messaged us inside the 24h window).
+        await sendTextMessage(fromPhone, keyword === 'stop'
+          ? 'You will no longer receive WhatsApp messages from the school. Reply START any time to turn them back on.'
+          : 'WhatsApp messages from the school are turned back on. Reply STOP any time to turn them off.'
+        ).catch((err) => console.error('[WhatsApp] consent confirmation failed:', err.message));
+        return res.sendStatus(200);
+      }
+    }
 
     // Unknown number (not a parent, not a fee collector) sending text =
     // a prospective parent. Route it to the admission assistant instead

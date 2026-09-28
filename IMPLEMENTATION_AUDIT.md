@@ -182,3 +182,28 @@ All additive (`CREATE TABLE IF NOT EXISTS`/`ADD COLUMN IF NOT EXISTS`), via the 
 
 ### Environment Variables Required
 - None new. Everything reuses already-documented `.env.example` variables: `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION`/`AWS_S3_BUCKET` (certificates), `RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET` (admission fee links), `ANTHROPIC_API_KEY` (timetable AI parsing). If any of these are unset in a given environment, the affected feature fails with a clear error at request time rather than pretending to succeed — never silently faked.
+
+---
+
+## 9. Live QA pass on waynur.com + fixes (2026-09-28)
+
+Tested production with dummy data (student, library, certificates, admissions web form, timetable generator, payroll draft, AI tutor, substitution planner) and cross-checked against the feature guide.
+
+### Bugs fixed
+- **Driver payouts always 500** — `GET /api/transport/payouts` used unqualified `school_id`/`status` in a join with `buses` (ambiguous column). Qualified with `dp.`. The payouts page also used `Promise.all`, so the failure left the route-profitability table stuck on "Loading…"; now loads each independently.
+- **Library data leak** — `GET /api/library/issues` had only `requireAuth`, so any student could list every student's borrowed books. Now principal/librarian see all; students see only their own; staff only their own.
+- **Answer key visible to students** — `GET /api/grading/tests/:id` returned `correct_answer` to any logged-in user. Students now get 403.
+- **Cron jobs ran on server time** — 11 of 13 clock-time jobs had no timezone; on a UTC server the "7 AM" teacher nudge fired at 12:30 PM IST, fee reminders at 2:30 PM, etc. All pinned to `Asia/Kolkata` (override with `CRON_TZ`). Old timezone-less repeatables are purged from Redis at startup so nothing fires twice.
+
+### Pending items closed
+- **Reply STOP (existing parents)** — only admission enquiries honoured STOP. The webhook now handles STOP/START (English, Hinglish, Hindi, Punjabi) for every parent row on that number, audits it, and sends one confirmation.
+- **Punjabi replies** — full Gurmukhi copy for the parent assistant and admissions assistant (previously fell back to Hindi); Hindi/Punjabi-script yes/no parsing for the transport question.
+- **Student library view** — new `/library` page in the student portal ("My Library").
+- **Manual rubric authoring** — `PUT /api/grading/tests/:id/rubric` + "Answer key" editor on the AI Grading page (audited).
+
+### Still open
+- DB-backed integration tests for the Phase 2–4 orchestration functions.
+- Production config (not code): WhatsApp phone number ID/token, admission code/web address, staff salaries, timetable, buses, biometric device.
+
+### Tests
+56/56 passing (+5: consent keywords, Punjabi copy coverage, Hindi/Punjabi yes/no). Frontend build clean.

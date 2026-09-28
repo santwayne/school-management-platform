@@ -1,5 +1,31 @@
 import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue, weeklyProgressSummaryQueue, recurringDoubtQueue, opsDigestQueue, admissionFollowupQueue, substitutionQueue, payrollQueue, certificateQueue } from '../config/queue.js';
 
+// Every clock-time job runs on India time regardless of the server's own
+// timezone (EC2 defaults to UTC, which made the "7 AM" teacher nudge fire
+// at 12:30 PM IST, fee reminders at 2:30 PM, and so on).
+const CRON_TZ = process.env.CRON_TZ || 'Asia/Kolkata';
+
+// Adding `tz` changes BullMQ's repeat key, so the old timezone-less
+// repeatables already stored in Redis would keep firing alongside the new
+// ones (every job twice a day). Remove any clock-time repeatable that has no
+// timezone before the schedule*() functions re-register them. Idempotent:
+// after the first run there is nothing left to remove.
+export async function purgeTimezonelessRepeatables() {
+  const queues = [guidanceQueue, teacherAttendanceQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue, weeklyProgressSummaryQueue, recurringDoubtQueue];
+  let removed = 0;
+  for (const q of queues) {
+    const jobs = await q.getRepeatableJobs();
+    for (const j of jobs) {
+      if (j.pattern && !j.tz) {
+        await q.removeRepeatableByKey(j.key);
+        removed += 1;
+      }
+    }
+  }
+  if (removed) console.log(`Removed ${removed} timezone-less repeatable job(s); re-registering on ${CRON_TZ}.`);
+  return removed;
+}
+
 // The worker only reacts to jobs that land on GuidanceQueue — nothing put
 // any there before. This registers a repeatable job so it actually fires
 // every morning instead of the worker sitting idle forever.
@@ -8,7 +34,7 @@ export async function scheduleDailyGuidance() {
     'dailyNudge',
     {},
     {
-      repeat: { pattern: process.env.GUIDANCE_CRON || '0 7 * * *' }, // 7:00 AM daily, server timezone
+      repeat: { pattern: process.env.GUIDANCE_CRON || '0 7 * * *', tz: CRON_TZ }, // 7:00 AM daily, India time
       removeOnComplete: true,
       jobId: 'daily-guidance-nudge', // prevents duplicate repeatables on restart
     }
@@ -23,7 +49,7 @@ export async function scheduleTeacherAttendanceAggregation() {
     'aggregateDaily',
     {},
     {
-      repeat: { pattern: process.env.ATTENDANCE_AGGREGATION_CRON || '0 22 * * *' }, // 10:00 PM daily
+      repeat: { pattern: process.env.ATTENDANCE_AGGREGATION_CRON || '0 22 * * *', tz: CRON_TZ }, // 10:00 PM daily
       removeOnComplete: true,
       jobId: 'daily-teacher-attendance-aggregation',
     }
@@ -38,7 +64,7 @@ export async function scheduleLibraryDigest() {
     'dailyLibraryDigest',
     {},
     {
-      repeat: { pattern: process.env.LIBRARY_DIGEST_CRON || '0 8 * * *' }, // 8:00 AM daily
+      repeat: { pattern: process.env.LIBRARY_DIGEST_CRON || '0 8 * * *', tz: CRON_TZ }, // 8:00 AM daily
       removeOnComplete: true,
       jobId: 'daily-library-digest',
     }
@@ -54,7 +80,7 @@ export async function scheduleFeeReminders() {
     'dailyFeeReminders',
     {},
     {
-      repeat: { pattern: process.env.FEE_REMINDER_CRON || '0 9 * * *' }, // 9:00 AM daily
+      repeat: { pattern: process.env.FEE_REMINDER_CRON || '0 9 * * *', tz: CRON_TZ }, // 9:00 AM daily
       removeOnComplete: true,
       jobId: 'daily-fee-reminders',
     }
@@ -68,7 +94,7 @@ export async function schedulePettyCashReminders() {
     'dailyPettyCashReminders',
     {},
     {
-      repeat: { pattern: process.env.PETTY_CASH_REMINDER_CRON || '30 9 * * *' }, // 9:30 AM daily
+      repeat: { pattern: process.env.PETTY_CASH_REMINDER_CRON || '30 9 * * *', tz: CRON_TZ }, // 9:30 AM daily
       removeOnComplete: true,
       jobId: 'daily-petty-cash-reminders',
     }
@@ -82,7 +108,7 @@ export async function scheduleStaffLeaveReminders() {
     'dailyStaffLeaveReminders',
     {},
     {
-      repeat: { pattern: process.env.STAFF_LEAVE_REMINDER_CRON || '0 10 * * *' }, // 10:00 AM daily
+      repeat: { pattern: process.env.STAFF_LEAVE_REMINDER_CRON || '0 10 * * *', tz: CRON_TZ }, // 10:00 AM daily
       removeOnComplete: true,
       jobId: 'daily-staff-leave-reminders',
     }
@@ -116,7 +142,7 @@ export async function scheduleLowAttendanceAlerts() {
     'weeklyLowAttendanceCheck',
     {},
     {
-      repeat: { pattern: process.env.LOW_ATTENDANCE_ALERT_CRON || '15 8 * * 1' }, // Monday 8:15 AM
+      repeat: { pattern: process.env.LOW_ATTENDANCE_ALERT_CRON || '15 8 * * 1', tz: CRON_TZ }, // Monday 8:15 AM
       removeOnComplete: true,
       jobId: 'weekly-low-attendance-check',
     }
@@ -130,7 +156,7 @@ export async function scheduleEventReminders() {
     'dailyEventReminders',
     {},
     {
-      repeat: { pattern: process.env.EVENT_REMINDER_CRON || '45 8 * * *' }, // 8:45 AM daily
+      repeat: { pattern: process.env.EVENT_REMINDER_CRON || '45 8 * * *', tz: CRON_TZ }, // 8:45 AM daily
       removeOnComplete: true,
       jobId: 'daily-event-reminders',
     }
@@ -145,7 +171,7 @@ export async function schedulePerformanceDrift() {
     'weeklyPerformanceSnapshot',
     {},
     {
-      repeat: { pattern: process.env.PERFORMANCE_DRIFT_CRON || '0 20 * * 0' }, // Sunday 8:00 PM
+      repeat: { pattern: process.env.PERFORMANCE_DRIFT_CRON || '0 20 * * 0', tz: CRON_TZ }, // Sunday 8:00 PM
       removeOnComplete: true,
       jobId: 'weekly-performance-snapshot',
     }
@@ -161,7 +187,7 @@ export async function scheduleWeeklyProgressSummaries() {
     'weeklyClassSummaries',
     {},
     {
-      repeat: { pattern: process.env.WEEKLY_SUMMARY_CRON || '30 20 * * 0' }, // Sunday 8:30 PM
+      repeat: { pattern: process.env.WEEKLY_SUMMARY_CRON || '30 20 * * 0', tz: CRON_TZ }, // Sunday 8:30 PM
       removeOnComplete: true,
       jobId: 'weekly-class-progress-summaries',
     }
@@ -177,7 +203,7 @@ export async function scheduleRecurringDoubtCheck() {
     'weeklyRecurringDoubtCheck',
     {},
     {
-      repeat: { pattern: process.env.RECURRING_DOUBT_CRON || '0 11 * * 1' }, // Monday 11:00 AM
+      repeat: { pattern: process.env.RECURRING_DOUBT_CRON || '0 11 * * 1', tz: CRON_TZ }, // Monday 11:00 AM
       removeOnComplete: true,
       jobId: 'weekly-recurring-doubt-check',
     }

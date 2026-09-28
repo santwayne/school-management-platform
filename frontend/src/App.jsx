@@ -42,6 +42,7 @@ import StudentNotes from './components/StudentNotes';
 import StudentProgress from './components/StudentProgress';
 import StudentResults from './components/StudentResults';
 import StudentRewards from './components/StudentRewards';
+import StudentLibrary from './components/StudentLibrary';
 import AdminShell from './components/AdminShell';
 import AccountantShell from './components/AccountantShell';
 import SuperAdminShell from './components/SuperAdminShell';
@@ -193,6 +194,7 @@ function AppRoutes() {
         <Route path="/progress" element={<ProtectedRoute studentOnly><StudentProgress /></ProtectedRoute>} />
         <Route path="/results" element={<ProtectedRoute studentOnly><StudentResults /></ProtectedRoute>} />
         <Route path="/rewards" element={<ProtectedRoute studentOnly><StudentRewards /></ProtectedRoute>} />
+        <Route path="/library" element={<ProtectedRoute studentOnly><StudentLibrary /></ProtectedRoute>} />
         <Route path="/student/leave" element={<ProtectedRoute studentOnly><StudentLeave /></ProtectedRoute>} />
         <Route path="/certificates" element={<ProtectedRoute studentOnly><StudentCertificateRequest /></ProtectedRoute>} />
         <Route path="/attendance" element={<ProtectedRoute studentOnly><StudentAttendance /></ProtectedRoute>} />

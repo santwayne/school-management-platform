@@ -28,7 +28,9 @@ test('detectLanguage', () => {
   assert.equal(detectLanguage('ਸਤ ਸ੍ਰੀ ਅਕਾਲ'), 'pa');
   assert.equal(detectLanguage('fee kitni hai'), 'hinglish');
   assert.equal(detectLanguage('What is the fee?'), 'en');
-  assert.equal(copyFor('pa'), copyFor('hi'));
+  assert.notEqual(copyFor('pa'), copyFor('hi'));
+  assert.deepEqual(Object.keys(copyFor('pa')).sort(), Object.keys(copyFor('hi')).sort());
+  assert.deepEqual(Object.keys(copyFor('pa')).sort(), Object.keys(copyFor('en')).sort());
 });
 
 test('parseYesNo', () => {
@@ -68,4 +70,11 @@ test('follow-up plan', () => {
   assert.equal(hoursUntilNext([1, 3, 7], 1), 48);
   assert.equal(hoursUntilNext([1, 3, 7], 2), 96);
   assert.equal(hoursUntilNext([1, 3, 7], 3), null);
+});
+
+test('parseYesNo understands Hindi and Punjabi script', () => {
+  assert.equal(parseYesNo('हाँ'), true);
+  assert.equal(parseYesNo('नहीं'), false);
+  assert.equal(parseYesNo('ਹਾਂ ਜੀ'), true);
+  assert.equal(parseYesNo('ਨਹੀਂ ਚਾਹੀਦੀ'), false);
 });
