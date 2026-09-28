@@ -191,6 +191,22 @@ router.get('/issues', requireAuth, async (req, res) => {
   try {
     const params = [req.user.school_id];
     let where = 'li.school_id = $1';
+    // Only the principal/librarian see every borrower. Previously this
+    // route had no role check, so any logged-in student could list every
+    // other student's borrowed books by name. Everyone else now sees only
+    // their own issues (this also powers the student portal "My Library").
+    const role = req.user.role;
+    if (role !== 'principal' && role !== 'librarian') {
+      if (role === 'student' && req.user.student_id) {
+        params.push(req.user.student_id);
+        where += ` AND li.student_id = $${params.length}`;
+      } else if (req.user.teacher_id) {
+        params.push(req.user.teacher_id);
+        where += ` AND li.teacher_id = $${params.length}`;
+      } else {
+        return res.status(403).json({ error: 'Not allowed' });
+      }
+    }
     if (status) {
       params.push(status.toUpperCase());
       where += ` AND li.status = $${params.length}`;

@@ -3,6 +3,7 @@ import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
 import { gradeAnswerSheetImage } from '../services/ocrGradingService.js';
 import { sendStudentNoteNow } from '../services/studentNoteService.js';
+import { audit } from '../services/opsService.js';
 
 const router = express.Router();
 
@@ -33,6 +34,9 @@ router.get('/tests', requireAuth, async (req, res) => {
 
 // GET /api/grading/tests/:id — full test detail: questions + rubric (marks, not the answer key itself unless principal)
 router.get('/tests/:id', requireAuth, async (req, res) => {
+  // Students must never receive the answer key. This route previously had
+  // only requireAuth, so a logged-in student could fetch correct_answer.
+  if (req.user.role === 'student') return res.status(403).json({ error: 'Not allowed' });
   try {
     const testRes = await pool.query('SELECT * FROM generated_tests WHERE id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
     if (testRes.rowCount === 0) return res.status(404).json({ error: 'Test not found' });
@@ -44,6 +48,46 @@ router.get('/tests/:id', requireAuth, async (req, res) => {
     res.json({ ...testRes.rows[0], rubric: rubricRes.rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/grading/tests/:id/rubric — teacher/principal hand-edits the
+// answer key and marks per question (the AI-generated one is only a draft).
+// Replaces the whole rubric for the test in one transaction.
+router.put('/tests/:id/rubric', requireAuth, async (req, res) => {
+  if (req.user.role === 'student') return res.status(403).json({ error: 'Not allowed' });
+  const items = Array.isArray(req.body?.items) ? req.body.items : null;
+  if (!items || items.length === 0) return res.status(400).json({ error: 'items array required' });
+  const seen = new Set();
+  for (const it of items) {
+    const q = Number(it.question_num);
+    const m = Number(it.max_marks);
+    if (!Number.isInteger(q) || q < 1) return res.status(400).json({ error: 'question_num must be a positive whole number' });
+    if (seen.has(q)) return res.status(400).json({ error: `Question ${q} appears twice` });
+    seen.add(q);
+    if (!(m > 0 && m <= 999)) return res.status(400).json({ error: `Question ${q}: marks must be between 0.5 and 999` });
+    if (!String(it.correct_answer || '').trim()) return res.status(400).json({ error: `Question ${q}: model answer is required` });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const t = await client.query('SELECT id FROM generated_tests WHERE id = $1 AND school_id = $2 FOR UPDATE', [req.params.id, req.user.school_id]);
+    if (!t.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Test not found' }); }
+    await client.query('DELETE FROM test_rubrics WHERE test_id = $1', [req.params.id]);
+    for (const it of items) {
+      await client.query(
+        'INSERT INTO test_rubrics (test_id, question_num, correct_answer, max_marks) VALUES ($1, $2, $3, $4)',
+        [req.params.id, Number(it.question_num), String(it.correct_answer).trim(), Number(it.max_marks)]
+      );
+    }
+    await client.query('COMMIT');
+    await audit({ schoolId: req.user.school_id, actorType: 'user', actorId: req.user.teacher_id || null, action: 'rubric.edited', entityType: 'test', entityId: Number(req.params.id), detail: { questions: items.length } });
+    res.json({ saved: items.length });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 

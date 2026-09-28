@@ -264,10 +264,13 @@ router.post('/buses/:id/generate-payout', requireAuth, requirePrincipal, async (
 router.get('/payouts', requireAuth, requireFinance, async (req, res) => {
   const { bus_id, status } = req.query;
   try {
-    const conditions = ['school_id = $1'];
+    // Columns are qualified with `dp.` — buses also has school_id (and
+    // status), so the unqualified names made Postgres reject the query as
+    // ambiguous and this endpoint always returned 500.
+    const conditions = ['dp.school_id = $1'];
     const params = [req.user.school_id];
-    if (bus_id) { params.push(bus_id); conditions.push(`bus_id = $${params.length}`); }
-    if (status) { params.push(status); conditions.push(`status = $${params.length}`); }
+    if (bus_id) { params.push(bus_id); conditions.push(`dp.bus_id = $${params.length}`); }
+    if (status) { params.push(status); conditions.push(`dp.status = $${params.length}`); }
     const { rows } = await pool.query(
       `SELECT dp.*, b.route_name, b.driver_name FROM driver_payouts dp
          JOIN buses b ON b.id = dp.bus_id

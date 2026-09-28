@@ -22,16 +22,18 @@ export default function TransportPayouts() {
 
   const load = async () => {
     setError('');
-    try {
-      const [profitability, payoutList] = await Promise.all([
-        apiRequest(`/api/transport/route-profitability?billing_month=${month}`),
-        apiRequest('/api/transport/payouts?status=pending'),
-      ]);
-      setRoutes(profitability.routes);
-      setPayouts(payoutList);
-    } catch (err) {
-      setError(err.message);
-    }
+    // Loaded independently: with Promise.all, one failing request left the
+    // other table stuck on "Loading…" forever.
+    const [profitability, payoutList] = await Promise.allSettled([
+      apiRequest(`/api/transport/route-profitability?billing_month=${month}`),
+      apiRequest('/api/transport/payouts?status=pending'),
+    ]);
+    const errors = [];
+    if (profitability.status === 'fulfilled') setRoutes(profitability.value.routes || []);
+    else { setRoutes([]); errors.push(profitability.reason?.message); }
+    if (payoutList.status === 'fulfilled') setPayouts(payoutList.value);
+    else { setPayouts([]); errors.push(payoutList.reason?.message); }
+    if (errors.length) setError(errors.filter(Boolean).join(' · '));
   };
 
   useEffect(() => {

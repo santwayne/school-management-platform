@@ -105,7 +105,7 @@ export function resolveChild(children, text, activeStudentId) {
   const t = String(text || '').toLowerCase();
   const byName = children.filter((c) => {
     const first = String(c.name || '').split(/\s+/)[0].toLowerCase();
-    return first.length >= 2 && new RegExp(`\\b${first.replace(/[^a-z\u0900-\u097f]/g, '')}\\b`).test(t);
+    return first.length >= 2 && new RegExp(`\\b${first.replace(/[^a-z\u0900-\u097f\u0a00-\u0a7f]/g, '')}\\b`).test(t);
   });
   if (byName.length === 1) return { child: byName[0] };
   const active = children.find((c) => c.id === activeStudentId);
@@ -114,7 +114,7 @@ export function resolveChild(children, text, activeStudentId) {
 }
 
 const fmtDate = (d, lang) =>
-  new Date(`${String(d instanceof Date ? d.toISOString().slice(0, 10) : d).slice(0, 10)}T00:00:00Z`).toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-IN', { timeZone: 'UTC', day: 'numeric', month: 'short', weekday: 'short' });
+  new Date(`${String(d instanceof Date ? d.toISOString().slice(0, 10) : d).slice(0, 10)}T00:00:00Z`).toLocaleDateString(lang === 'hi' ? 'hi-IN' : lang === 'pa' ? 'pa-IN' : 'en-IN', { timeZone: 'UTC', day: 'numeric', month: 'short', weekday: 'short' });
 
 
 // Short or mixed messages ("attendance batao", "1", "menu") don't reveal a
@@ -211,11 +211,48 @@ const T = {
     safety: 'आपने जो बताया वह बहुत गंभीर है। मैंने तुरंत प्रिंसिपल को सूचित कर दिया है, स्कूल से कोई आपको जल्द कॉल करेगा। अगर बच्चा अभी खतरे में है तो 112 पर कॉल करें।',
     absence_ack: (n) => `धन्यवाद, नोट कर लिया।${n ? ` ${n} के लिए` : ''} अब आपको कॉल नहीं आएगी।`,
   },
+  // Full Punjabi (Gurmukhi) copy. Before this, a parent writing in Punjabi
+  // got Hindi/Hinglish replies — the guide promises Hindi, Punjabi or English.
+  pa: {
+    which_child: (list) => `ਕਿਹੜੇ ਬੱਚੇ ਬਾਰੇ? ਨੰਬਰ ਲਿਖ ਕੇ ਜਵਾਬ ਦਿਓ:\n${list}`,
+    menu: 'ਮੈਂ ਇਹਨਾਂ ਗੱਲਾਂ ਵਿੱਚ ਮਦਦ ਕਰ ਸਕਦਾ ਹਾਂ:\n• ਫੀਸ ਕਿੰਨੀ ਬਾਕੀ ਹੈ / ਪੇਮੈਂਟ ਲਿੰਕ\n• ਅੱਜ ਦਾ ਹੋਮਵਰਕ\n• ਹਾਜ਼ਰੀ\n• ਨਤੀਜਾ\n• ਛੁੱਟੀ ਦੀ ਅਰਜ਼ੀ (ਜਿਵੇਂ "ਅਰਵ ਕੱਲ੍ਹ ਨਹੀਂ ਆਵੇਗਾ")\n• ਛੁੱਟੀਆਂ ਅਤੇ ਸਮਾਗਮ\n• ਬੱਸ ਕਿੱਥੇ ਹੈ\n• ਸਰਟੀਫਿਕੇਟ ਚਾਹੀਦਾ ਹੈ\n• ਅਧਿਆਪਕ ਨਾਲ ਗੱਲ\nਹੋਮਵਰਕ ਦਾ ਕੋਈ ਸਵਾਲ ਹੋਵੇ ਤਾਂ ਸਿੱਧਾ ਲਿਖੋ ਜਾਂ ਫੋਟੋ ਭੇਜੋ।',
+    thanks: '🙏',
+    absence_ack: (n) => `ਧੰਨਵਾਦ, ਨੋਟ ਕਰ ਲਿਆ।${n ? ` ${n} ਲਈ` : ''} ਹੁਣ ਤੁਹਾਨੂੰ ਕਾਲ ਨਹੀਂ ਆਵੇਗੀ।`,
+    fee_none: (n) => `${n} ਦੀ ਕੋਈ ਫੀਸ ਬਾਕੀ ਨਹੀਂ ਹੈ। 👍`,
+    fee_due: (n, due, bus) => `${n} ਦੀ ਬਾਕੀ ਫੀਸ: ${due}${bus ? ` (ਇਸ ਵਿੱਚ ਟਰਾਂਸਪੋਰਟ ${bus} ਸ਼ਾਮਲ ਹੈ)` : ''}।\nਪੇਮੈਂਟ ਲਿੰਕ ਲਈ "pay" ਲਿਖੋ।`,
+    fee_unknown: (n) => `${n} ਦੀ ਫੀਸ ਦਾ ਰਿਕਾਰਡ ਅਜੇ ਅਪਡੇਟ ਨਹੀਂ ਹੋਇਆ। ਦਫ਼ਤਰ ਤੁਹਾਨੂੰ ਜਲਦੀ ਦੱਸੇਗਾ।`,
+    pay_link: (n, amt, url) => `${n} ਦੀ ਫੀਸ ${amt} ਦਾ ਪੇਮੈਂਟ ਲਿੰਕ:\n${url}`,
+    pay_failed: 'ਪੇਮੈਂਟ ਲਿੰਕ ਅਜੇ ਨਹੀਂ ਬਣ ਸਕਿਆ। ਦਫ਼ਤਰ ਤੁਹਾਨੂੰ ਲਿੰਕ ਭੇਜ ਦੇਵੇਗਾ।',
+    receipt: (n, rows) => `${n} ਦੀਆਂ ਪਿਛਲੀਆਂ ਪੇਮੈਂਟਾਂ:\n${rows}`,
+    receipt_none: (n) => `${n} ਦਾ ਕੋਈ ਪੇਮੈਂਟ ਰਿਕਾਰਡ ਨਹੀਂ ਮਿਲਿਆ।`,
+    hw: (n, rows) => `${n} ਦਾ ਹੋਮਵਰਕ:\n${rows}`,
+    hw_none: (n) => `${n} ਦੀ ਕਲਾਸ ਨੂੰ ਅੱਜ/ਕੱਲ੍ਹ ਲਈ ਕੋਈ ਹੋਮਵਰਕ ਨਹੀਂ ਦਿੱਤਾ ਗਿਆ।`,
+    att: (n, pct, absent, dates) => `${n} ਦੀ ਪਿਛਲੇ 30 ਦਿਨਾਂ ਦੀ ਹਾਜ਼ਰੀ: ${pct}%।${absent ? ` ਗੈਰਹਾਜ਼ਰ: ${absent} ਦਿਨ (${dates})।` : ' ਇੱਕ ਵੀ ਦਿਨ ਗੈਰਹਾਜ਼ਰ ਨਹੀਂ। 👏'}`,
+    att_none: (n) => `${n} ਦੀ ਹਾਜ਼ਰੀ ਦਾ ਰਿਕਾਰਡ ਅਜੇ ਨਹੀਂ ਹੈ।`,
+    results: (n, exam, rows, total) => `${n}: ${exam}\n${rows}\nਕੁੱਲ: ${total}`,
+    results_none: (n) => `${n} ਦਾ ਕੋਈ ਨਤੀਜਾ ਅਜੇ ਜਾਰੀ ਨਹੀਂ ਹੋਇਆ।`,
+    events: (rows) => `ਆਉਣ ਵਾਲੀਆਂ ਛੁੱਟੀਆਂ/ਸਮਾਗਮ:\n${rows}`,
+    events_none: 'ਅਗਲੇ 30 ਦਿਨਾਂ ਵਿੱਚ ਕੋਈ ਛੁੱਟੀ ਜਾਂ ਸਮਾਗਮ ਨਹੀਂ ਹੈ।',
+    bus: (n, bus, mins, km) => `${n} ਦੀ ਬੱਸ (${bus}) ${mins} ਮਿੰਟ ਪਹਿਲਾਂ ${km !== null ? `ਤੁਹਾਡੇ ਸਟਾਪ ਤੋਂ ਲਗਭਗ ${km} ਕਿਲੋਮੀਟਰ ਦੂਰ ਸੀ` : 'ਚੱਲ ਰਹੀ ਸੀ'}।`,
+    bus_stale: (n, bus) => `${n} ਦੀ ਬੱਸ (${bus}) ਦੀ ਲਾਈਵ ਲੋਕੇਸ਼ਨ ਅਜੇ ਉਪਲਬਧ ਨਹੀਂ ਹੈ। ਡਰਾਈਵਰ ਨਾਲ ਸੰਪਰਕ ਲਈ ਦਫ਼ਤਰ ਨੂੰ ਕਾਲ ਕਰੋ।`,
+    bus_none: (n) => `${n} ਸਕੂਲ ਟਰਾਂਸਪੋਰਟ ਵਿੱਚ ਰਜਿਸਟਰਡ ਨਹੀਂ ਹੈ।`,
+    tt: (n, day, rows) => `${n} ਦਾ ${day} ਦਾ ਟਾਈਮਟੇਬਲ:\n${rows}`,
+    tt_none: (n) => `${n} ਦੀ ਕਲਾਸ ਦਾ ਟਾਈਮਟੇਬਲ ਅਜੇ ਸੈੱਟ ਨਹੀਂ ਹੈ।`,
+    leave_ask_date: (n) => `${n} ਕਿਸ ਦਿਨ ਨਹੀਂ ਆਵੇਗਾ/ਆਵੇਗੀ? (ਜਿਵੇਂ "ਕੱਲ੍ਹ", "ਅੱਜ" ਜਾਂ "28/9")`,
+    leave_done: (n, from, to) => `${n} ਦੀ ਛੁੱਟੀ ਦੀ ਅਰਜ਼ੀ ਭੇਜ ਦਿੱਤੀ ਗਈ ਹੈ (${from}${to !== from ? ` ਤੋਂ ${to}` : ''})। ਕਲਾਸ ਟੀਚਰ ਮਨਜ਼ੂਰ ਕਰਨਗੇ।`,
+    leave_dup: (n) => `${n} ਦੀ ਇਹਨਾਂ ਦਿਨਾਂ ਦੀ ਅਰਜ਼ੀ ਪਹਿਲਾਂ ਹੀ ਹੈ।`,
+    cert_done: (n, type) => `${n} ਦੇ ${type} ਦੀ ਬੇਨਤੀ ਭੇਜ ਦਿੱਤੀ ਗਈ ਹੈ। ਤਿਆਰ ਹੋਣ 'ਤੇ ਤੁਹਾਨੂੰ ਦੱਸ ਦੇਵਾਂਗੇ।`,
+    cert_dup: (n, type) => `${n} ਦੇ ${type} ਦੀ ਬੇਨਤੀ ਪਹਿਲਾਂ ਹੀ ਚੱਲ ਰਹੀ ਹੈ।`,
+    teacher: (n) => `ਮੈਂ ${n} ਦੇ ਕਲਾਸ ਟੀਚਰ ਨੂੰ ਦੱਸ ਦਿੱਤਾ ਹੈ। ਉਹ ਤੁਹਾਡੇ ਨਾਲ ਜਲਦੀ ਸੰਪਰਕ ਕਰਨਗੇ।`,
+    complaint: 'ਤੁਹਾਡੀ ਗੱਲ ਨੋਟ ਕਰ ਲਈ ਗਈ ਹੈ। ਸਕੂਲ ਵੱਲੋਂ ਕੋਈ ਤੁਹਾਡੇ ਨਾਲ ਜਲਦੀ ਗੱਲ ਕਰੇਗਾ।',
+    safety: 'ਤੁਸੀਂ ਜੋ ਦੱਸਿਆ ਉਹ ਬਹੁਤ ਗੰਭੀਰ ਹੈ। ਮੈਂ ਤੁਰੰਤ ਪ੍ਰਿੰਸੀਪਲ ਨੂੰ ਸੂਚਿਤ ਕਰ ਦਿੱਤਾ ਹੈ, ਸਕੂਲ ਤੋਂ ਕੋਈ ਤੁਹਾਨੂੰ ਜਲਦੀ ਕਾਲ ਕਰੇਗਾ। ਜੇ ਬੱਚਾ ਹੁਣੇ ਖ਼ਤਰੇ ਵਿੱਚ ਹੈ ਤਾਂ 112 ’ਤੇ ਕਾਲ ਕਰੋ।',
+  },
 };
 // Hindi only overrides a few high-stakes messages; everything else falls back to Hinglish.
 export function copy(lang) {
   if (lang === 'en') return T.en;
-  if (lang === 'hi' || lang === 'pa') return { ...T.hinglish, ...T.hi };
+  if (lang === 'pa') return { ...T.hinglish, ...T.pa };
+  if (lang === 'hi') return { ...T.hinglish, ...T.hi };
   return T.hinglish;
 }
 

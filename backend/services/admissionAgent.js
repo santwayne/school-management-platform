@@ -53,6 +53,9 @@ export function detectLanguage(text) {
 
 export function parseYesNo(text) {
   const t = String(text || '').trim().toLowerCase();
+  // Devanagari / Gurmukhi answers (\b doesn't work outside ASCII).
+  if (/(नहीं|नही|ਨਹੀਂ|ਨਹੀ)/.test(t)) return false;
+  if (/^(हाँ|हां|जी|ਹਾਂ|ਜੀ)/.test(t) || /(चाहिए|ਚਾਹੀਦੀ|ਚਾਹੀਦਾ)/.test(t)) return true;
   if (/^(y|yes|yeah|yep|haan|han|ha|ji|ji haan|haanji|hanji|chahiye|required|need|ok|sure)\b/.test(t) || /\bhaan\b|\byes\b|\bchahiye\b/.test(t)) {
     if (/\b(no|nahi|nahin|not|mat)\b/.test(t)) return false;
     return true;
@@ -144,10 +147,31 @@ const Q = {
     closed: 'अभी एडमिशन बंद हैं। खुलने पर ऑफिस आपसे संपर्क करेगा।',
     thanks_done: 'धन्यवाद! अभी के लिए सारी जानकारी मिल गई है। हमारी टीम आपसे संपर्क करेगी।',
   },
+  // Punjabi (Gurmukhi). Previously Punjabi speakers silently got Hindi.
+  pa: {
+    greet: (school) => `${school} ਵਿੱਚ ਦਿਲਚਸਪੀ ਲਈ ਧੰਨਵਾਦ! ਮੈਂ ਦਾਖ਼ਲਾ ਸਹਾਇਕ ਹਾਂ। ਫੀਸ, ਸਕੂਲ ਵਿਜ਼ਿਟ ਅਤੇ ਦਾਖ਼ਲੇ ਵਿੱਚ ਮਦਦ ਕਰ ਸਕਦਾ ਹਾਂ।`,
+    applying_grade: 'ਕਿਹੜੀ ਕਲਾਸ ਵਿੱਚ ਦਾਖ਼ਲਾ ਚਾਹੀਦਾ ਹੈ?',
+    child_name: 'ਬੱਚੇ ਦਾ ਨਾਮ ਕੀ ਹੈ?',
+    parent_name: 'ਅਤੇ ਤੁਹਾਡਾ ਨਾਮ?',
+    locality: 'ਤੁਸੀਂ ਕਿਸ ਇਲਾਕੇ ਵਿੱਚ ਰਹਿੰਦੇ ਹੋ?',
+    needs_transport: 'ਕੀ ਬੱਚੇ ਨੂੰ ਸਕੂਲ ਬੱਸ/ਵੈਨ ਚਾਹੀਦੀ ਹੈ? (ਹਾਂ / ਨਹੀਂ)',
+    offer: (list) => `ਕੀ ਤੁਸੀਂ ਸਕੂਲ ਦੇਖਣ ਆਉਣਾ ਚਾਹੋਗੇ? ਨੰਬਰ ਲਿਖ ਕੇ ਜਵਾਬ ਦਿਓ:\n${list}`,
+    booked: (when) => `ਤੁਹਾਡੀ ਸਕੂਲ ਵਿਜ਼ਿਟ ${when} ਲਈ ਬੁੱਕ ਹੋ ਗਈ ਹੈ। ਅਸੀਂ ਯਾਦ-ਦਹਾਨੀ ਭੇਜਾਂਗੇ।`,
+    slot_full: 'ਮਾਫ਼ ਕਰਨਾ, ਉਹ ਸਮਾਂ ਭਰ ਗਿਆ ਹੈ। ਇਹ ਅਗਲੇ ਖਾਲੀ ਸਮੇਂ ਹਨ:',
+    no_slots: 'ਸਾਡੀ ਦਾਖ਼ਲਾ ਟੀਮ ਤੁਹਾਨੂੰ ਕਾਲ ਕਰਕੇ ਵਿਜ਼ਿਟ ਦਾ ਸਮਾਂ ਤੈਅ ਕਰੇਗੀ।',
+    fee: (cls, amt) => `${cls} ਦੀ ਸਾਲਾਨਾ ਫੀਸ ${amt} ਹੈ।`,
+    fee_range: (cls, lo, hi) => `${cls} ਦੀ ਸਾਲਾਨਾ ਫੀਸ ਸੈਕਸ਼ਨ ਮੁਤਾਬਕ ${lo} ਤੋਂ ${hi} ਵਿਚਕਾਰ ਹੈ।`,
+    fee_unknown: 'ਸਾਡਾ ਦਫ਼ਤਰ ਤੁਹਾਨੂੰ ਫੀਸ ਦੀ ਪੂਰੀ ਜਾਣਕਾਰੀ ਜਲਦੀ ਭੇਜੇਗਾ।',
+    fee_need_class: 'ਜ਼ਰੂਰ। ਕਿਹੜੀ ਕਲਾਸ ਦੀ ਫੀਸ ਜਾਣਨੀ ਹੈ?',
+    human: 'ਜ਼ਰੂਰ। ਸਾਡੀ ਦਾਖ਼ਲਾ ਟੀਮ ਜਲਦੀ ਤੁਹਾਨੂੰ ਕਾਲ ਕਰੇਗੀ।',
+    opted_out: 'ਹੁਣ ਤੁਹਾਨੂੰ ਦਾਖ਼ਲੇ ਦੇ ਮੈਸੇਜ ਨਹੀਂ ਆਉਣਗੇ। ਦੁਬਾਰਾ ਸ਼ੁਰੂ ਕਰਨ ਲਈ START ਲਿਖੋ।',
+    opted_in: 'ਫਿਰ ਤੋਂ ਜੀ ਆਇਆਂ ਨੂੰ! ਦਾਖ਼ਲੇ ਵਿੱਚ ਕਿਵੇਂ ਮਦਦ ਕਰਾਂ?',
+    closed: 'ਇਸ ਵੇਲੇ ਦਾਖ਼ਲੇ ਬੰਦ ਹਨ। ਖੁੱਲ੍ਹਣ \u2019ਤੇ ਦਫ਼ਤਰ ਤੁਹਾਡੇ ਨਾਲ ਸੰਪਰਕ ਕਰੇਗਾ।',
+    thanks_done: 'ਧੰਨਵਾਦ! ਹੁਣ ਲਈ ਸਾਰੀ ਜਾਣਕਾਰੀ ਮਿਲ ਗਈ ਹੈ। ਸਾਡੀ ਟੀਮ ਤੁਹਾਡੇ ਨਾਲ ਸੰਪਰਕ ਕਰੇਗੀ।',
+  },
 };
-// Punjabi (Gurmukhi) speakers get Hindi replies until Punjabi copy is added.
 export function copyFor(lang) {
-  return Q[lang] || (lang === 'pa' ? Q.hi : Q.en);
+  return Q[lang] || Q.en;
 }
 
 export const inr = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
@@ -155,7 +179,7 @@ export const inr = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN
 export function formatSlot(slotStart, lang = 'en') {
   // slot_start is stored as IST wall-clock (timestamp without tz); format it as-is.
   const d = new Date(`${String(slotStart instanceof Date ? slotStart.toISOString() : slotStart).replace(' ', 'T').replace(/Z$/, '')}Z`);
-  return d.toLocaleString(lang === 'hi' ? 'hi-IN' : 'en-IN', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleString(lang === 'hi' ? 'hi-IN' : lang === 'pa' ? 'pa-IN' : 'en-IN', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 }
 
 export function gradeLabel(key) {

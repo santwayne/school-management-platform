@@ -70,7 +70,7 @@ import './workers/dailyDigestWorker.js';
 import admissionFollowupWorker from './workers/admissionFollowupWorker.js';
 import { instrumentWorkers } from './workers/instrumentation.js';
 import { startHealthCheckLoop } from './workers/healthCheck.js';
-import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest, scheduleFeeReminders, schedulePettyCashReminders, scheduleStaffLeaveReminders, scheduleTeachingReminders, scheduleLowAttendanceAlerts, scheduleEventReminders, schedulePerformanceDrift, scheduleWeeklyProgressSummaries, scheduleRecurringDoubtCheck, scheduleOpsDailyDigest, scheduleAdmissionFollowups, scheduleSubstitutions, schedulePayroll, scheduleCertificates } from './workers/scheduler.js';
+import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest, scheduleFeeReminders, schedulePettyCashReminders, scheduleStaffLeaveReminders, scheduleTeachingReminders, scheduleLowAttendanceAlerts, scheduleEventReminders, schedulePerformanceDrift, scheduleWeeklyProgressSummaries, scheduleRecurringDoubtCheck, scheduleOpsDailyDigest, scheduleAdmissionFollowups, scheduleSubstitutions, schedulePayroll, scheduleCertificates, purgeTimezonelessRepeatables } from './workers/scheduler.js';
 import { runBootstrap } from './scripts/autoBootstrap.js';
 
 dotenv.config();
@@ -168,6 +168,11 @@ async function start() {
 
   app.listen(PORT, async () => {
     console.log(`Core Backend running on port ${PORT}`);
+    try {
+      await purgeTimezonelessRepeatables();
+    } catch (err) {
+      console.error('Failed to purge old repeatable jobs (is Redis running?):', err.message);
+    }
     try {
       await scheduleDailyGuidance();
     } catch (err) {
