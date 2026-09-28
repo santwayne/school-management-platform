@@ -2,6 +2,7 @@ import express from 'express';
 import { normalizePhone } from '../utils/phone.js';
 import { consentKeyword } from '../utils/consent.js';
 import { audit } from '../services/opsService.js';
+import { requireAuth, requireOperator } from '../middleware/auth.js';
 import { handleEnquiryMessage, resolveSchoolForUnknownSender } from '../services/admissionAgent.js';
 import { handleParentMessage } from '../services/parentAssistant.js';
 import crypto from 'crypto';
@@ -46,7 +47,9 @@ function isValidMetaSignature(req) {
 
 // Debug: list templates and their approval status for the current WABA.
 // Hit GET /api/whatsapp/debug-templates to see which templates are Active vs In Review.
-router.get('/debug-templates', async (req, res) => {
+// Staff-only: these two had no auth at all, so anyone on the internet could
+// make the school's number send messages or list its templates.
+router.get('/debug-templates', requireAuth, requireOperator, async (req, res) => {
   const token = process.env.WHATSAPP_ACCESS_TOKEN;
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   if (!token || !phoneId) return res.status(500).json({ error: 'WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID not set' });
@@ -72,7 +75,7 @@ router.get('/debug-templates', async (req, res) => {
 
 // Debug: send hello_world (always-approved) to a number to confirm the pipeline works.
 // POST /api/whatsapp/debug-send  { "to": "919876543210" }
-router.post('/debug-send', async (req, res) => {
+router.post('/debug-send', requireAuth, requireOperator, async (req, res) => {
   const { to } = req.body;
   if (!to) return res.status(400).json({ error: 'to is required' });
   try {

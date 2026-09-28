@@ -193,6 +193,7 @@ Tested production with dummy data (student, library, certificates, admissions we
 - **Driver payouts always 500** — `GET /api/transport/payouts` used unqualified `school_id`/`status` in a join with `buses` (ambiguous column). Qualified with `dp.`. The payouts page also used `Promise.all`, so the failure left the route-profitability table stuck on "Loading…"; now loads each independently.
 - **Library data leak** — `GET /api/library/issues` had only `requireAuth`, so any student could list every student's borrowed books. Now principal/librarian see all; students see only their own; staff only their own.
 - **Answer key visible to students** — `GET /api/grading/tests/:id` returned `correct_answer` to any logged-in user. Students now get 403.
+- **Open WhatsApp debug endpoints** — `GET /api/whatsapp/debug-templates` and `POST /api/whatsapp/debug-send` had no auth: anyone could make the school's number send messages. Now operator/principal only.
 - **Cron jobs ran on server time** — 11 of 13 clock-time jobs had no timezone; on a UTC server the "7 AM" teacher nudge fired at 12:30 PM IST, fee reminders at 2:30 PM, etc. All pinned to `Asia/Kolkata` (override with `CRON_TZ`). Old timezone-less repeatables are purged from Redis at startup so nothing fires twice.
 
 ### Pending items closed
