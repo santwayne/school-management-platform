@@ -1,0 +1,17 @@
+# Waynur
+
+> Waynur is AI-powered school management software for Indian schools, built on WhatsApp by Wayne E Solutions (Ludhiana, Punjab, India). Attendance, marks, homework, fees, payroll and bus tracking run from one dashboard, and parents get updates on WhatsApp with no app to install.
+
+- Pricing: per student per month, billed to the school; plans Starter, Growth, District
+- Data hosted in India; DPDP Act 2023 compliant; role-based access and audit logs
+- Most schools go live within a week
+
+## Pages
+
+- [Home](https://waynur.com/): Waynur is AI school management software for Indian schools. Attendance, fees, payroll, bus tracking and WhatsApp updates to parents in one dashboard.
+- [Features](https://waynur.com/features): Explore Waynur's features: attendance, WhatsApp parent updates, AI tutor, lesson plans, fees, payroll, bus tracking, report cards and certificates.
+- [Pricing](https://waynur.com/pricing): Simple per-student pricing for Waynur school software, billed to the school. Starter, Growth and District plans. WhatsApp charges included, no hidden fees.
+- [FAQ](https://waynur.com/faq): Answers to common questions about Waynur: go-live time, data migration, WhatsApp updates for parents, AI tutor, data storage in India, pricing and support.
+- [Team](https://waynur.com/team): Waynur is built by Wayne E Solutions, a small team in Ludhiana, Punjab, building a warm, WhatsApp-first, AI-powered school management system for India.
+- [Legal](https://waynur.com/legal): Waynur's terms, privacy policy, refund and cancellation policy, cookie policy, acceptable use and grievance contact. Operated by Wayne E Solutions, India.
+- [Teacher WhatsApp Demo](https://waynur.com/demo/teacher-whatsapp): See how Waynur's AI drafts lesson plans, homework and grading summaries for teachers on WhatsApp. Teachers approve with one word and AI does the rest.

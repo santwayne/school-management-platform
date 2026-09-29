@@ -17,7 +17,7 @@ export function LandingNav() {
     <header className="sticky top-0 z-30 bg-cream/85 backdrop-blur border-b border-cream-deep/60">
       <div className="mx-auto max-w-7xl px-6 h-16 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2" onClick={() => setOpen(false)}>
-          <img src={logoFull} alt="Waynur" className="h-10 w-auto object-contain" />
+          <img src={logoFull} alt="Waynur logo" className="h-10 w-auto object-contain" />
         </Link>
 
         <nav className="hidden md:flex items-center gap-8 text-sm text-ink-soft">
@@ -119,7 +119,7 @@ export function LandingFooter() {
             Intelligence that guides — an AI school platform built with warmth, for Indian schools.
           </p>
           <div className="mt-4 space-y-1.5 text-sm text-ink-soft">
-            <a href="mailto:wayneesolutions@gmail.com" className="block hover:text-terracotta transition">wayneesolutions@gmail.com</a>
+            <a href="mailto:info@waynur.com" className="block hover:text-terracotta transition">info@waynur.com</a>
             <a href="https://www.instagram.com/waynur___/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 hover:text-terracotta transition">
               <Instagram className="h-4 w-4" /> @waynur___
             </a>

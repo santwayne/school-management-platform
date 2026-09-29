@@ -29,7 +29,7 @@ export const LEGAL_SECTIONS = [
             "items": [
               "The institution must provide accurate, current, and complete information during onboarding.",
               "The institution is responsible for maintaining the confidentiality of login credentials issued to its administrators, teachers, and other users, and for all activity occurring under those credentials.",
-              "Wayne E Solutions must be notified immediately at wayneesolutions@gmail.com of any unauthorized access or security breach."
+              "Wayne E Solutions must be notified immediately at info@waynur.com of any unauthorized access or security breach."
             ]
           }
         ]
@@ -182,7 +182,7 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "p",
-            "text": "Questions about these Terms can be directed to wayneesolutions@gmail.com."
+            "text": "Questions about these Terms can be directed to info@waynur.com."
           }
         ]
       }
@@ -354,7 +354,7 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "p",
-            "text": "Parents/guardians or staff wishing to access, correct, or request deletion of personal data should contact their institution directly, as the institution controls this data. Institutions may contact us at wayneesolutions@gmail.com to action such requests on the Platform."
+            "text": "Parents/guardians or staff wishing to access, correct, or request deletion of personal data should contact their institution directly, as the institution controls this data. Institutions may contact us at info@waynur.com to action such requests on the Platform."
           }
         ]
       },
@@ -390,7 +390,7 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "p",
-            "text": "For privacy-related queries, contact wayneesolutions@gmail.com or our Grievance Officer (see Section 7.2)."
+            "text": "For privacy-related queries, contact info@waynur.com or our Grievance Officer (see Section 7.2)."
           }
         ]
       }
@@ -406,7 +406,7 @@ export const LEGAL_SECTIONS = [
           {
             "type": "ul",
             "items": [
-              "Institutions may cancel their Waynur subscription at any time by providing 30 days' written notice to wayneesolutions@gmail.com.",
+              "Institutions may cancel their Waynur subscription at any time by providing 30 days' written notice to info@waynur.com.",
               "Cancellation takes effect at the end of the current billing cycle; access continues until that date."
             ]
           }
@@ -466,7 +466,7 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "p",
-            "text": "Send a written request to wayneesolutions@gmail.com including the institution name, account ID, and reason for the request. We aim to acknowledge all such requests within 3 business days."
+            "text": "Send a written request to info@waynur.com including the institution name, account ID, and reason for the request. We aim to acknowledge all such requests within 3 business days."
           }
         ]
       }
@@ -544,7 +544,7 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "p",
-            "text": "Questions about our use of cookies can be sent to wayneesolutions@gmail.com."
+            "text": "Questions about our use of cookies can be sent to info@waynur.com."
           }
         ]
       }
@@ -622,7 +622,7 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "p",
-            "text": "Suspected violations of this AUP should be reported to wayneesolutions@gmail.com. We may investigate and take action including warnings, feature restrictions, suspension, or termination of access, depending on severity."
+            "text": "Suspected violations of this AUP should be reported to info@waynur.com. We may investigate and take action including warnings, feature restrictions, suspension, or termination of access, depending on severity."
           }
         ]
       },
@@ -770,7 +770,7 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "p",
-            "text": "To receive the full, signed SaaS Agreement for your institution, contact wayneesolutions@gmail.com."
+            "text": "To receive the full, signed SaaS Agreement for your institution, contact info@waynur.com."
           }
         ]
       }
@@ -795,7 +795,7 @@ export const LEGAL_SECTIONS = [
           {
             "type": "ul",
             "items": [
-              "Email: wayneesolutions@gmail.com",
+              "Email: info@waynur.com",
               "Phone: +91 83600 98455"
             ]
           }
@@ -813,7 +813,7 @@ export const LEGAL_SECTIONS = [
             "items": [
               "Name: Pankaj Thakur",
               "Designation: Founder & Director",
-              "Email: wayneesolutions@gmail.com"
+              "Email: pankaj@waynur.com"
             ]
           },
           {
@@ -829,7 +829,7 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "p",
-            "text": "Institutions in Ontario and Manitoba with privacy-related concerns may also contact wayneesolutions@gmail.com, and, if unresolved, may escalate to the applicable provincial or federal privacy regulator."
+            "text": "Institutions in Ontario and Manitoba with privacy-related concerns may also contact info@waynur.com, and, if unresolved, may escalate to the applicable provincial or federal privacy regulator."
           }
         ]
       },
