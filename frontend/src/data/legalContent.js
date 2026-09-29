@@ -1,7 +1,4 @@
-// Auto-generated from Waynur-Legal-Pages.docx — plain-language legal content.
-// Bracketed placeholders like [Date] or [support email] are drafting
-// placeholders carried over from the source document; replace before
-// treating this as a final, legally reviewed page.
+// Legal content for the Waynur public site.
 export const LEGAL_SECTIONS = [
   {
     "title": "1. Terms & Conditions",
@@ -32,7 +29,7 @@ export const LEGAL_SECTIONS = [
             "items": [
               "The institution must provide accurate, current, and complete information during onboarding.",
               "The institution is responsible for maintaining the confidentiality of login credentials issued to its administrators, teachers, and other users, and for all activity occurring under those credentials.",
-              "Wayne E Solutions must be notified immediately at [support email] of any unauthorized access or security breach."
+              "Wayne E Solutions must be notified immediately at wayneesolutions@gmail.com of any unauthorized access or security breach."
             ]
           }
         ]
@@ -53,7 +50,7 @@ export const LEGAL_SECTIONS = [
             "type": "ul",
             "items": [
               "Access to Waynur is subject to payment of applicable subscription fees as set out in the order form, pricing page, or signed agreement.",
-              "Fees are billed in advance on a [monthly/annual] basis unless otherwise agreed in writing.",
+              "Fees are billed in advance on a monthly or annual basis, depending on the selected plan, unless otherwise agreed in writing.",
               "Non-payment may result in suspension or termination of access, subject to the notice period described in Section 1.9."
             ]
           }
@@ -139,7 +136,7 @@ export const LEGAL_SECTIONS = [
           {
             "type": "ul",
             "items": [
-              "Upon termination, the institution may request export of its data within 30 days, after which data may be deleted per our data retention practices [(see Privacy Policy).]"
+              "Upon termination, the institution may request export of its data within 30 days, after which data may be deleted per our data retention practices (see Privacy Policy, Section 2.9)."
             ]
           }
         ]
@@ -185,7 +182,7 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "p",
-            "text": "Questions about these Terms can be directed to [legal/support email]."
+            "text": "Questions about these Terms can be directed to wayneesolutions@gmail.com."
           }
         ]
       }
@@ -241,7 +238,7 @@ export const LEGAL_SECTIONS = [
             "type": "ul",
             "items": [
               "Usage data: Log data, device/browser information, and platform interaction data collected automatically.",
-              "Payment data: Billing details for subscription payments (processed via [payment processor]; full card details are not stored by us)."
+              "Payment data: Billing details for subscription payments (processed via a third-party payment provider; full card details are not stored by us)."
             ]
           }
         ]
@@ -273,8 +270,7 @@ export const LEGAL_SECTIONS = [
             "items": [
               "To send transactional communications, including WhatsApp attendance/fee alerts, on the institution's behalf.",
               "To provide customer support and respond to institution requests.",
-              "To improve the Platform, including aggregated/anonymized analytics",
-              "never using identifiable student data for this purpose without explicit institutional consent.",
+              "To improve the Platform, including aggregated/anonymized analytics, never using identifiable student data for this purpose without explicit institutional consent.",
               "To comply with legal obligations."
             ]
           },
@@ -358,7 +354,7 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "p",
-            "text": "Parents/guardians or staff wishing to access, correct, or request deletion of personal data should contact their institution directly, as the institution controls this data. Institutions may contact us at [privacy email] to action such requests on the Platform."
+            "text": "Parents/guardians or staff wishing to access, correct, or request deletion of personal data should contact their institution directly, as the institution controls this data. Institutions may contact us at wayneesolutions@gmail.com to action such requests on the Platform."
           }
         ]
       },
@@ -394,7 +390,7 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "p",
-            "text": "For privacy-related queries, contact [privacy email] or our Grievance Officer ."
+            "text": "For privacy-related queries, contact wayneesolutions@gmail.com or our Grievance Officer (see Section 7.2)."
           }
         ]
       }
@@ -410,7 +406,7 @@ export const LEGAL_SECTIONS = [
           {
             "type": "ul",
             "items": [
-              "Institutions may cancel their Waynur subscription at any time by providing 30 days' written notice to [support email].",
+              "Institutions may cancel their Waynur subscription at any time by providing 30 days' written notice to wayneesolutions@gmail.com.",
               "Cancellation takes effect at the end of the current billing cycle; access continues until that date."
             ]
           }
@@ -470,7 +466,7 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "p",
-            "text": "Send a written request to [support/billing email] including the institution name, account ID, and reason for the request. We aim to acknowledge all such requests within 3 business days."
+            "text": "Send a written request to wayneesolutions@gmail.com including the institution name, account ID, and reason for the request. We aim to acknowledge all such requests within 3 business days."
           }
         ]
       }
@@ -505,7 +501,7 @@ export const LEGAL_SECTIONS = [
             "type": "ul",
             "items": [
               "Strictly necessary cookies: Required for login sessions, authentication, and core platform functionality. These cannot be disabled without affecting the ability to use Waynur.",
-              "Performance/analytics cookies: Used to understand how visitors interact with our marketing website (e.g., page views, bounce rates), to help us improve the site. These may be set by tools such as Google Analytics.",
+              "Performance/analytics cookies: Used to understand how visitors interact with our marketing website (e.g., page views, bounce rates), to help us improve the site. These may be set by analytics tools, where enabled.",
               "Functional cookies: Remember preferences (e.g., language, dashboard layout) to improve user experience.",
               "Marketing cookies (website only, not applicable within the logged-in"
             ]
@@ -548,7 +544,7 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "p",
-            "text": "Questions about our use of cookies can be sent to [privacy email]."
+            "text": "Questions about our use of cookies can be sent to wayneesolutions@gmail.com."
           }
         ]
       }
@@ -626,7 +622,7 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "p",
-            "text": "Suspected violations of this AUP should be reported to [support/abuse email]. We may investigate and take action including warnings, feature restrictions, suspension, or termination of access, depending on severity."
+            "text": "Suspected violations of this AUP should be reported to wayneesolutions@gmail.com. We may investigate and take action including warnings, feature restrictions, suspension, or termination of access, depending on severity."
           }
         ]
       },
@@ -650,11 +646,11 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "note",
-            "text": "*This section summarizes the core commercial terms typically included in"
+            "text": "This section summarizes the core commercial terms typically included in"
           },
           {
             "type": "p",
-            "text": "a signed SaaS Agreement between Wayne E Solutions and a subscribing institution. A full, signed agreement should be executed for each institution before onboarding; this page provides a plain-language overview for prospective customers.*"
+            "text": "a signed SaaS Agreement between Wayne E Solutions and a subscribing institution. A full, signed agreement should be executed for each institution before onboarding; this page provides a plain-language overview for prospective customers."
           }
         ]
       },
@@ -685,7 +681,7 @@ export const LEGAL_SECTIONS = [
           {
             "type": "ul",
             "items": [
-              "Fees are as set out in the order form/pricing page and are payable in advance / per agreed schedule.",
+              "Fees are as set out in the order form/pricing page and are payable in advance or per the agreed schedule.",
               "Late payments beyond 15 days may result in suspension of access, subject to prior notice.",
               "Prices may be revised for renewal terms with 30 days' advance notice."
             ]
@@ -774,7 +770,7 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "p",
-            "text": "To receive the full, signed SaaS Agreement for your institution, contact [sales email]."
+            "text": "To receive the full, signed SaaS Agreement for your institution, contact wayneesolutions@gmail.com."
           }
         ]
       }
@@ -799,9 +795,8 @@ export const LEGAL_SECTIONS = [
           {
             "type": "ul",
             "items": [
-              "Email: [support@wayneesolutions.com]",
-              "Phone: +91 83600 98455",
-              "Hours: [Mon--Sat, 10 AM -- 7 PM IST]"
+              "Email: wayneesolutions@gmail.com",
+              "Phone: +91 83600 98455"
             ]
           }
         ]
@@ -818,8 +813,7 @@ export const LEGAL_SECTIONS = [
             "items": [
               "Name: Pankaj Thakur",
               "Designation: Founder & Director",
-              "Email: [grievance@wayneesolutions.com]",
-              "Address: [Registered Office Address, Ludhiana, Punjab, India]"
+              "Email: wayneesolutions@gmail.com"
             ]
           },
           {
@@ -835,20 +829,18 @@ export const LEGAL_SECTIONS = [
         "blocks": [
           {
             "type": "p",
-            "text": "Institutions in Ontario and Manitoba with privacy-related concerns may also contact [privacy email], and, if unresolved, may escalate to the applicable provincial or federal privacy regulator."
+            "text": "Institutions in Ontario and Manitoba with privacy-related concerns may also contact wayneesolutions@gmail.com, and, if unresolved, may escalate to the applicable provincial or federal privacy regulator."
           }
         ]
       },
       {
-        "title": "7.4 Registered Business Details",
+        "title": "7.4 Business Details",
         "blocks": [
           {
             "type": "ul",
             "items": [
               "Company: Wayne E Solutions",
-              "Registered Address: [Full Address, Ludhiana, Punjab, India]",
-              "GSTIN: [GSTIN if applicable]",
-              "CIN/Business Registration No.: [If applicable]"
+              "Location: Ludhiana, Punjab, India"
             ]
           }
         ]

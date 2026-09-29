@@ -64,12 +64,12 @@ export default function Legal() {
 
       <section className="mx-auto max-w-7xl px-6 pb-24 grid lg:grid-cols-[240px_1fr] gap-10">
         <aside>
-          <nav className="lg:sticky lg:top-24 flex lg:block gap-2 lg:space-y-1 overflow-x-auto">
+          <nav className="lg:sticky lg:top-24 flex lg:block gap-2 lg:space-y-1 overflow-x-auto lg:overflow-visible">
             {LEGAL_SECTIONS.map((s) => (
               <Link
                 key={s.id}
                 to={`/legal/${s.id}`}
-                className={`block whitespace-nowrap rounded-xl px-3 py-2 text-sm transition ${
+                className={`block whitespace-nowrap lg:whitespace-normal rounded-xl px-3 py-2 text-sm transition ${
                   current.id === s.id
                     ? 'bg-terracotta text-white font-medium'
                     : 'text-ink-soft hover:bg-cream-deep/60 hover:text-ink'
