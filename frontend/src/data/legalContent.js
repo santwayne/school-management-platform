@@ -5,7 +5,6 @@
 export const LEGAL_SECTIONS = [
   {
     "title": "1. Terms & Conditions",
-    "lastUpdated": "17 August 2026",
     "subsections": [
       {
         "title": "",
@@ -195,7 +194,6 @@ export const LEGAL_SECTIONS = [
   },
   {
     "title": "2. Privacy Policy",
-    "lastUpdated": "17 August 2026",
     "subsections": [
       {
         "title": "",
@@ -405,7 +403,6 @@ export const LEGAL_SECTIONS = [
   },
   {
     "title": "3. Refund & Cancellation Policy",
-    "lastUpdated": "17 August 2026",
     "subsections": [
       {
         "title": "3.1 Subscription Cancellation",
@@ -482,7 +479,6 @@ export const LEGAL_SECTIONS = [
   },
   {
     "title": "4. Cookie Policy",
-    "lastUpdated": "17 August 2026",
     "subsections": [
       {
         "title": "",
@@ -561,7 +557,6 @@ export const LEGAL_SECTIONS = [
   },
   {
     "title": "5. Acceptable Use Policy",
-    "lastUpdated": "17 August 2026",
     "subsections": [
       {
         "title": "",
@@ -649,7 +644,6 @@ export const LEGAL_SECTIONS = [
   },
   {
     "title": "6. SaaS Agreement (Summary Terms)",
-    "lastUpdated": "17 August 2026",
     "subsections": [
       {
         "title": "",
@@ -789,7 +783,6 @@ export const LEGAL_SECTIONS = [
   },
   {
     "title": "7. Contact & Grievance Information",
-    "lastUpdated": "17 August 2026",
     "subsections": [
       {
         "title": "",
@@ -823,7 +816,7 @@ export const LEGAL_SECTIONS = [
           {
             "type": "ul",
             "items": [
-              "Name: Pankaj Kumar",
+              "Name: Pankaj Thakur",
               "Designation: Founder & Director",
               "Email: [grievance@wayneesolutions.com]",
               "Address: [Registered Office Address, Ludhiana, Punjab, India]"

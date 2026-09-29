@@ -85,7 +85,7 @@ export default function Faq() {
             <Link to="/onboarding" className="inline-flex items-center gap-2 rounded-full bg-white text-terracotta-deep px-6 py-3.5 text-sm font-semibold shadow-md hover:scale-[1.03] transition-transform">
               Set up Waynur <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link to="/legal#contact-grievance-information" className="inline-flex items-center gap-2 rounded-full border border-white/40 px-6 py-3.5 text-sm font-medium hover:bg-white/10 transition">
+            <Link to="/legal/contact-grievance-information" className="inline-flex items-center gap-2 rounded-full border border-white/40 px-6 py-3.5 text-sm font-medium hover:bg-white/10 transition">
               Contact us
             </Link>
           </div>
