@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, CheckCheck } from 'lucide-react';
+import Seo from './Seo';
 
 function AutoPostCaption({ text, small }) {
   return (
@@ -109,22 +110,27 @@ function PhoneMockup() {
 export default function TeacherWhatsAppDemo() {
   return (
     <div className="min-h-screen bg-cream text-ink font-sans">
+      <Seo path="/demo/teacher-whatsapp" />
       <div className="mx-auto max-w-3xl px-6 py-12 md:py-16 flex flex-col items-center">
         <Link to="/" className="self-start inline-flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink transition mb-10">
           <ArrowLeft className="h-4 w-4" /> Back to Waynur
         </Link>
         <div className="text-center max-w-xl">
-          <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">See it in action</p>
-          <h1 className="mt-3 font-display text-4xl md:text-5xl font-semibold tracking-tight text-ink">
-            Teachers approve with one word. AI does the rest.
+          <h1 className="font-display text-4xl md:text-5xl font-semibold tracking-tight text-ink">
+            AI teacher assistant on WhatsApp
           </h1>
+          <p className="mt-4 font-display text-xl md:text-2xl font-medium tracking-tight text-terracotta">
+            Teachers approve with one word. AI does the rest.
+          </p>
+          <p className="mt-5 text-ink-soft leading-relaxed">
+            No new app to learn. Teachers stay on WhatsApp while Waynur drafts lesson plans,
+            homework and grading summaries, and only asks when a human decision is needed.
+          </p>
         </div>
-        <div className="mt-12 w-full max-w-[360px]">
+        <h2 className="mt-12 text-xs uppercase tracking-widest text-terracotta font-semibold">See it in action</h2>
+        <div className="mt-6 w-full max-w-[360px]">
           <PhoneMockup />
         </div>
-        <p className="mt-10 text-center text-sm text-ink-soft max-w-md">
-          No new app to learn. Teachers stay on WhatsApp while Waynur drafts, tracks and shares — only asking when a human decision is needed.
-        </p>
       </div>
     </div>
   );

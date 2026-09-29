@@ -2,13 +2,14 @@ import React from 'react';
 import { ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { LandingNav, LandingFooter } from './LandingLayout';
+import Seo from './Seo';
 
 // Real team, generic titles only — no fabricated career claims. Update the
 // role lines with real bios whenever you're ready.
 const TEAM = [
-  { initials: 'PT', name: 'Pankaj Thakur', role: 'Founder & Director', email: 'pankaj@wayneesolutions.com' },
-  { initials: 'PN', name: 'Pavnoor Kaur', role: 'Co-founder', email: 'pavnoor@wayneesolutions.com' },
-  { initials: 'PM', name: 'Piyush Mehndiratta', role: 'Marketing Head', email: 'piyush@wayneesolutions.com' },
+  { initials: 'PT', name: 'Pankaj Thakur', role: 'Founder & Director', email: 'pankaj@waynur.com' },
+  { initials: 'PN', name: 'Pavnoor Kaur', role: 'Co-founder', email: 'pavnoor@waynur.com' },
+  { initials: 'PM', name: 'Piyush Mehndiratta', role: 'Marketing Head', email: 'piyush@waynur.com' },
   { initials: 'SM', name: 'Surbhi Mehndiratta', role: 'Graphic Designer' },
   { initials: 'BK', name: 'Baljeet Kaur', role: 'Graphic Designer' },
   { initials: 'AS', name: 'Arpan Saini', role: 'Software Developer' },
@@ -19,6 +20,7 @@ const TEAM = [
 export default function Team() {
   return (
     <div className="min-h-screen bg-cream text-ink font-sans">
+      <Seo path="/team" />
       <LandingNav />
       <section className="relative overflow-hidden">
         <div
@@ -29,10 +31,10 @@ export default function Team() {
         <div className="mx-auto max-w-7xl px-6 pt-16 pb-14">
           <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">The people behind Waynur</p>
           <h1 className="mt-3 font-display text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tight text-ink">
-            Meet the team.
+            Meet the team behind Waynur
           </h1>
           <p className="mt-5 max-w-xl text-lg text-ink-soft leading-relaxed">
-            Waynur is built by Wayne E Solutions — a small team based in Ludhiana, Punjab,
+            Waynur is built by Wayne E Solutions, a small team based in Ludhiana, Punjab,
             building the school system we wish our own children had.
           </p>
         </div>

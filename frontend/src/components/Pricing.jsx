@@ -2,10 +2,12 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Check, HelpCircle } from 'lucide-react';
 import { LandingNav, LandingFooter } from './LandingLayout';
+import Seo from './Seo';
 
 const PLANS = [
   {
     name: 'Starter',
+    heading: 'Starter plan: for single schools under 500 students',
     tag: 'For single schools under 500 students',
     features: [
       'WhatsApp updates for every parent',
@@ -16,6 +18,7 @@ const PLANS = [
   },
   {
     name: 'Growth',
+    heading: 'Growth plan: for growing schools and small chains',
     tag: 'For growing schools & small chains',
     highlight: true,
     features: [
@@ -28,6 +31,7 @@ const PLANS = [
   },
   {
     name: 'District',
+    heading: 'District plan: for school groups, trusts and districts',
     tag: 'For groups, trusts & districts',
     features: [
       'Everything in Growth',
@@ -49,6 +53,7 @@ const PRICING_FAQS = [
 export default function Pricing() {
   return (
     <div className="min-h-screen bg-cream text-ink font-sans">
+      <Seo path="/pricing" />
       <LandingNav />
 
       <section className="relative overflow-hidden">
@@ -58,13 +63,16 @@ export default function Pricing() {
           style={{ background: 'radial-gradient(1200px 600px at 90% -10%, oklch(0.9 0.09 75 / 0.55), transparent 60%), radial-gradient(900px 500px at -10% 30%, oklch(0.85 0.06 40 / 0.35), transparent 60%)' }}
         />
         <div className="mx-auto max-w-7xl px-6 pt-16 pb-10">
-          <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">Simple, per-student pricing</p>
-          <h1 className="mt-3 font-display text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tight text-ink">
-            Priced so every Indian school can afford to feel modern.
+          <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tight text-ink">
+            School management software pricing
           </h1>
+          <p className="mt-4 font-display text-2xl md:text-3xl font-medium tracking-tight text-terracotta">
+            Simple, per-student pricing
+          </p>
           <p className="mt-5 max-w-2xl text-lg text-ink-soft leading-relaxed">
-            Billed to the school, per student, per month. No parent ever pays. No hidden per-message
-            WhatsApp charges — they're built into the plan.
+            Waynur is billed to the school, per student, per month. No parent ever pays, and
+            WhatsApp message charges are built into every plan. Every plan starts with a free
+            walkthrough for your school.
           </p>
         </div>
       </section>
@@ -77,7 +85,7 @@ export default function Pricing() {
                 <div className="inline-flex items-center rounded-full bg-white/20 px-3 py-1 text-xs font-semibold mb-4">Most popular</div>
               )}
               <div className={`text-xs uppercase tracking-widest font-semibold ${p.highlight ? 'opacity-80' : 'text-ink-soft'}`}>{p.name}</div>
-              <h3 className="mt-3 font-display text-2xl font-semibold">{p.tag}</h3>
+              <h2 className="mt-3 font-display text-2xl font-semibold">{p.heading}</h2>
               <ul className={`mt-6 space-y-3 text-sm ${p.highlight ? 'opacity-95' : 'text-ink-soft'}`}>
                 {p.features.map((f) => (
                   <li key={f} className="flex gap-3">
@@ -113,7 +121,7 @@ export default function Pricing() {
             <HelpCircle className="h-4 w-4" />
             <p className="text-xs uppercase tracking-widest font-semibold">Pricing questions</p>
           </div>
-          <h2 className="mt-3 font-display text-3xl md:text-4xl font-semibold tracking-tight text-ink">Good to know.</h2>
+          <h2 className="mt-3 font-display text-3xl md:text-4xl font-semibold tracking-tight text-ink">School software pricing questions</h2>
           <div className="mt-10 divide-y divide-cream-deep">
             {PRICING_FAQS.map((f) => (
               <div key={f.q} className="py-6">

@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { LandingNav, LandingFooter } from './LandingLayout';
 import { LEGAL_SECTIONS } from '../data/legalContent';
+import Seo from './Seo';
 
 function Block({ block }) {
   if (block.type === 'ul') {
@@ -49,16 +50,17 @@ export default function Legal() {
 
   return (
     <div className="min-h-screen bg-cream text-ink font-sans">
+      <Seo path="/legal" />
       <LandingNav />
 
       <section className="mx-auto max-w-7xl px-6 pt-16 pb-8">
         <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">Legal</p>
         <h1 className="mt-3 font-display text-4xl md:text-5xl font-semibold tracking-tight text-ink">
-          Waynur legal pages.
+          Waynur legal pages
         </h1>
         <p className="mt-4 max-w-2xl text-ink-soft leading-relaxed">
           Terms, privacy, refunds, cookies, acceptable use, our SaaS agreement summary, and how to
-          reach us — all in one place. Operated by Wayne E Solutions, Ludhiana, Punjab, India.
+          reach us. Operated by Wayne E Solutions, Ludhiana, Punjab, India.
         </p>
       </section>
 

@@ -5,10 +5,11 @@ import {
   BookOpen, ClipboardList, Users, ShieldCheck, GraduationCap, Bell,
 } from 'lucide-react';
 import { LandingNav, LandingFooter } from './LandingLayout';
+import Seo from './Seo';
 
 const GROUPS = [
   {
-    title: 'Attendance & communication',
+    title: 'Attendance and parent communication',
     tag: 'The daily heartbeat',
     items: [
       { icon: CalendarCheck, title: 'Attendance, taken in seconds', body: 'Biometric or teacher-marked attendance, class by class. Parents know before assembly ends.' },
@@ -17,7 +18,7 @@ const GROUPS = [
     ],
   },
   {
-    title: 'Teaching & learning',
+    title: 'Teaching and learning with AI',
     tag: 'For classrooms',
     items: [
       { icon: Sparkles, title: 'AI tutor for every student', body: 'A patient guide that explains the \u2018why\u2019 behind every answer — reviewed by teachers, not a replacement for them.' },
@@ -26,7 +27,7 @@ const GROUPS = [
     ],
   },
   {
-    title: 'Operations',
+    title: 'School operations: fees, payroll and transport',
     tag: 'Running the school',
     items: [
       { icon: Fingerprint, title: 'Biometric & bus tracking', body: 'The gentle peace of mind of knowing your child boarded, arrived and is safe — with live route visibility for admins.' },
@@ -35,7 +36,7 @@ const GROUPS = [
     ],
   },
   {
-    title: 'Admin & trust',
+    title: 'Admin, report cards and data security',
     tag: 'One dashboard, every role',
     items: [
       { icon: Users, title: 'Role-based dashboards', body: 'Principals see everything. Teachers see their class. Accountants see finance. Parents and students see their own.' },
@@ -48,6 +49,7 @@ const GROUPS = [
 export default function Features() {
   return (
     <div className="min-h-screen bg-cream text-ink font-sans">
+      <Seo path="/features" />
       <LandingNav />
 
       <section className="relative overflow-hidden">
@@ -59,11 +61,14 @@ export default function Features() {
         <div className="mx-auto max-w-7xl px-6 pt-16 pb-10">
           <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">What Waynur does</p>
           <h1 className="mt-3 font-display text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tight text-ink">
-            Everything a school needs.<br className="hidden md:block" /> Nothing that gets in the way.
+            School management software features
           </h1>
+          <p className="mt-4 font-display text-2xl md:text-3xl font-medium tracking-tight text-terracotta">
+            Everything a school needs. Nothing that gets in the way.
+          </p>
           <p className="mt-5 max-w-2xl text-lg text-ink-soft leading-relaxed">
-            One calm, WhatsApp-first platform for attendance, teaching, fees, transport and payroll —
-            with an AI co-pilot woven in wherever it genuinely saves time.
+            Waynur is one WhatsApp-first platform for attendance, teaching, fees, transport and
+            payroll, with an AI co-pilot built in wherever it saves time for teachers and school staff.
           </p>
         </div>
       </section>

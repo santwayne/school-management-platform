@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { LandingNav, LandingFooter } from './LandingLayout';
+import Seo from './Seo';
 
 const FAQ_GROUPS = [
   {
@@ -13,7 +14,7 @@ const FAQ_GROUPS = [
     ],
   },
   {
-    title: 'For parents & students',
+    title: 'For parents and students',
     items: [
       { q: 'Do parents need to install an app?', a: 'No. Waynur sends every update over WhatsApp, which parents already open — no new app to download or learn.' },
       { q: 'Which languages are supported?', a: 'WhatsApp updates can be sent in the language a family already uses at home, based on what the institution configures.' },
@@ -21,7 +22,7 @@ const FAQ_GROUPS = [
     ],
   },
   {
-    title: 'Data & ownership',
+    title: 'Data and ownership',
     items: [
       { q: 'Who owns the data?', a: 'The school does — always. You can request a full export of your data at any time.' },
       { q: 'Where is data stored?', a: 'Data is hosted on secure cloud infrastructure in India, with role-based access so each user only sees what\u2019s relevant to them.' },
@@ -29,7 +30,7 @@ const FAQ_GROUPS = [
     ],
   },
   {
-    title: 'Billing & support',
+    title: 'Billing and support',
     items: [
       { q: 'How is pricing calculated?', a: 'Per-student, billed to the school. No parent ever pays. See the Pricing page for plan details.' },
       { q: 'What support do we get?', a: 'Email support on every plan, with priority WhatsApp support on Growth and dedicated support on District.' },
@@ -41,6 +42,7 @@ const FAQ_GROUPS = [
 export default function Faq() {
   return (
     <div className="min-h-screen bg-cream text-ink font-sans">
+      <Seo path="/faq" />
       <LandingNav />
 
       <section className="relative overflow-hidden">
@@ -52,11 +54,10 @@ export default function Faq() {
         <div className="mx-auto max-w-7xl px-6 pt-16 pb-10">
           <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">Questions</p>
           <h1 className="mt-3 font-display text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tight text-ink">
-            Good to know.
+            Waynur FAQs: school management software questions
           </h1>
           <p className="mt-5 max-w-2xl text-lg text-ink-soft leading-relaxed">
-            Everything schools usually ask before switching to Waynur — grouped by topic. Still stuck?
-            Reach us through the contact details on our Legal page.
+            Everything schools usually ask before switching to Waynur, grouped by topic.
           </p>
         </div>
       </section>

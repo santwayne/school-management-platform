@@ -8,6 +8,7 @@ import heroImg from '../assets/hero-classroom.jpg';
 import parentImg from '../assets/parent.jpg';
 import schoolImg from '../assets/school-principal.jpg';
 import { LandingNav, LandingFooter } from './LandingLayout';
+import Seo from './Seo';
 
 function Hero() {
   return (
@@ -23,13 +24,17 @@ function Hero() {
             <Sparkles className="h-3.5 w-3.5 text-terracotta" />
             AI for Indian schools — built on WhatsApp
           </span>
-          <h1 className="mt-6 font-display text-5xl md:text-6xl lg:text-7xl font-semibold tracking-tight leading-[1.02] text-ink">
-            Intelligence <br />
-            <span className="italic text-terracotta">that guides.</span>
+          <p className="mt-6 font-display text-2xl md:text-3xl font-semibold tracking-tight text-ink">
+            Intelligence <span className="italic text-terracotta">that guides.</span>
+          </p>
+          <h1 className="mt-3 font-display text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05] text-ink">
+            AI school management software, built on WhatsApp
           </h1>
           <p className="mt-6 max-w-xl text-lg text-ink-soft leading-relaxed">
-            Waynur is a warm, AI-powered school platform that keeps teachers, students and
-            parents gently in sync — through the app they already open every day.
+            Waynur is an AI-powered school management platform for Indian schools. Attendance,
+            marks, homework, fees, payroll and bus tracking run from one dashboard, and every
+            parent gets updates on WhatsApp, with no new app to install. Most schools go live in
+            under a week.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <a href="#pricing" className="inline-flex items-center gap-2 rounded-full bg-terracotta text-white px-6 py-3.5 text-sm font-medium shadow-md hover:bg-terracotta-deep transition">
@@ -50,7 +55,7 @@ function Hero() {
         </div>
         <div className="relative">
           <div aria-hidden className="absolute -inset-6 rounded-[2rem] -z-10" style={{ background: 'linear-gradient(135deg, oklch(0.85 0.12 70 / 0.5), oklch(0.62 0.14 40 / 0.35))', filter: 'blur(30px)' }} />
-          <img src={heroImg} alt="A teacher and two students sharing a tablet in warm classroom light" className="w-full h-[560px] object-cover rounded-[2rem] shadow-2xl border border-white/60" />
+          <img src={heroImg} alt="Teacher and students using Waynur school management software on a tablet in class" className="w-full h-[560px] object-cover rounded-[2rem] shadow-2xl border border-white/60" />
           <div className="absolute -bottom-6 -left-6 bg-white rounded-2xl shadow-xl border border-cream-deep p-4 max-w-[240px]">
             <div className="flex items-center gap-2 text-xs font-medium text-emerald-700">
               <span className="h-2 w-2 rounded-full bg-emerald-500" /> WhatsApp update sent
@@ -69,7 +74,7 @@ function ProblemSolution() {
       <div className="max-w-2xl">
         <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">The everyday reality</p>
         <h2 className="mt-3 font-display text-4xl md:text-5xl font-semibold tracking-tight text-ink">
-          Schools are doing beautiful work — with tools that get in the way.
+          Schools are doing beautiful work, with tools that get in the way
         </h2>
       </div>
       <div className="mt-14 grid md:grid-cols-2 gap-6">
@@ -112,7 +117,7 @@ function Features() {
         <div className="max-w-2xl">
           <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">What Waynur does</p>
           <h2 className="mt-3 font-display text-4xl md:text-5xl font-semibold tracking-tight text-ink">
-            Everything a school needs. Nothing that gets in the way.
+            Everything your school needs in one school management system
           </h2>
         </div>
         <div className="mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -137,12 +142,12 @@ function Audiences() {
       <div className="max-w-2xl">
         <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">Two hearts, one platform</p>
         <h2 className="mt-3 font-display text-4xl md:text-5xl font-semibold tracking-tight text-ink">
-          Built for the people who care most.
+          Built for parents and schools
         </h2>
       </div>
       <div className="mt-14 grid lg:grid-cols-2 gap-6">
         <article className="rounded-3xl overflow-hidden border border-cream-deep bg-white">
-          <img src={parentImg} alt="A parent smiling at her phone at home" loading="lazy" className="w-full aspect-[5/6] object-cover" />
+          <img src={parentImg} alt="Parent reading a school attendance update from Waynur on WhatsApp" loading="lazy" className="w-full aspect-[5/6] object-cover" />
           <div className="p-8">
             <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">For parents</p>
             <h3 className="mt-2 font-display text-2xl font-semibold text-ink">Never miss a moment of their day.</h3>
@@ -152,7 +157,7 @@ function Audiences() {
           </div>
         </article>
         <article className="rounded-3xl overflow-hidden border border-cream-deep bg-white">
-          <img src={schoolImg} alt="A principal standing in a bright school hallway" loading="lazy" className="w-full aspect-[900/986] object-cover" />
+          <img src={schoolImg} alt="School principal who runs attendance, fees and payroll from the Waynur dashboard" loading="lazy" className="w-full aspect-[900/986] object-cover" />
           <div className="p-8">
             <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">For schools</p>
             <h3 className="mt-2 font-display text-2xl font-semibold text-ink">Run your school with grace, not spreadsheets.</h3>
@@ -183,7 +188,7 @@ function Security() {
       <div className="max-w-2xl">
         <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">Trust & safety</p>
         <h2 className="mt-3 font-display text-4xl md:text-5xl font-semibold tracking-tight text-ink">
-          Built for the most precious data a school holds.
+          Student data safety: DPDP Act compliant, hosted in India
         </h2>
       </div>
       <div className="mt-14 grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -214,7 +219,7 @@ function Pricing() {
         <div className="max-w-2xl">
           <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">Simple, per-student pricing</p>
           <h2 className="mt-3 font-display text-4xl md:text-5xl font-semibold tracking-tight text-ink">
-            Priced so every Indian school can afford to feel modern.
+            Simple, per-student school software pricing
           </h2>
           <p className="mt-4 text-ink-soft">Billed to the school. No parent ever pays.</p>
         </div>
@@ -261,7 +266,7 @@ function FAQ() {
     <section id="faq" className="mx-auto max-w-4xl px-6 py-24">
       <div className="max-w-2xl">
         <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">Questions</p>
-        <h2 className="mt-3 font-display text-4xl md:text-5xl font-semibold tracking-tight text-ink">Good to know.</h2>
+        <h2 className="mt-3 font-display text-4xl md:text-5xl font-semibold tracking-tight text-ink">School software FAQs</h2>
       </div>
       <div className="mt-12 divide-y divide-cream-deep">
         {FAQS.map((f) => (
@@ -311,10 +316,12 @@ function Stats() {
       <div className="rounded-[2rem] bg-ink text-cream p-10 md:p-14">
         <div className="grid md:grid-cols-[1fr_1.2fr] gap-10 items-end">
           <div>
-            <p className="text-xs uppercase tracking-widest text-amber-warm font-semibold">Impact so far</p>
-            <h2 className="mt-3 font-display text-4xl md:text-5xl font-semibold tracking-tight">
-              Warmth, at the scale of an entire school system.
+            <h2 className="font-display text-4xl md:text-5xl font-semibold tracking-tight">
+              Impact so far
             </h2>
+            <p className="mt-3 font-display text-xl md:text-2xl text-amber-warm">
+              Warmth, at the scale of an entire school system.
+            </p>
           </div>
           <p className="text-cream/70 leading-relaxed">
             We measure success in the quiet moments — a parent smiling at a message, a teacher
@@ -361,10 +368,12 @@ function Founders() {
     <section className="mx-auto max-w-7xl px-6 py-24">
       <div className="grid lg:grid-cols-[1fr_1.1fr] gap-14 items-start">
         <div>
-          <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">The people behind Waynur</p>
-          <h2 className="mt-3 font-display text-4xl md:text-5xl font-semibold tracking-tight text-ink">
-            Built by Wayne E Solutions.
+          <h2 className="font-display text-4xl md:text-5xl font-semibold tracking-tight text-ink">
+            The people behind Waynur
           </h2>
+          <p className="mt-3 font-display text-xl md:text-2xl text-terracotta">
+            Built by Wayne E Solutions.
+          </p>
           <p className="mt-5 text-ink-soft leading-relaxed">
             We're building the school system we wish our own children had — warm, WhatsApp-first,
             and quietly powered by AI.
@@ -391,6 +400,7 @@ function Founders() {
 export default function Index() {
   return (
     <div className="min-h-screen bg-cream text-ink font-sans">
+      <Seo path="/" />
       <LandingNav />
       <Hero />
       <ProblemSolution />
