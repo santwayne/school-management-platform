@@ -22,7 +22,7 @@ export function LandingNav() {
 
         <nav className="hidden md:flex items-center gap-8 text-sm text-ink-soft">
           {NAV_LINKS.map((l) => (
-            <Link key={l.label} to={l.to} target="_blank" rel="noopener noreferrer" className="hover:text-ink transition">
+            <Link key={l.label} to={l.to} className="hover:text-ink transition">
               {l.label}
             </Link>
           ))}
@@ -53,8 +53,6 @@ export function LandingNav() {
               <Link
                 key={l.label}
                 to={l.to}
-                target="_blank"
-                rel="noopener noreferrer"
                 onClick={() => setOpen(false)}
                 className="rounded-xl px-3 py-3 text-ink-soft hover:bg-cream-deep/60 hover:text-ink transition"
               >
@@ -120,13 +118,15 @@ export function LandingFooter() {
           <p className="mt-4 text-sm text-ink-soft max-w-xs leading-relaxed">
             Intelligence that guides — an AI school platform built with warmth, for Indian schools.
           </p>
+          <div className="mt-4 space-y-1.5 text-sm text-ink-soft">
+            <a href="mailto:info@wayneesolutions.com" className="block hover:text-terracotta transition">info@wayneesolutions.com</a>
+            <div>Ludhiana, Punjab, India</div>
+          </div>
         </div>
         <FooterCol
           title="Product"
           links={[
             { label: 'Features', to: '/features' },
-            { label: 'For schools', href: '/#audiences', external: true },
-            { label: 'For parents', href: '/#audiences', external: true },
             { label: 'Pricing', to: '/pricing' },
             { label: 'FAQ', to: '/faq' },
             { label: 'School login', to: '/login' },
@@ -136,16 +136,16 @@ export function LandingFooter() {
           title="Company"
           links={[
             { label: 'Team', to: '/team' },
-            { label: 'Contact', to: '/legal#contact-grievance-information' },
+            { label: 'Contact', to: '/legal/contact-grievance-information' },
           ]}
         />
         <FooterCol
           title="Trust"
           links={[
-            { label: 'Terms & Conditions', to: '/legal#terms-conditions' },
-            { label: 'Privacy Policy', to: '/legal#privacy-policy' },
-            { label: 'Refund Policy', to: '/legal#refund-cancellation-policy' },
-            { label: 'Cookie Policy', to: '/legal#cookie-policy' },
+            { label: 'Terms & Conditions', to: '/legal/terms-conditions' },
+            { label: 'Privacy Policy', to: '/legal/privacy-policy' },
+            { label: 'Refund Policy', to: '/legal/refund-cancellation-policy' },
+            { label: 'Cookie Policy', to: '/legal/cookie-policy' },
           ]}
         />
       </div>

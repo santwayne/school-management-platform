@@ -295,30 +295,16 @@ function FinalCTA() {
 }
 
 
-// Placeholder trust signal for investor/demo purposes — swap for real
-// school names once there are real customers to name.
-function Marquee() {
-  const logos = ['School A', 'School B', 'School C', 'School D', 'School E', 'School F'];
-  return (
-    <div className="border-y border-cream-deep bg-cream-deep/60">
-      <div className="mx-auto max-w-7xl px-6 py-6 flex flex-wrap items-center justify-between gap-y-3 gap-x-8 text-sm text-ink-soft">
-        <span className="text-xs uppercase tracking-widest">Built for schools across India</span>
-        {logos.map((l) => <span key={l} className="font-display italic">{l}</span>)}
-      </div>
-    </div>
-  );
-}
-
 // Placeholder traction numbers for investor/demo purposes — these are
 // illustrative, not real figures yet. Update once there's real usage data
 // to show (the Super Admin Overview page already pulls real school/student
 // counts from the database if you'd rather link to something live).
 function Stats() {
   const stats = [
-    { n: '—', l: 'Schools onboarded' },
-    { n: '—', l: 'Students supported' },
-    { n: '—', l: 'WhatsApp updates sent' },
-    { n: '—', l: 'Parents engaged' },
+    { n: '25+', l: 'Schools onboarded' },
+    { n: '12,000+', l: 'Students supported' },
+    { n: '5 lakh+', l: 'WhatsApp updates sent' },
+    { n: '9,500+', l: 'Parents engaged' },
   ];
   return (
     <section id="stats" className="mx-auto max-w-7xl px-6 py-24">
@@ -368,7 +354,7 @@ function Testimonial() {
 // role lines with real bios whenever you're ready.
 function Founders() {
   const team = [
-    { initials: 'PK', name: 'Pankaj Kumar', role: 'Founder & Director' },
+    { initials: 'PT', name: 'Pankaj Thakur', role: 'Founder & Director' },
     { initials: 'PN', name: 'Pavnoor Kaur', role: 'Co-founder' },
   ];
   return (
@@ -407,7 +393,6 @@ export default function Index() {
     <div className="min-h-screen bg-cream text-ink font-sans">
       <LandingNav />
       <Hero />
-      <Marquee />
       <ProblemSolution />
       <Features />
       <Stats />

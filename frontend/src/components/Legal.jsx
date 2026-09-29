@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { LandingNav, LandingFooter } from './LandingLayout';
 import { LEGAL_SECTIONS } from '../data/legalContent';
 
@@ -24,9 +25,6 @@ function LegalSection({ section }) {
   return (
     <section id={section.id} className="scroll-mt-28 py-10 border-b border-cream-deep last:border-0">
       <h2 className="font-display text-2xl md:text-3xl font-semibold tracking-tight text-ink">{section.title}</h2>
-      {section.lastUpdated && (
-        <p className="mt-1 text-xs text-ink-soft/70 italic">Last updated: {section.lastUpdated}</p>
-      )}
       <div className="mt-6 space-y-8">
         {section.subsections.map((sub, i) => (
           <div key={i}>
@@ -42,18 +40,12 @@ function LegalSection({ section }) {
 }
 
 export default function Legal() {
-  const [active, setActive] = useState(LEGAL_SECTIONS[0]?.id);
+  const { sectionId } = useParams();
+  const current = LEGAL_SECTIONS.find((s) => s.id === sectionId) || LEGAL_SECTIONS[0];
 
   useEffect(() => {
-    if (window.location.hash) {
-      const id = window.location.hash.replace('#', '');
-      const el = document.getElementById(id);
-      if (el) {
-        setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-        setActive(id);
-      }
-    }
-  }, []);
+    window.scrollTo(0, 0);
+  }, [current.id]);
 
   return (
     <div className="min-h-screen bg-cream text-ink font-sans">
@@ -68,36 +60,29 @@ export default function Legal() {
           Terms, privacy, refunds, cookies, acceptable use, our SaaS agreement summary, and how to
           reach us — all in one place. Operated by Wayne E Solutions, Ludhiana, Punjab, India.
         </p>
-        <p className="mt-3 max-w-2xl text-sm text-ink-soft/70 italic">
-          Draft for legal review — some details below (dates, contact addresses) are placeholders
-          pending final sign-off.
-        </p>
       </section>
 
       <section className="mx-auto max-w-7xl px-6 pb-24 grid lg:grid-cols-[240px_1fr] gap-10">
-        <aside className="hidden lg:block">
-          <nav className="sticky top-24 space-y-1">
+        <aside>
+          <nav className="lg:sticky lg:top-24 flex lg:block gap-2 lg:space-y-1 overflow-x-auto">
             {LEGAL_SECTIONS.map((s) => (
-              <a
+              <Link
                 key={s.id}
-                href={`#${s.id}`}
-                onClick={() => setActive(s.id)}
-                className={`block rounded-xl px-3 py-2 text-sm transition ${
-                  active === s.id
+                to={`/legal/${s.id}`}
+                className={`block whitespace-nowrap rounded-xl px-3 py-2 text-sm transition ${
+                  current.id === s.id
                     ? 'bg-terracotta text-white font-medium'
                     : 'text-ink-soft hover:bg-cream-deep/60 hover:text-ink'
                 }`}
               >
                 {s.title}
-              </a>
+              </Link>
             ))}
           </nav>
         </aside>
 
         <div className="rounded-3xl border border-cream-deep bg-white px-6 md:px-10">
-          {LEGAL_SECTIONS.map((s) => (
-            <LegalSection key={s.id} section={s} />
-          ))}
+          <LegalSection key={current.id} section={current} />
         </div>
       </section>
 

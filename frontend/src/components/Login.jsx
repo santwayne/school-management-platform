@@ -287,9 +287,6 @@ export default function Login() {
             <p className="text-xs text-ink-soft">
               New school? <Link to="/onboarding" className="text-terracotta-deep font-medium hover:text-terracotta">Set up Waynur</Link>
             </p>
-            <Link to="/super-admin-login" className="text-xs text-ink-soft hover:text-ink transition block">
-              Super Admin login
-            </Link>
           </div>
         </div>
       </div>
