@@ -6,14 +6,14 @@ import { LandingNav, LandingFooter } from './LandingLayout';
 // Real team, generic titles only — no fabricated career claims. Update the
 // role lines with real bios whenever you're ready.
 const TEAM = [
-  { initials: 'PT', name: 'Pankaj Thakur', role: 'Founder & Director', email: 'pankaj@wayneesolutions.com' },
-  { initials: 'PN', name: 'Pavnoor Kaur', role: 'Co-founder', email: 'pavnoor@wayneesolutions.com' },
-  { initials: 'PM', name: 'Piyush Mehndiratta', role: 'Marketing Head', email: 'piyush@wayneesolutions.com' },
-  { initials: 'SM', name: 'Surbhi Mehndiratta', role: 'Graphic Designer', email: 'surbhi@wayneesolutions.com' },
-  { initials: 'BK', name: 'Baljeet Kaur', role: 'Graphic Designer', email: 'baljeet@wayneesolutions.com' },
-  { initials: 'AS', name: 'Arpan Saini', role: 'Software Developer', email: 'arpan@wayneesolutions.com' },
-  { initials: 'SK', name: 'Sant Kaur', role: 'Senior Software Developer', email: 'sant@wayneesolutions.com' },
-  { initials: 'MK', name: 'Mandeep Kaur', role: 'Senior Web Developer', email: 'mandeep@wayneesolutions.com' },
+  { initials: 'PT', name: 'Pankaj Thakur', role: 'Founder & Director' },
+  { initials: 'PN', name: 'Pavnoor Kaur', role: 'Co-founder' },
+  { initials: 'PM', name: 'Piyush Mehndiratta', role: 'Marketing Head' },
+  { initials: 'SM', name: 'Surbhi Mehndiratta', role: 'Graphic Designer' },
+  { initials: 'BK', name: 'Baljeet Kaur', role: 'Graphic Designer' },
+  { initials: 'AS', name: 'Arpan Saini', role: 'Software Developer' },
+  { initials: 'SK', name: 'Sant Kaur', role: 'Senior Software Developer' },
+  { initials: 'MK', name: 'Mandeep Kaur', role: 'Senior Web Developer' },
 ];
 
 export default function Team() {
@@ -47,7 +47,6 @@ export default function Team() {
               </div>
               <div className="mt-5 font-display text-xl font-semibold text-ink">{m.name}</div>
               <div className="mt-1 text-sm text-ink-soft leading-relaxed">{m.role}</div>
-              <a href={`mailto:${m.email}`} className="mt-2 inline-block text-sm text-terracotta hover:text-terracotta-deep transition break-all">{m.email}</a>
             </div>
           ))}
         </div>
