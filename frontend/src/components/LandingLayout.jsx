@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Instagram } from 'lucide-react';
 import logoFull from '../assets/waynur-logo.png';
 
 const NAV_LINKS = [
@@ -119,7 +119,10 @@ export function LandingFooter() {
             Intelligence that guides — an AI school platform built with warmth, for Indian schools.
           </p>
           <div className="mt-4 space-y-1.5 text-sm text-ink-soft">
-            <a href="mailto:info@wayneesolutions.com" className="block hover:text-terracotta transition">info@wayneesolutions.com</a>
+            <a href="mailto:wayneesolutions@gmail.com" className="block hover:text-terracotta transition">wayneesolutions@gmail.com</a>
+            <a href="https://www.instagram.com/waynur___/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 hover:text-terracotta transition">
+              <Instagram className="h-4 w-4" /> @waynur___
+            </a>
             <div>Ludhiana, Punjab, India</div>
           </div>
         </div>
