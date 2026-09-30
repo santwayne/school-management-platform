@@ -157,6 +157,54 @@ async function handleAdmissionPaymentWebhook(referenceId, res) {
   }
 }
 
+// School plan subscriptions (routes/billing.js). billing_status is
+// informational only, by product decision — a failed/halted renewal is
+// surfaced for Super Admin review, NOT used to auto-restrict access.
+async function handleSubscriptionWebhook(event, payload, res) {
+  const subscription = payload?.subscription?.entity;
+  if (!subscription?.id) return res.sendStatus(200);
+
+  try {
+    let billingStatus;
+    let renewsAt = null;
+    if (event === 'subscription.activated' || event === 'subscription.charged') {
+      billingStatus = 'active';
+      // current_end is Unix seconds (UTC) — Razorpay's own subscription
+      // clock, independent of the school's IST academic-year clock used
+      // elsewhere (utils/academicYear.js); nothing to reconcile between the
+      // two, they answer different questions (renewal date vs. fee period).
+      if (subscription.current_end) renewsAt = new Date(subscription.current_end * 1000);
+    } else if (event === 'subscription.pending' || event === 'subscription.halted') {
+      billingStatus = 'past_due';
+    } else if (event === 'subscription.cancelled' || event === 'subscription.completed') {
+      billingStatus = 'cancelled';
+    } else {
+      return res.sendStatus(200); // other lifecycle events (e.g. subscription.updated) — nothing to do
+    }
+
+    // The plan itself only actually takes effect here, on activation/first
+    // charge — POST /subscribe (routes/billing.js) deliberately never
+    // touches schools.plan itself, since the mandate isn't authorized (or
+    // charged) until the principal completes Razorpay's hosted page.
+    // subscription.notes.plan is the same value this app set at creation
+    // time (POST /subscriptions), read back rather than trusted from
+    // anywhere else in this payload.
+    const plan = subscription.notes?.plan;
+    await pool.query(
+      `UPDATE schools SET
+         billing_status = $1,
+         plan_renews_at = COALESCE($2, plan_renews_at),
+         plan = CASE WHEN $3::text IS NOT NULL AND $1 = 'active' THEN $3 ELSE plan END
+       WHERE razorpay_subscription_id = $4`,
+      [billingStatus, renewsAt, plan || null, subscription.id]
+    );
+    res.sendStatus(200);
+  } catch (err) {
+    console.error('Subscription webhook processing error:', err);
+    res.sendStatus(500);
+  }
+}
+
 // Razorpay webhook — fires on payment.captured. Verifies the signature
 // against RAZORPAY_WEBHOOK_SECRET before trusting anything in the payload.
 router.post('/webhook', async (req, res) => {
@@ -175,6 +223,15 @@ router.post('/webhook', async (req, res) => {
     }
 
     const event = req.body.event;
+
+    // School plan subscriptions (routes/billing.js POST /subscribe) — a
+    // separate Razorpay product (Subscriptions, not Payment Links) landing
+    // on this same webhook URL, since a merchant configures one webhook URL
+    // account-wide covering every event type, not one per feature.
+    if (event.startsWith('subscription.')) {
+      return handleSubscriptionWebhook(event, req.body.payload, res);
+    }
+
     if (event !== 'payment_link.paid' && event !== 'payment.captured') return res.sendStatus(200);
 
     const referenceId = req.body.payload?.payment_link?.entity?.reference_id;

@@ -27,6 +27,12 @@ export default function SuperAdminBilling() {
     return { plan, count: list.length, mrr: list.length * PLAN_PRICES[plan] };
   });
   const totalMRR = byPlan.reduce((a, p) => a + p.mrr, 0);
+  // Real Razorpay subscriptions now exist (routes/billing.js POST
+  // /subscribe) for any school that's paid online — billing_status is
+  // informational only by product decision, surfaced here for Super Admin
+  // review rather than auto-restricting a school's access.
+  const pastDue = activeSchools.filter((s) => s.billing_status === 'past_due');
+  const subscribedCount = activeSchools.filter((s) => s.razorpay_subscription_id).length;
 
   return (
     <div className="space-y-6">
@@ -40,13 +46,21 @@ export default function SuperAdminBilling() {
 
       {!loading && (
         <>
+          {pastDue.length > 0 && (
+            <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+              <span className="font-medium">{pastDue.length} school{pastDue.length > 1 ? 's have' : ' has'} a past-due Razorpay subscription:</span>{' '}
+              {pastDue.map((s) => s.name).join(', ')} — not auto-restricted, just flagged for follow-up.
+            </div>
+          )}
+
           <div className="rounded-2xl bg-white border border-cream-deep/70 p-6">
             <div className="text-xs uppercase tracking-wider text-ink-soft">Estimated MRR</div>
             <div className="font-display text-3xl text-ink mt-1">{INR(totalMRR)}</div>
             <p className="text-xs text-ink-soft mt-2">
-              Calculated from active schools × their plan's list price. This is an estimate, not a real
-              payment ledger — no subscription billing/invoicing system is wired yet, so this doesn't
-              reflect actual amounts collected, discounts given, or overdue accounts.
+              Calculated from active schools × their plan's list price — still an estimate for schools on a manually-set
+              plan. {subscribedCount} of {activeSchools.length} active school{activeSchools.length === 1 ? '' : 's'} pay
+              through a real Razorpay subscription (school Billing page → Subscribe); the rest are still on a
+              manually-set plan with no payment collected through the platform.
             </p>
           </div>
 
@@ -66,10 +80,9 @@ export default function SuperAdminBilling() {
           <div className="rounded-2xl bg-white border border-cream-deep/70 p-6">
             <h2 className="font-display text-xl text-ink mb-2">Recent transactions</h2>
             <p className="text-sm text-ink-soft">
-              Not available yet — Wayne E Solutions doesn't currently collect subscription payments through
-              the platform itself (schools are billed directly). Wiring a real transaction ledger here would
-              need a Razorpay subscriptions integration, separate from the per-school fee-collection Razorpay
-              flow that already exists.
+              A per-charge transaction ledger isn't stored yet — only each school's current subscription status
+              (above) and renewal date. Razorpay's own dashboard has the full charge-by-charge history for any
+              subscription started through the platform.
             </p>
           </div>
         </>

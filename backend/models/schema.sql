@@ -423,6 +423,12 @@ ALTER TABLE schools ADD COLUMN IF NOT EXISTS plan VARCHAR(20) NOT NULL DEFAULT '
 ALTER TABLE schools ADD COLUMN IF NOT EXISTS plan_renews_at DATE;
 ALTER TABLE schools ADD COLUMN IF NOT EXISTS student_limit INT NOT NULL DEFAULT 100;
 ALTER TABLE schools ADD COLUMN IF NOT EXISTS accountant_seat_limit INT NOT NULL DEFAULT 0;
+-- Real Razorpay Subscriptions billing (routes/billing.js POST /subscribe).
+-- billing_status is informational only per product decision — a lapsed/
+-- failed payment is surfaced to Super Admin, NOT auto-enforced (no access
+-- restriction on 'past_due' in v1).
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS razorpay_subscription_id VARCHAR(100);
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS billing_status VARCHAR(20) NOT NULL DEFAULT 'active'; -- 'active' | 'pending_activation' | 'past_due' | 'cancelled'
 
 -- ---------- Settings (branding, WhatsApp business number, notification prefs) ----------
 CREATE TABLE IF NOT EXISTS school_settings (
