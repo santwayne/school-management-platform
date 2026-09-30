@@ -82,6 +82,111 @@ router.delete('/books/:id', requireAuth, requireLibrary, async (req, res) => {
   }
 });
 
+// ============================================================
+// Bulk upload / update the book catalog — mirrors studentRecords.js's
+// POST /bulk-upsert (rows parsed client-side with xlsx, posted as plain
+// JSON, each row validated and applied independently so one bad row never
+// blocks the rest, and every row gets a row_number-keyed result).
+//
+// Schema note (backend/models/schema.sql, library_books): unlike
+// students.login_id, library_books.isbn has NO unique constraint at the DB
+// level — but it's still the natural real-world identifier for "is this the
+// same book". When a row supplies an isbn, it's used to look up an existing
+// catalog entry for this school: a match means the row is an update (extra
+// total_copies are ADDED to the existing stock, matching "N more copies of
+// this book arrived"; title/author/category only overwrite when the row
+// supplies a non-blank value, same COALESCE-style behavior as
+// studentRecords.js uses for grade/parent_id). No match, or no isbn at all,
+// means the row just creates a new catalog entry — there's no other natural
+// key to dedupe on (title+author collide too often for real catalogs, e.g.
+// multiple copies/editions), so unlike the student route's name+class
+// possible_duplicate check, isbn-less rows are never flagged as duplicates.
+// ============================================================
+router.post('/bulk-upsert', requireAuth, requireLibrary, async (req, res) => {
+  const { rows } = req.body; // [{ row_number, title, author, isbn, category, total_copies }]
+  const schoolId = req.user.school_id;
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: 'A non-empty rows array is required' });
+  }
+
+  const results = [];
+  let created = 0;
+  let updated = 0;
+  let failed = 0;
+
+  for (const row of rows) {
+    const rowNumber = row.row_number ?? results.length + 1;
+    const title = (row.title || '').trim();
+
+    if (!title) {
+      failed++;
+      results.push({ row_number: rowNumber, status: 'error', message: 'Title is required', input: row });
+      continue;
+    }
+
+    let addCopies = 1;
+    if (row.total_copies !== undefined && row.total_copies !== null && String(row.total_copies).trim() !== '') {
+      addCopies = parseInt(row.total_copies, 10);
+      if (!Number.isInteger(addCopies) || addCopies < 1) {
+        failed++;
+        results.push({ row_number: rowNumber, status: 'error', message: 'total_copies must be a whole number of at least 1', input: row });
+        continue;
+      }
+    }
+
+    const author = (row.author || '').trim() || null;
+    const isbn = (row.isbn || '').trim() || null;
+    const category = (row.category || '').trim() || null;
+
+    try {
+      let existing = null;
+      if (isbn) {
+        const found = await pool.query(
+          'SELECT * FROM library_books WHERE school_id = $1 AND isbn = $2',
+          [schoolId, isbn]
+        );
+        if (found.rowCount > 0) existing = found.rows[0];
+      }
+
+      if (existing) {
+        const newTotal = existing.total_copies + addCopies;
+        const newAvailable = existing.available_copies + addCopies;
+        const { rows: updateRes } = await pool.query(
+          `UPDATE library_books SET
+             title = COALESCE($1, title),
+             author = COALESCE($2, author),
+             category = COALESCE($3, category),
+             total_copies = $4,
+             available_copies = $5
+           WHERE id = $6 AND school_id = $7
+           RETURNING *`,
+          [title, author, category, newTotal, newAvailable, existing.id, schoolId]
+        );
+        updated++;
+        results.push({ row_number: rowNumber, status: 'updated', book: updateRes[0] });
+      } else {
+        const { rows: insertRes } = await pool.query(
+          `INSERT INTO library_books (school_id, title, author, isbn, category, total_copies, available_copies)
+           VALUES ($1, $2, $3, $4, $5, $6, $6) RETURNING *`,
+          [schoolId, title, author, isbn, category, addCopies]
+        );
+        created++;
+        results.push({ row_number: rowNumber, status: 'created', book: insertRes[0] });
+      }
+    } catch (err) {
+      failed++;
+      results.push({ row_number: rowNumber, status: 'error', message: err.message, input: row });
+    }
+  }
+
+  res.status(207).json({
+    success: true,
+    summary: { total: rows.length, created, updated, failed },
+    results,
+  });
+});
+
 // ---------- Issue / return ----------
 
 // POST /api/library/issue — issue a book to a student or staff member
