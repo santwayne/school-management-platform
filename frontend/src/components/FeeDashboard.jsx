@@ -85,9 +85,13 @@ export default function FeeDashboard() {
       {/* Total Fees summary card */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatTile label="Total Expected" value={INR(summary.total_expected)} />
-        <StatTile label="Total Paid" value={INR(summary.total_paid)} tone="positive" />
+        <StatTile label="Paid this academic year" value={INR(summary.total_paid)} tone="positive" />
         <StatTile label="Total Unpaid" value={INR(summary.total_unpaid)} tone="negative" />
       </div>
+      <p className="text-xs text-ink-soft -mt-2">
+        "Paid" now counts only this academic year's tuition payments (April onward), not a student's full payment
+        history — a family that also paid in prior years no longer inflates this figure.
+      </p>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Fees Collected bar chart */}

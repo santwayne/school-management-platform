@@ -3,6 +3,7 @@ import { connection } from '../config/queue.js';
 import pool from '../config/db.js';
 import { createPaymentLinkRecord } from '../routes/paymentLinks.js';
 import { send as sendNotification } from '../services/notificationService.js';
+import { getCurrentAcademicYearStart, TUITION_ONLY_FILTER } from '../utils/academicYear.js';
 
 // ------------------------------------------------------------------------
 // Automated parent-notification audit (see the fix/automated-parent-
@@ -42,11 +43,17 @@ const worker = new Worker(
 
 async function handleDailyReminders() {
   // Outstanding balance = fee_structures.amount for the student's class
-  // minus whatever student_payment.amount_paid already shows (see the
-  // fee_structures table added by the QA fix list's Item 5 — this worker
-  // depends on that table existing and populated; before Item 5 nothing
-  // ever set an expected-fee source, so there'd be nothing to compare
-  // against and this query would simply match no one).
+  // minus what's actually been paid THIS academic year (see
+  // utils/academicYear.js) — previously compared against
+  // student_payment.amount_paid, a running total that never resets. A
+  // family who'd paid enough in PRIOR years alone could push that lifetime
+  // total above the current year's flat fee, making `outstanding <= 0`
+  // forever after — meaning a family that stopped paying this year would
+  // simply never get reminded again. Fixed by pre-aggregating this year's
+  // tuition-only payments (excludes transport-fee rows, tagged only via a
+  // remarks prefix) per student BEFORE joining, so a student with more than
+  // one payment this year doesn't fan out fee_structures.amount into being
+  // double-counted.
   //
   // fee_reminder_grace_days / fee_reminder_interval_days / notify_fees are
   // read per-school (COALESCE'd to sensible defaults for a school that's
@@ -55,14 +62,21 @@ async function handleDailyReminders() {
   // school_settings already (the Notifications toggle in AdminSettings.jsx)
   // but nothing actually read it before this — wiring it in here gives that
   // checkbox real effect for the first time.
+  const academicYearStart = await getCurrentAcademicYearStart(pool);
   const candidates = await pool.query(
-    `SELECT s.id AS student_id, s.name AS student_name, s.school_id,
-            (fs.amount - COALESCE(sp.amount_paid, 0)) AS outstanding
+    `WITH paid_this_year AS (
+       SELECT student_id, SUM(amount_paid) AS paid
+       FROM student_payment_history
+       WHERE created_at >= $1 AND ${TUITION_ONLY_FILTER}
+       GROUP BY student_id
+     )
+     SELECT s.id AS student_id, s.name AS student_name, s.school_id,
+            (fs.amount - COALESCE(pty.paid, 0)) AS outstanding
      FROM students s
      JOIN fee_structures fs ON fs.school_id = s.school_id AND fs.class_id = s.class_id
-     LEFT JOIN student_payment sp ON sp.student_id = s.id AND sp.school_id = s.school_id
+     LEFT JOIN paid_this_year pty ON pty.student_id = s.id
      LEFT JOIN school_settings ss ON ss.school_id = s.school_id
-     WHERE (fs.amount - COALESCE(sp.amount_paid, 0)) > 0
+     WHERE (fs.amount - COALESCE(pty.paid, 0)) > 0
        AND COALESCE(ss.notify_fees, TRUE) = TRUE
        AND s.created_at <= CURRENT_DATE - (COALESCE(ss.fee_reminder_grace_days, 7) || ' days')::interval
        AND NOT EXISTS (
@@ -70,7 +84,8 @@ async function handleDailyReminders() {
          WHERE frl.student_id = s.id
            AND frl.sent_at > CURRENT_DATE - (COALESCE(ss.fee_reminder_interval_days, 7) || ' days')::interval
        )
-     ORDER BY s.school_id, s.id`
+     ORDER BY s.school_id, s.id`,
+    [academicYearStart]
   );
 
   console.log(`[feeReminderWorker] ${candidates.rowCount} student(s) due a fee reminder today.`);

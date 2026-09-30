@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal, requireFinance } from '../middleware/auth.js';
+import { getCurrentAcademicYearStart, TUITION_ONLY_FILTER } from '../utils/academicYear.js';
 
 const router = express.Router();
 
@@ -203,9 +204,24 @@ router.get('/fee/dashboard', requireAuth, requireFinance, async (req, res) => {
        WHERE s.school_id = $1`,
       [school_id]
     );
+
+    // "Paid" used to be student_payment.amount_paid — a running total that
+    // accumulates every payment a student has EVER made, with no reset. A
+    // family who paid in prior years showed a hugely inflated total against
+    // fee_structures.amount (a single flat CURRENT-year figure), e.g.
+    // "Rs 1,600 expected, Rs 13,200 paid" for a student who'd simply paid
+    // across several years. Fixed by summing only this academic year's rows
+    // from student_payment_history instead (which already has real
+    // per-payment timestamps — no schema migration needed), and excluding
+    // transport-fee collections (tagged only via a remarks prefix, no real
+    // fee_type column — see academicYear.js) since fee_structures.amount is
+    // tuition-only.
+    const academicYearStart = await getCurrentAcademicYearStart(pool);
     const totalPaidRes = await pool.query(
-      `SELECT COALESCE(SUM(amount_paid), 0) AS total_paid FROM student_payment WHERE school_id = $1`,
-      [school_id]
+      `SELECT COALESCE(SUM(amount_paid), 0) AS total_paid
+       FROM student_payment_history
+       WHERE school_id = $1 AND created_at >= $2 AND ${TUITION_ONLY_FILTER}`,
+      [school_id, academicYearStart]
     );
     const totalExpected = parseFloat(summaryRes.rows[0].total_expected);
     const totalPaid = parseFloat(totalPaidRes.rows[0].total_paid);
@@ -215,27 +231,41 @@ router.get('/fee/dashboard', requireAuth, requireFinance, async (req, res) => {
 
     const collectedByClassRes = await pool.query(
       `SELECT COALESCE(c.name, 'Unassigned') AS class_name,
-              COALESCE(SUM(sp.amount_paid), 0) AS collected
+              COALESCE(SUM(h.amount_paid), 0) AS collected
        FROM students s
        LEFT JOIN classes c ON c.id = s.class_id
-       LEFT JOIN student_payment sp ON sp.student_id = s.id AND sp.school_id = s.school_id
+       LEFT JOIN student_payment_history h
+         ON h.student_id = s.id AND h.school_id = s.school_id
+         AND h.created_at >= $2 AND ${TUITION_ONLY_FILTER}
        WHERE s.school_id = $1
        GROUP BY c.name
        ORDER BY c.name NULLS LAST`,
-      [school_id]
+      [school_id, academicYearStart]
     );
 
+    // fee_structures (>=0-to-1 row per student) and student_payment_history
+    // (0-to-many rows per student) can't both be joined directly onto
+    // `students` in one GROUP BY — a student with 2 payments this year would
+    // fan out to 2 rows and double-count their fs.amount. Pre-aggregate paid
+    // per student first, THEN join 1:1, so each student contributes exactly
+    // one row before the class-level SUM.
     const dueByClassRes = await pool.query(
-      `SELECT COALESCE(c.name, 'Unassigned') AS class_name,
-              GREATEST(COALESCE(SUM(fs.amount), 0) - COALESCE(SUM(sp.amount_paid), 0), 0) AS unpaid
+      `WITH paid_this_year AS (
+         SELECT student_id, SUM(amount_paid) AS paid
+         FROM student_payment_history
+         WHERE school_id = $1 AND created_at >= $2 AND ${TUITION_ONLY_FILTER}
+         GROUP BY student_id
+       )
+       SELECT COALESCE(c.name, 'Unassigned') AS class_name,
+              GREATEST(COALESCE(SUM(fs.amount), 0) - COALESCE(SUM(pty.paid), 0), 0) AS unpaid
        FROM students s
        LEFT JOIN classes c ON c.id = s.class_id
        LEFT JOIN fee_structures fs ON fs.school_id = s.school_id AND fs.class_id = s.class_id
-       LEFT JOIN student_payment sp ON sp.student_id = s.id AND sp.school_id = s.school_id
+       LEFT JOIN paid_this_year pty ON pty.student_id = s.id
        WHERE s.school_id = $1
        GROUP BY c.name
        ORDER BY c.name NULLS LAST`,
-      [school_id]
+      [school_id, academicYearStart]
     );
 
     const byModeRes = await pool.query(
