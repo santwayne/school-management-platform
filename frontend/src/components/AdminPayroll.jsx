@@ -528,10 +528,15 @@ function PayrollTab() {
       ) : rows && rows.length > 0 ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <SummaryTile label="Total payroll" value={INR(total)} />
+            <SummaryTile label="Total payroll (flat salary, no deductions)" value={INR(total)} />
             <SummaryTile label="Paid" value={`${paidCount} / ${rows.length}`} tone="ok" />
             <SummaryTile label="Pending" value={`${pendingCount}`} tone="warn" />
           </div>
+          <p className="text-xs text-ink-soft -mt-2 inline-flex items-center gap-1">
+            <Info className="w-3 h-3 shrink-0" /> This is each staff member's flat configured salary — it does not
+            subtract PF, ESI, loss-of-pay, or other deductions. For the deduction-adjusted net amount actually payable,
+            use the Payroll Runs tab instead.
+          </p>
           <div className="rounded-2xl bg-white border border-cream-deep/70 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

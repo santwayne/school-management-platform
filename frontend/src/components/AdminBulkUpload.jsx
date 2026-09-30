@@ -2,6 +2,19 @@ import React, { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { UploadCloud, Download, CheckCircle2, XCircle, FileSpreadsheet, AlertTriangle } from 'lucide-react';
 import { apiRequest } from '../api';
+import { normalizePhone } from '../lib/phone';
+
+// Mirrors the backend's own phoneWarning logic in studentRecords.js so the
+// preview can warn before upload, not just after — same "no parent_phone at
+// all" is fine (nothing indicates intent to link one), only a name-with-no-
+// phone or an unrecognizable phone is flagged.
+function rowPhoneIssue(row) {
+  if (row.parent_phone) {
+    return normalizePhone(row.parent_phone) ? null : 'invalid';
+  }
+  if (row.parent_name) return 'missing';
+  return null;
+}
 
 // Bulk upload/update student data (feature 4.1). CSV/Excel is parsed
 // entirely client-side with xlsx (SheetJS) — same library AdminReports.jsx
@@ -137,6 +150,7 @@ export default function AdminBulkUpload() {
 
   const failures = result?.results.filter((r) => r.status === 'error') || [];
   const duplicates = result?.results.filter((r) => r.status === 'possible_duplicate') || [];
+  const phoneWarnings = result?.results.filter((r) => r.warning) || [];
 
   return (
     <div className="space-y-4">
@@ -174,30 +188,46 @@ export default function AdminBulkUpload() {
         {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
         {parsing && <p className="text-sm text-ink-soft">Parsing file…</p>}
 
-        {rows.length > 0 && !result && (
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2 text-sm text-ink">
-              <FileSpreadsheet className="w-4 h-4 text-terracotta" />
-              {rows.length} row{rows.length === 1 ? '' : 's'} parsed and ready to upload
+        {rows.length > 0 && !result && (() => {
+          const phoneIssueCount = rows.filter((r) => rowPhoneIssue(r)).length;
+          return (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2 text-sm text-ink">
+                  <FileSpreadsheet className="w-4 h-4 text-terracotta" />
+                  {rows.length} row{rows.length === 1 ? '' : 's'} parsed and ready to upload
+                </div>
+                <button
+                  onClick={upload}
+                  disabled={uploading}
+                  className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition disabled:opacity-50"
+                >
+                  {uploading ? 'Uploading…' : `Upload ${rows.length} row${rows.length === 1 ? '' : 's'}`}
+                </button>
+              </div>
+              {phoneIssueCount > 0 && (
+                <div className="rounded-xl bg-amber-500/10 border border-amber-500/25 px-4 py-3 text-sm text-amber-700 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>
+                    {phoneIssueCount} of {rows.length} row{rows.length === 1 ? '' : 's'} have a parent name with no
+                    (or an unrecognizable) phone number — those students will still be created, but no parent record
+                    will be linked. Check the phone column before uploading if that's not intended.
+                  </span>
+                </div>
+              )}
             </div>
-            <button
-              onClick={upload}
-              disabled={uploading}
-              className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition disabled:opacity-50"
-            >
-              {uploading ? 'Uploading…' : `Upload ${rows.length} row${rows.length === 1 ? '' : 's'}`}
-            </button>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       {result && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
             <SummaryTile label="Total rows" value={result.summary.total} />
             <SummaryTile label="Created" value={result.summary.created} tone="emerald" />
             <SummaryTile label="Updated" value={result.summary.updated} tone="terracotta" />
             <SummaryTile label="Possible duplicates" value={result.summary.possible_duplicates || 0} tone={(result.summary.possible_duplicates || 0) > 0 ? 'amber' : undefined} />
+            <SummaryTile label="No parent linked" value={phoneWarnings.length} tone={phoneWarnings.length > 0 ? 'amber' : undefined} />
             <SummaryTile label="Failed" value={result.summary.failed} tone={result.summary.failed > 0 ? 'destructive' : undefined} />
           </div>
 

@@ -42,6 +42,45 @@ router.get('/buses', requireAuth, async (req, res) => {
   }
 });
 
+// PATCH /api/transport/buses/:id — edit a bus's basic details (route, vehicle
+// number, driver info). GPS/vendor wiring stays on the dedicated /connection
+// endpoint below since it has its own field-merge semantics.
+router.patch('/buses/:id', requireAuth, requirePrincipal, async (req, res) => {
+  const { route_name, vehicle_number, driver_name, driver_phone } = req.body;
+  try {
+    const existing = await pool.query('SELECT id FROM buses WHERE id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
+    if (existing.rowCount === 0) return res.status(404).json({ error: 'Bus not found for this school' });
+
+    const { rows } = await pool.query(
+      `UPDATE buses SET
+         route_name = COALESCE($1, route_name),
+         vehicle_number = COALESCE($2, vehicle_number),
+         driver_name = COALESCE($3, driver_name),
+         driver_phone = COALESCE($4, driver_phone)
+       WHERE id = $5 AND school_id = $6 RETURNING *`,
+      [route_name, vehicle_number, driver_name, driver_phone, req.params.id, req.user.school_id]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/transport/buses/:id — remove a bus. Cascades to its location
+// log, GPS webhook token, trip logs and payout/fee history (all FK'd
+// ON DELETE CASCADE in schema.sql) — warn the admin client-side before
+// calling this, since payout/fee records for the bus disappear with it.
+router.delete('/buses/:id', requireAuth, requirePrincipal, async (req, res) => {
+  try {
+    const existing = await pool.query('SELECT id FROM buses WHERE id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
+    if (existing.rowCount === 0) return res.status(404).json({ error: 'Bus not found for this school' });
+    await pool.query('DELETE FROM buses WHERE id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // PUT /api/transport/buses/:id/connection — set/update how this bus's GPS
 // gets connected: for generic_rest, the vendor's REST endpoint + API key +
 // field paths; for push vendors, nothing to configure here (the webhook

@@ -136,6 +136,22 @@ router.get('/devices', requireAuth, requirePrincipal, async (req, res) => {
   }
 });
 
+// DELETE /api/biometric/devices/:id — remove a device (and its mappings/webhook token)
+router.delete('/devices/:id', requireAuth, requirePrincipal, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const deviceCheck = await pool.query('SELECT id FROM biometric_devices WHERE id = $1 AND school_id = $2', [id, req.user.school_id]);
+    if (deviceCheck.rowCount === 0) {
+      return res.status(404).json({ error: 'Device not found for this school' });
+    }
+    await pool.query('DELETE FROM teacher_device_mapping WHERE device_id = $1', [id]);
+    await pool.query('DELETE FROM biometric_devices WHERE id = $1 AND school_id = $2', [id, req.user.school_id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/biometric/devices/:id/mappings — list a device's existing employee-ID-to-teacher mappings
 router.get('/devices/:id/mappings', requireAuth, requirePrincipal, async (req, res) => {
   const { id } = req.params;

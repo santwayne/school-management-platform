@@ -21,10 +21,19 @@ router.get('/', requireAuth, requirePrincipal, async (req, res) => {
     const plan = schoolRes.rows[0].plan || 'starter';
     const planInfo = PLAN_DETAILS[plan] || PLAN_DETAILS.starter;
 
-    const studentCountRes = await pool.query('SELECT COUNT(*) FROM students WHERE school_id = $1', [school_id]);
-    const staffCountRes = await pool.query('SELECT COUNT(*) FROM teachers WHERE school_id = $1', [school_id]);
+    // Demo rows (Super Admin's "Generate demo users" tool marks these
+    // is_demo = TRUE) must not count against a school's real plan/seat
+    // usage — same exclusion payrollService.js already applies for payroll.
+    const studentCountRes = await pool.query(
+      `SELECT COUNT(*) FROM students WHERE school_id = $1 AND is_demo = FALSE`,
+      [school_id]
+    );
+    const staffCountRes = await pool.query(
+      `SELECT COUNT(*) FROM teachers WHERE school_id = $1 AND is_demo = FALSE`,
+      [school_id]
+    );
     const accountantCountRes = await pool.query(
-      `SELECT COUNT(*) FROM teachers WHERE school_id = $1 AND role = 'accountant'`,
+      `SELECT COUNT(*) FROM teachers WHERE school_id = $1 AND role = 'accountant' AND is_demo = FALSE`,
       [school_id]
     );
 

@@ -1,6 +1,12 @@
 import React, { Fragment, useEffect, useState } from 'react';
-import { Plus, X, Fingerprint, ChevronDown, ChevronRight, AlertTriangle, Pencil } from 'lucide-react';
-import { apiRequest } from '../api';
+import { Plus, X, Fingerprint, ChevronDown, ChevronRight, AlertTriangle, Pencil, Copy, Trash2 } from 'lucide-react';
+import { apiRequest, API_URL } from '../api';
+
+// The device is physical hardware, not a browser tab — a relative path means
+// nothing to it. This app and the API share one public domain in production
+// (see api.js), so that domain IS window.location.origin there; API_URL is
+// only non-empty when the API really is a separate host (or local dev).
+const PUBLIC_API_ORIGIN = API_URL || (typeof window !== 'undefined' ? window.location.origin : '');
 
 const VENDOR_LABELS = { zkteco: 'ZKTeco', csv_import: 'Generic CSV' };
 const STAFF_STATUSES = ['present', 'absent', 'half_day', 'manual_override'];
@@ -84,6 +90,26 @@ export default function AdminAttendance() {
         setError(err.message);
       }
     }
+  };
+
+  const deleteDevice = async (deviceId, label) => {
+    if (!window.confirm(`Remove device "${label || deviceId}"? Its webhook URL will stop working immediately.`)) return;
+    setError('');
+    try {
+      await apiRequest(`/api/biometric/devices/${deviceId}`, { method: 'DELETE' });
+      setDevices((prev) => prev.filter((d) => d.id !== deviceId));
+      if (expanded === deviceId) setExpanded(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const copyWebhookUrl = (vendor, token) => {
+    const url = `${PUBLIC_API_ORIGIN}/api/biometric/webhook/${vendor}?token=${token}`;
+    navigator.clipboard?.writeText(url).then(
+      () => setMessage('Webhook URL copied.'),
+      () => setError('Could not copy — copy it manually from the field.')
+    );
   };
 
   const addMapping = async (deviceId, deviceInternalId, teacherId) => {
@@ -185,6 +211,7 @@ export default function AdminAttendance() {
                 <Th>Vendor</Th>
                 <Th>Webhook / CSV import</Th>
                 <Th>Mapped IDs</Th>
+                <Th className="text-right">Remove</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-cream-deep/60">
@@ -204,16 +231,34 @@ export default function AdminAttendance() {
                         {d.vendor === 'csv_import' ? (
                           <input type="file" accept=".csv" onChange={(e) => handleCsvUpload(d.id, e)} className="text-xs" />
                         ) : (
-                          <span className="font-mono text-xs">
-                            /api/biometric/webhook/{d.vendor}?token={d.webhook_token}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-xs break-all">
+                              {PUBLIC_API_ORIGIN}/api/biometric/webhook/{d.vendor}?token={d.webhook_token}
+                            </span>
+                            <button
+                              onClick={() => copyWebhookUrl(d.vendor, d.webhook_token)}
+                              title="Copy webhook URL"
+                              className="p-1 rounded text-ink-soft hover:text-terracotta-deep hover:bg-terracotta/10 shrink-0"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         )}
                       </Td>
                       <Td className="text-ink-soft">{rows ? rows.length : '…'}</Td>
+                      <Td className="text-right" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => deleteDevice(d.id, d.label)}
+                          title="Remove device"
+                          className="p-1.5 rounded-md text-ink-soft hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </Td>
                     </tr>
                     {isOpen && (
                       <tr className="bg-cream-deep/20">
-                        <td colSpan={5} className="p-5">
+                        <td colSpan={6} className="p-5">
                           <div className="text-xs uppercase tracking-wider text-ink-soft mb-3">Employee ID mapping</div>
                           {!rows ? (
                             <p className="text-sm text-ink-soft">Loading…</p>
@@ -299,7 +344,9 @@ export default function AdminAttendance() {
                         <StatusPill status={r.status} />
                       )}
                     </Td>
-                    <Td className="text-ink-soft">{r.corrected_by ? 'Manual override' : 'Biometric'}</Td>
+                    <Td className="text-ink-soft">
+                      {r.corrected_by ? 'Manual override' : (r.first_punch || r.last_punch) ? 'Biometric' : '—'}
+                    </Td>
                     <Td className="text-right">
                       {!isEditing && (
                         <button onClick={() => setOverrideId(r.teacher_id)} className="p-1.5 rounded-md text-ink-soft hover:text-terracotta-deep hover:bg-terracotta/10">
