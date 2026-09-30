@@ -96,6 +96,15 @@ router.post('/bulk-upsert', requireAuth, requirePrincipal, async (req, res) => {
             parentId = newParent.rows[0].id;
           }
         }
+      } else if (row.parent_name) {
+        // A blank parent_phone cell used to fall straight through this
+        // whole block with no warning at all — the student was still
+        // created successfully, so the "Applied successfully" results
+        // table showed nothing wrong, and there was no way to tell which
+        // rows silently ended up with no parent linked (this is the actual
+        // cause of "some parents were not created" after a bulk import:
+        // it's specifically the rows where parent_phone was left empty).
+        phoneWarning = 'No parent_phone was provided for this row — no parent was linked.';
       }
 
       // An existing student is identified by login_id (preferred, since it's

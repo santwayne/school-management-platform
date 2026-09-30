@@ -17,8 +17,21 @@ function requireTeacherOrPrincipal(req, res, next) {
 async function canActOnClass(req, classId) {
   if (req.user.role === 'principal') return true;
   if (!classId) return false;
+  // Must match the same "is this my class" definition GET /classes below
+  // uses to list them — otherwise a class incharge (class_teacher_id) sees
+  // their class in the picker but gets a 403 the moment they try to act on
+  // it, since this check alone used to only recognize a subject-teacher
+  // assignment, not incharge status.
   const { rowCount } = await pool.query(
-    `SELECT 1 FROM class_subject_teachers WHERE teacher_id = $1 AND school_id = $2 AND class_id = $3 LIMIT 1`,
+    `SELECT 1 FROM classes c
+     WHERE c.id = $3 AND c.school_id = $2 AND (
+       c.class_teacher_id = $1
+       OR EXISTS (
+         SELECT 1 FROM class_subject_teachers cst
+         WHERE cst.class_id = c.id AND cst.teacher_id = $1 AND cst.school_id = $2
+       )
+     )
+     LIMIT 1`,
     [req.user.teacher_id, req.user.school_id, classId]
   );
   return rowCount > 0;
@@ -83,10 +96,23 @@ router.get('/classes', requireAuth, requireTeacherOrPrincipal, async (req, res) 
         [req.user.school_id]
       ));
     } else {
+      // A class only being visible here once the teacher has a
+      // class_subject_teachers row was the actual bug: a teacher who is a
+      // class's incharge (classes.class_teacher_id) but not yet assigned to
+      // teach a subject in it saw that class silently missing from this
+      // list. Union both sources of "this is one of my classes" — the
+      // authorization gate for actually assigning subjects (canActOnClass,
+      // used by /assign and /assignments below) is unaffected by this,
+      // this only widens what's offered in the picker.
       ({ rows } = await pool.query(
         `SELECT DISTINCT c.id, c.name, c.section FROM classes c
-         JOIN class_subject_teachers cst ON cst.class_id = c.id
-         WHERE cst.teacher_id = $1 AND cst.school_id = $2
+         WHERE c.school_id = $2 AND (
+           c.class_teacher_id = $1
+           OR EXISTS (
+             SELECT 1 FROM class_subject_teachers cst
+             WHERE cst.class_id = c.id AND cst.teacher_id = $1 AND cst.school_id = $2
+           )
+         )
          ORDER BY c.name, c.section`,
         [req.user.teacher_id, req.user.school_id]
       ));

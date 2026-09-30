@@ -17,6 +17,18 @@ router.post('/classes', requireAuth, requirePrincipal, async (req, res) => {
   }
 
   try {
+    // No DB-level unique constraint on classes(school_id, name) — unlike
+    // subjects, which already has one and uses ON CONFLICT below. Checked
+    // in the app instead of adding one blind: any school that already has
+    // case-different duplicate class names (this bug's own prior effect)
+    // would fail a migration that tried to add a unique index outright.
+    const dup = await pool.query(
+      'SELECT id FROM classes WHERE school_id = $1 AND LOWER(name) = LOWER($2)',
+      [schoolId, name.trim()]
+    );
+    if (dup.rows.length > 0) {
+      return res.status(409).json({ error: 'A class with this name already exists.' });
+    }
     const { rows } = await pool.query(
       `INSERT INTO classes (school_id, name) VALUES ($1, $2) RETURNING *`,
       [schoolId, name.trim()]
@@ -295,6 +307,13 @@ router.patch('/classes/:id', requireAuth, requirePrincipal, async (req, res) => 
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'name is required' });
   try {
+    const dup = await pool.query(
+      'SELECT id FROM classes WHERE school_id = $1 AND LOWER(name) = LOWER($2) AND id != $3',
+      [req.user.school_id, name.trim(), req.params.id]
+    );
+    if (dup.rows.length > 0) {
+      return res.status(409).json({ error: 'A class with this name already exists.' });
+    }
     const result = await pool.query(
       'UPDATE classes SET name = $1 WHERE id = $2 AND school_id = $3 RETURNING *',
       [name, req.params.id, req.user.school_id]

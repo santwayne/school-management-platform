@@ -254,7 +254,10 @@ export default function ClassManager() {
             <p className="text-xs text-ink-soft">Teachers log in with their own email and password — set their WhatsApp number here too so they get "what to teach today" and student notes automatically.</p>
             {teachers.map((t) => (
               <div key={t.id} className="flex items-center gap-2">
-                <span className="text-sm text-ink-soft w-32 truncate">{t.name}</span>
+                <span className="text-sm text-ink-soft w-32 truncate" title={t.name}>
+                  {t.name}
+                  {t.phone && <span className="block text-[11px] text-ink-soft/70">{t.phone}</span>}
+                </span>
                 <input
                   type="text"
                   placeholder="+91..."
@@ -313,7 +316,7 @@ export default function ClassManager() {
                 className="flex-1 p-1.5 border text-sm rounded bg-white"
               >
                 <option value="">— Unassigned —</option>
-                {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}{t.phone ? ` — ${t.phone}` : ''}</option>)}
               </select>
             </div>
             <p className="text-xs text-ink-soft -mt-2">The class incharge is the only teacher who can approve this class's student leave requests.</p>
@@ -340,7 +343,7 @@ export default function ClassManager() {
                           className="p-1.5 border text-sm rounded bg-white w-56"
                         >
                           <option value="">— Unassigned —</option>
-                          {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                          {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}{t.phone ? ` — ${t.phone}` : ''}</option>)}
                         </select>
                       </td>
                     </tr>
