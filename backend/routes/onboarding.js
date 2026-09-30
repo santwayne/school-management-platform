@@ -50,10 +50,19 @@ router.post('/', onboardingLimiter, async (req, res) => {
     );
 
     if (Array.isArray(classes)) {
+      // A brand-new school has no existing classes to collide with, so the
+      // only way to end up with duplicates here is the wizard's own class
+      // list containing the same name twice (e.g. "8A" added twice by
+      // mistake) — dedupe case-insensitively before inserting, mirroring the
+      // check POST /api/academics/classes does for later additions.
+      const seen = new Set();
       for (const c of classes) {
-        if (c?.name?.trim()) {
-          await client.query('INSERT INTO classes (school_id, name) VALUES ($1, $2)', [schoolId, c.name.trim()]);
-        }
+        const trimmed = c?.name?.trim();
+        if (!trimmed) continue;
+        const key = trimmed.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        await client.query('INSERT INTO classes (school_id, name) VALUES ($1, $2)', [schoolId, trimmed]);
       }
     }
 

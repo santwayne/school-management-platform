@@ -2,8 +2,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Plus, X, Bus, Gauge, Clock, Wifi, Copy, CheckCircle2, AlertCircle, Wallet } from 'lucide-react';
-import { apiRequest } from '../api';
+import { Plus, X, Bus, Gauge, Clock, Wifi, Copy, CheckCircle2, AlertCircle, Wallet, Pencil, Trash2 } from 'lucide-react';
+import { apiRequest, API_URL } from '../api';
+
+// Same fix as the biometric-devices webhook URL: the device pushing here is
+// physical hardware, not a browser tab, so a relative path is meaningless to
+// it. This app and the API share one public domain in production (api.js),
+// so that domain IS window.location.origin there; API_URL is only non-empty
+// for a genuinely separate API host (or local dev).
+const PUBLIC_API_ORIGIN = API_URL || (typeof window !== 'undefined' ? window.location.origin : '');
 
 const DEFAULT_CENTER = [30.9010, 75.8573]; // Ludhiana, Punjab — matches the reference GPS adapter's simulated area
 const STALE_MS = 5 * 60 * 1000; // no ping in 5 min = considered idle, not "reporting"
@@ -54,6 +61,7 @@ export default function AdminTransport() {
   const [locations, setLocations] = useState({});
   const [selected, setSelected] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -173,10 +181,24 @@ export default function AdminTransport() {
         </div>
       )}
 
-      {selected && <BusPanel bus={selected} location={locations[selected.id]} onClose={() => setSelected(null)} onUpdated={loadBuses} />}
+      {selected && (
+        <BusPanel
+          bus={selected}
+          location={locations[selected.id]}
+          onClose={() => setSelected(null)}
+          onUpdated={loadBuses}
+          onEdit={() => setEditing(selected)}
+          onDeleted={() => {
+            setSelected(null);
+            loadBuses();
+          }}
+        />
+      )}
 
       {addOpen && (
-        <RegisterBusModal
+        <BusFormModal
+          title="Register bus"
+          submitLabel="Register"
           onClose={() => setAddOpen(false)}
           onSave={async (form) => {
             setError('');
@@ -190,15 +212,49 @@ export default function AdminTransport() {
           }}
         />
       )}
+
+      {editing && (
+        <BusFormModal
+          title="Edit bus"
+          submitLabel="Save changes"
+          initial={editing}
+          onClose={() => setEditing(null)}
+          onSave={async (form) => {
+            setError('');
+            try {
+              await apiRequest(`/api/transport/buses/${editing.id}`, { method: 'PATCH', body: form });
+              setEditing(null);
+              setSelected((s) => (s && s.id === editing.id ? { ...s, ...form } : s));
+              loadBuses();
+            } catch (err) {
+              setError(err.message);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function BusPanel({ bus, location, onClose, onUpdated }) {
+function BusPanel({ bus, location, onClose, onUpdated, onEdit, onDeleted }) {
   const latest = location?.latest;
   const trail = location?.trail || [];
   const center = latest ? [latest.latitude, latest.longitude] : DEFAULT_CENTER;
   const trailPositions = trail.map((t) => [t.latitude, t.longitude]);
+
+  const remove = async () => {
+    const ok = window.confirm(
+      `Remove ${bus.vehicle_number || `Bus #${bus.id}`}? This also permanently deletes its GPS location history, ` +
+      `trip logs, and any driver payout / student transport fee records tied to it. This cannot be undone.`
+    );
+    if (!ok) return;
+    try {
+      await apiRequest(`/api/transport/buses/${bus.id}`, { method: 'DELETE' });
+      onDeleted?.();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end" onClick={onClose}>
@@ -210,9 +266,17 @@ function BusPanel({ bus, location, onClose, onUpdated }) {
             <p className="text-sm text-ink-soft">{bus.route_name || 'No route set'}</p>
             <p className="text-xs text-ink-soft mt-0.5">{bus.gps_vendor}</p>
           </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-cream-deep/60 text-ink-soft">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={onEdit} title="Edit bus" className="p-1.5 rounded hover:bg-cream-deep/60 text-ink-soft hover:text-terracotta-deep">
+              <Pencil className="w-4 h-4" />
+            </button>
+            <button onClick={remove} title="Remove bus" className="p-1.5 rounded hover:bg-destructive/10 text-ink-soft hover:text-destructive">
+              <Trash2 className="w-4 h-4" />
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded hover:bg-cream-deep/60 text-ink-soft">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="p-5">
@@ -264,7 +328,7 @@ function ConnectGpsSection({ bus, onUpdated }) {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const webhookUrl = `${window.location.origin.includes('localhost') ? 'http://localhost:5000' : ''}/api/transport/webhook/${bus.gps_vendor}?token=${bus.webhook_token}`;
+  const webhookUrl = `${PUBLIC_API_ORIGIN}/api/transport/webhook/${bus.gps_vendor}?token=${bus.webhook_token}`;
 
   const copyWebhook = () => {
     navigator.clipboard?.writeText(webhookUrl);
@@ -408,13 +472,14 @@ function Input({ value, onChange, placeholder }) {
   );
 }
 
-function RegisterBusModal({ onClose, onSave }) {
-  const [routeName, setRouteName] = useState('');
-  const [vehicleNumber, setVehicleNumber] = useState('');
-  const [driverName, setDriverName] = useState('');
-  const [driverPhone, setDriverPhone] = useState('');
-  const [gpsVendor, setGpsVendor] = useState('generic_poll');
-  const [vendorDeviceId, setVendorDeviceId] = useState('');
+function BusFormModal({ title, submitLabel, initial, onClose, onSave }) {
+  const isEdit = !!initial;
+  const [routeName, setRouteName] = useState(initial?.route_name || '');
+  const [vehicleNumber, setVehicleNumber] = useState(initial?.vehicle_number || '');
+  const [driverName, setDriverName] = useState(initial?.driver_name || '');
+  const [driverPhone, setDriverPhone] = useState(initial?.driver_phone || '');
+  const [gpsVendor, setGpsVendor] = useState(initial?.gps_vendor || 'generic_poll');
+  const [vendorDeviceId, setVendorDeviceId] = useState(initial?.vendor_device_id || '');
   const valid = vehicleNumber.trim();
 
   return (
@@ -422,7 +487,7 @@ function RegisterBusModal({ onClose, onSave }) {
       <div className="bg-cream rounded-2xl border border-cream-deep w-full max-w-lg shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between px-5 py-4 border-b border-cream-deep/70">
           <h3 className="font-display text-lg text-ink inline-flex items-center gap-2">
-            <Bus className="w-5 h-5 text-terracotta" /> Register bus
+            <Bus className="w-5 h-5 text-terracotta" /> {title}
           </h3>
           <button onClick={onClose} className="p-1 rounded hover:bg-cream-deep/60 text-ink-soft">
             <X className="w-4 h-4" />
@@ -441,25 +506,36 @@ function RegisterBusModal({ onClose, onSave }) {
           <Field label="Driver phone">
             <Input value={driverPhone} onChange={setDriverPhone} placeholder="+91 …" />
           </Field>
-          <Field label="GPS vendor">
-            <select
-              value={gpsVendor}
-              onChange={(e) => setGpsVendor(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded-lg bg-white border border-cream-deep focus:outline-none focus:ring-2 focus:ring-terracotta/40"
-            >
-              {GPS_VENDORS.map((v) => (
-                <option key={v.value} value={v.value}>{v.label}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Vendor device ID (for push vendors)">
-            <Input value={vendorDeviceId} onChange={setVendorDeviceId} placeholder="optional" />
-          </Field>
+          {!isEdit && (
+            <>
+              <Field label="GPS vendor">
+                <select
+                  value={gpsVendor}
+                  onChange={(e) => setGpsVendor(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg bg-white border border-cream-deep focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+                >
+                  {GPS_VENDORS.map((v) => (
+                    <option key={v.value} value={v.value}>{v.label}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Vendor device ID (for push vendors)">
+                <Input value={vendorDeviceId} onChange={setVendorDeviceId} placeholder="optional" />
+              </Field>
+            </>
+          )}
         </div>
-        <p className="mx-5 mb-3 text-xs text-ink-soft rounded-lg bg-cream-deep/50 px-3 py-2">
-          "Demo / Reference" moves on its own with no setup. For a real vendor, register the bus first, then open it
-          and use "Connect GPS" to add the vendor's API details (or webhook, for push vendors).
-        </p>
+        {!isEdit && (
+          <p className="mx-5 mb-3 text-xs text-ink-soft rounded-lg bg-cream-deep/50 px-3 py-2">
+            "Demo / Reference" moves on its own with no setup. For a real vendor, register the bus first, then open it
+            and use "Connect GPS" to add the vendor's API details (or webhook, for push vendors).
+          </p>
+        )}
+        {isEdit && (
+          <p className="mx-5 mb-3 text-xs text-ink-soft rounded-lg bg-cream-deep/50 px-3 py-2">
+            GPS vendor and connection details are edited from "Connect GPS" on the bus panel, not here.
+          </p>
+        )}
         <div className="px-5 py-4 border-t border-cream-deep/70 flex justify-end gap-2">
           <button onClick={onClose} className="text-sm px-4 py-2 rounded-lg text-ink-soft hover:bg-cream-deep/60">
             Cancel
@@ -472,13 +548,12 @@ function RegisterBusModal({ onClose, onSave }) {
                 vehicle_number: vehicleNumber.trim(),
                 driver_name: driverName.trim() || undefined,
                 driver_phone: driverPhone.trim() || undefined,
-                gps_vendor: gpsVendor,
-                vendor_device_id: vendorDeviceId.trim() || undefined,
+                ...(isEdit ? {} : { gps_vendor: gpsVendor, vendor_device_id: vendorDeviceId.trim() || undefined }),
               })
             }
             className="text-sm font-medium px-4 py-2 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Register
+            {submitLabel}
           </button>
         </div>
       </div>
