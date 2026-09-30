@@ -6,6 +6,7 @@ import FeeCollectorsCard from './FeeCollectorsCard';
 import TeachersTab from './manage/TeachersTab';
 import StudentsTab from './manage/StudentsTab';
 import ParentsTab from './manage/ParentsTab';
+import DataCleanupTab from './manage/DataCleanupTab';
 
 const TABS = [
   { key: 'classes', label: 'Classes & Sections' },
@@ -14,6 +15,7 @@ const TABS = [
   { key: 'students', label: 'Students' },
   { key: 'parents', label: 'Parents' },
   { key: 'collectors', label: 'Fee Collectors' },
+  { key: 'cleanup', label: 'Data Cleanup' },
 ];
 const TAB_KEYS = new Set(TABS.map((t) => t.key));
 
@@ -56,6 +58,7 @@ export default function ManageSchool() {
           <FeeCollectorsCard />
         </div>
       )}
+      {tab === 'cleanup' && <div className="-mx-6"><DataCleanupTab /></div>}
     </div>
   );
 }

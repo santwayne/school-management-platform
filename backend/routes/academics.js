@@ -334,6 +334,207 @@ router.delete('/classes/:id', requireAuth, requirePrincipal, async (req, res) =>
   }
 });
 
+// ============================================================
+// Duplicate-class cleanup — pre-existing data problem: nothing enforced
+// class-name uniqueness before the dup check added elsewhere in this file,
+// so schools that hit that gap (or the onboarding wizard's own class-list
+// bug, since fixed) ended up with real, separately-created duplicate rows
+// like "Class 8A" x3. Deliberately conservative: only merges a duplicate
+// that has NO data in any of the 15 other tables with a class_id FK — a
+// class created by mistake with nothing in it. Anything with real academic
+// history (homework, exams, fee structure, timetable, ...) is refused with
+// a breakdown of exactly what's blocking it, rather than guessing how to
+// migrate that data correctly.
+// ============================================================
+
+const CLASS_DEPENDENT_TABLES = [
+  'homework', 'timetable_slots', 'lesson_plans', 'exams', 'fee_structures',
+  'syllabus_calendar', 'syllabus_progress', 'performance_snapshots', 'class_notes',
+  'student_optional_subject_assignments', 'student_leave_requests',
+  'weekly_progress_summary_log', 'recurring_doubt_notification_log',
+  'timetable_requirements', 'generated_tests',
+];
+
+// GET /api/academics/classes/duplicates — groups of classes in this school
+// that share a case-insensitive name, each with counts of what's actually
+// attached (so the admin can see at a glance which is the "real" one).
+router.get('/classes/duplicates', requireAuth, requirePrincipal, async (req, res) => {
+  try {
+    const { rows: dupNames } = await pool.query(
+      `SELECT LOWER(name) AS key FROM classes WHERE school_id = $1 GROUP BY LOWER(name) HAVING COUNT(*) > 1`,
+      [req.user.school_id]
+    );
+    const groups = [];
+    for (const { key } of dupNames) {
+      const { rows: classes } = await pool.query(
+        `SELECT c.id, c.name, c.class_teacher_id,
+                (SELECT COUNT(*) FROM students s WHERE s.class_id = c.id) AS student_count,
+                (SELECT COUNT(*) FROM class_subject_teachers cst WHERE cst.class_id = c.id) AS subject_assignment_count
+         FROM classes c
+         WHERE c.school_id = $1 AND LOWER(c.name) = $2
+         ORDER BY c.id ASC`,
+        [req.user.school_id, key]
+      );
+      groups.push({ name_key: key, classes });
+    }
+    res.json(groups);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/academics/classes/merge — { keep_class_id, duplicate_class_id }
+router.post('/classes/merge', requireAuth, requirePrincipal, async (req, res) => {
+  const { keep_class_id, duplicate_class_id } = req.body;
+  const schoolId = req.user.school_id;
+  if (!keep_class_id || !duplicate_class_id) {
+    return res.status(400).json({ error: 'keep_class_id and duplicate_class_id are required' });
+  }
+  if (String(keep_class_id) === String(duplicate_class_id)) {
+    return res.status(400).json({ error: 'keep_class_id and duplicate_class_id must be different classes' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const bothRes = await client.query(
+      `SELECT id, LOWER(name) AS key FROM classes WHERE school_id = $1 AND id = ANY($2::int[])`,
+      [schoolId, [keep_class_id, duplicate_class_id]]
+    );
+    if (bothRes.rowCount !== 2) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'One or both classes were not found for this school' });
+    }
+    // Only merges classes that are actually name-duplicates of each other —
+    // this endpoint is a duplicate-cleanup tool, not a general class-delete;
+    // an admin who wants to merge two differently-named classes should use
+    // rename + the existing delete endpoint instead, with their eyes open.
+    if (bothRes.rows[0].key !== bothRes.rows[1].key) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'These classes do not share the same name — this tool only merges true duplicates' });
+    }
+
+    const countChecks = await Promise.all(
+      CLASS_DEPENDENT_TABLES.map((table) =>
+        client.query(`SELECT COUNT(*) FROM ${table} WHERE class_id = $1`, [duplicate_class_id])
+      )
+    );
+    const blocking = CLASS_DEPENDENT_TABLES
+      .map((table, i) => ({ table, count: parseInt(countChecks[i].rows[0].count, 10) }))
+      .filter((b) => b.count > 0);
+    if (blocking.length > 0) {
+      await client.query('ROLLBACK');
+      const breakdown = blocking.map((b) => `${b.table} (${b.count})`).join(', ');
+      return res.status(409).json({
+        error: `This class has real data attached and cannot be auto-merged: ${breakdown}. Move or clear it first.`,
+        blocking,
+      });
+    }
+
+    // Move students over.
+    await client.query(
+      `UPDATE students SET class_id = $1 WHERE class_id = $2 AND school_id = $3`,
+      [keep_class_id, duplicate_class_id, schoolId]
+    );
+    // Move subject-teacher assignments that don't already exist on the keep
+    // class (UNIQUE(class_id, subject_id)) — any left pointing at the
+    // duplicate get cascade-deleted with it below, which is correct: they'd
+    // be an exact subject clash with an assignment the keep class already has.
+    await client.query(
+      `UPDATE class_subject_teachers cst SET class_id = $1
+       WHERE cst.class_id = $2
+         AND NOT EXISTS (
+           SELECT 1 FROM class_subject_teachers other
+           WHERE other.class_id = $1 AND other.subject_id = cst.subject_id
+         )`,
+      [keep_class_id, duplicate_class_id]
+    );
+
+    await client.query('DELETE FROM classes WHERE id = $1 AND school_id = $2', [duplicate_class_id, schoolId]);
+
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ============================================================
+// Parentless-student cleanup — a student with no parent linked (usually
+// from a bulk import where the parent_phone cell was blank; see PR #47's
+// warning for that gap going forward) misses every WhatsApp
+// attendance/fee/note notification silently. Lists them and links a parent
+// by phone in one step, rather than requiring a full bulk-CSV round trip
+// for what's usually a handful of students.
+// ============================================================
+
+// GET /api/academics/students/no-parent — students missing a parent link
+router.get('/students/no-parent', requireAuth, requirePrincipal, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.id, s.name, s.login_id, c.name AS class_name
+       FROM students s
+       LEFT JOIN classes c ON c.id = s.class_id
+       WHERE s.school_id = $1 AND s.parent_id IS NULL
+       ORDER BY c.name NULLS LAST, s.name`,
+      [req.user.school_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/academics/students/:id/link-parent — create-or-find a parent by
+// phone (same resolution studentRecords.js's bulk-upsert uses) and link it.
+router.post('/students/:id/link-parent', requireAuth, requirePrincipal, async (req, res) => {
+  const { phone, name } = req.body;
+  const schoolId = req.user.school_id;
+  const normalized = normalizePhone(phone);
+  if (!normalized) {
+    return res.status(400).json({ error: 'Enter a valid parent mobile number (10 digits, optionally with +91)' });
+  }
+
+  try {
+    const studentRes = await pool.query(
+      'SELECT id, name FROM students WHERE id = $1 AND school_id = $2',
+      [req.params.id, schoolId]
+    );
+    if (studentRes.rowCount === 0) return res.status(404).json({ error: 'Student not found for this school' });
+    const student = studentRes.rows[0];
+
+    let parentId;
+    const existingParent = await pool.query(
+      'SELECT id FROM parents WHERE school_id = $1 AND phone = $2',
+      [schoolId, normalized]
+    );
+    if (existingParent.rowCount > 0) {
+      parentId = existingParent.rows[0].id;
+      if (name && name.trim()) {
+        await pool.query('UPDATE parents SET name = $1 WHERE id = $2', [name.trim(), parentId]);
+      }
+    } else {
+      const newParent = await pool.query(
+        `INSERT INTO parents (school_id, name, phone) VALUES ($1, $2, $3) RETURNING id`,
+        [schoolId, (name || `Parent of ${student.name}`).trim(), normalized]
+      );
+      parentId = newParent.rows[0].id;
+    }
+
+    const updated = await pool.query(
+      `UPDATE students SET parent_id = $1 WHERE id = $2 AND school_id = $3 RETURNING id, name, parent_id`,
+      [parentId, req.params.id, schoolId]
+    );
+    res.json(updated.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Teachers/Accountants/Librarians — create with a real login (email +
 // password), edit, delete. role defaults to 'teacher'; 'accountant' and
 // 'librarian' are also allowed since this is the only place staff accounts
