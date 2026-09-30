@@ -1,10 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { BookOpen, Plus, X, Search, RotateCcw } from 'lucide-react';
 import { apiRequest } from '../api';
+import AdminLibraryBulkUpload from './AdminLibraryBulkUpload';
 
 const TABS = [
   { key: 'catalog', label: 'Catalog' },
   { key: 'issues', label: 'Issued Books' },
+  // Bulk import is a tab here rather than a separate top-level nav route
+  // (like Bulk Upload Students) because this screen is reachable by both
+  // Principal and Librarian accounts (requireLibrary on the backend) —
+  // Librarian's nav is a single-item allowlist (see AdminShell.jsx's
+  // LIBRARIAN_NAV) that a new standalone route wouldn't be part of.
+  { key: 'bulk-import', label: 'Bulk Import' },
 ];
 
 function AddBookForm({ onClose, onSaved }) {
@@ -270,7 +277,7 @@ export default function AdminLibrary() {
           </button>
         ))}
       </div>
-      {tab === 'catalog' ? <CatalogTab /> : <IssuesTab />}
+      {tab === 'catalog' ? <CatalogTab /> : tab === 'issues' ? <IssuesTab /> : <AdminLibraryBulkUpload />}
     </div>
   );
 }
