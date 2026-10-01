@@ -1,154 +1,335 @@
-import React, { useEffect, useState } from 'react';
-import { apiRequest } from '../api';
+import React, { useEffect, useRef, useState } from 'react';
+import { apiRequest, apiDownload } from '../api';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog';
 
-const INR = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
+const INR = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+const P = (paise) => INR(Number(paise || 0) / 100);
+const dateIN = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+
+function loadRazorpay() {
+  if (window.Razorpay) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.body.appendChild(s);
+  });
+}
 
 function UsageRow({ label, used, limit }) {
-  const pct = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  const unlimited = limit === 999999;
+  const pct = limit && !unlimited ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  const near = pct >= 90;
   return (
     <div className="py-2.5">
       <div className="flex justify-between text-sm text-ink mb-1">
         <span>{label}</span>
-        <span className="text-ink-soft">{used}{limit ? ` / ${limit === 999999 ? 'Unlimited' : limit}` : ''}</span>
+        <span className={near ? 'text-destructive font-medium' : 'text-ink-soft'}>
+          {used}{limit !== null && limit !== undefined ? ` / ${unlimited ? 'Unlimited' : limit}` : ''}
+        </span>
       </div>
-      {!!limit && limit !== 999999 && (
+      {!!limit && !unlimited && (
         <div className="h-2 rounded-full bg-cream-deep overflow-hidden">
-          <div className="h-full bg-terracotta" style={{ width: `${pct}%` }} />
+          <div className={`h-full ${near ? 'bg-destructive' : 'bg-terracotta'}`} style={{ width: `${pct}%` }} />
         </div>
       )}
     </div>
   );
 }
 
-const BILLING_STATUS_LABEL = {
-  active: null, // nothing to show — the normal state
-  pending_activation: { text: 'Subscription started — waiting for you to complete payment authorization.', tone: 'amber' },
-  past_due: { text: "Your last subscription payment didn't go through. Your account isn't restricted, but please update your payment method soon.", tone: 'destructive' },
-  cancelled: { text: 'Your subscription was cancelled. Subscribe again below to resume online payment.', tone: 'destructive' },
-};
+function Row({ k, v, strong, muted }) {
+  return (
+    <div className={`flex justify-between py-1 text-sm ${strong ? 'font-semibold text-ink border-t border-cream-deep mt-1 pt-2' : muted ? 'text-ink-soft' : 'text-ink'}`}>
+      <span>{k}</span><span>{v}</span>
+    </div>
+  );
+}
+
+// Price + 18% GST + proration, then Razorpay Checkout, then "Activating…"
+// until the webhook has actually applied the plan.
+function CheckoutModal({ open, onClose, planCode, cycle, onDone }) {
+  const [quote, setQuote] = useState(null);
+  const [phase, setPhase] = useState('quote'); // quote | paying | activating | done | error
+  const [error, setError] = useState('');
+  const pollRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    setQuote(null); setError(''); setPhase('quote');
+    apiRequest(`/api/billing/quote?plan=${planCode}&cycle=${cycle}`)
+      .then(setQuote)
+      .catch((e) => { setError(e.message); setPhase('error'); });
+    return () => clearInterval(pollRef.current);
+  }, [open, planCode, cycle]);
+
+  const poll = (rowId) => {
+    setPhase('activating');
+    const started = Date.now();
+    pollRef.current = setInterval(async () => {
+      try {
+        const s = await apiRequest(`/api/billing/checkout/${rowId}/status`);
+        if (s.status === 'done') { clearInterval(pollRef.current); setPhase('done'); onDone(); }
+        else if (Date.now() - started > 120000) {
+          clearInterval(pollRef.current);
+          setError('Payment received by Razorpay, but activation is taking longer than usual. It will apply automatically — refresh in a few minutes.');
+          setPhase('error');
+        }
+      } catch { /* keep polling */ }
+    }, 3000);
+  };
+
+  const pay = async () => {
+    setError(''); setPhase('paying');
+    try {
+      const ok = await loadRazorpay();
+      if (!ok) throw new Error('Could not load Razorpay. Check your connection and try again.');
+      const res = await apiRequest('/api/billing/checkout', { method: 'POST', body: { plan: planCode, cycle } });
+      const rzp = new window.Razorpay({
+        ...res.checkout,
+        theme: { color: '#B5532F' },
+        handler: async (resp) => {
+          try { await apiRequest('/api/billing/checkout/confirm', { method: 'POST', body: resp }); } catch { /* webhook is authoritative */ }
+          poll(res.subscription_row_id);
+        },
+        modal: { ondismiss: () => setPhase((p) => (p === 'paying' ? 'quote' : p)) },
+      });
+      rzp.on('payment.failed', (r) => { setError(r?.error?.description || 'Payment failed'); setPhase('quote'); });
+      rzp.open();
+    } catch (e) {
+      setError(e.message); setPhase('quote');
+    }
+  };
+
+  const applies = quote?.applies === 'next_cycle'
+    ? `Switches on ${dateIN(quote.new_term_starts_at)} (your current plan stays until then).`
+    : quote?.kind === 'upgrade' ? 'Upgrade applies immediately after payment.' : 'Activates as soon as payment is confirmed.';
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o && phase !== 'activating' && phase !== 'paying') onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{quote ? `${quote.kind === 'downgrade' ? 'Move to' : quote.kind === 'upgrade' ? 'Upgrade to' : 'Subscribe to'} ${quote.plan.name}` : 'Checkout'}</DialogTitle>
+          <DialogDescription>{cycle === 'yearly' ? 'Billed once a year' : 'Billed monthly by auto-debit'}</DialogDescription>
+        </DialogHeader>
+
+        {phase === 'activating' && (
+          <div className="py-8 text-center">
+            <div className="mx-auto h-8 w-8 rounded-full border-2 border-terracotta border-t-transparent animate-spin" />
+            <p className="mt-4 text-sm text-ink">Activating your plan…</p>
+            <p className="text-xs text-ink-soft mt-1">Waiting for Razorpay to confirm. Don't close this window.</p>
+          </div>
+        )}
+        {phase === 'done' && (
+          <div className="py-8 text-center">
+            <p className="text-ink font-medium">{quote?.kind === 'downgrade' ? 'Plan change booked.' : 'You’re on ' + quote?.plan.name + '.'}</p>
+            <p className="text-xs text-ink-soft mt-1">A GST invoice is under Invoices below.</p>
+          </div>
+        )}
+
+        {(phase === 'quote' || phase === 'paying' || phase === 'error') && (
+          <>
+            {!quote && !error && <p className="text-sm text-ink-soft py-6">Calculating…</p>}
+            {quote && (
+              <div className="py-2">
+                <Row k={`${quote.plan.name} (${cycle})`} v={P(quote.list_price_paise)} />
+                <Row k="GST @ 18%" v={P(quote.gst_paise)} muted />
+                <Row k={`Total per ${cycle === 'yearly' ? 'year' : 'month'}`} v={P(quote.recurring_total_paise)} />
+                {quote.proration_total_paise > 0 && (
+                  <Row k="Prorated difference for the rest of this cycle (incl. GST)" v={P(quote.proration_total_paise)} muted />
+                )}
+                <Row k="Pay now" v={P(quote.due_now_paise)} strong />
+                <p className="text-xs text-ink-soft mt-3">{applies}</p>
+                {quote.afa_each_debit && (
+                  <p className="text-xs mt-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-900 px-3 py-2">
+                    Monthly debits above ₹15,000 need your OTP every month (RBI e-mandate rule). Yearly billing avoids this.
+                  </p>
+                )}
+              </div>
+            )}
+            {error && <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">{error}</div>}
+            <DialogFooter>
+              <button onClick={onClose} className="px-4 py-2 rounded-lg border border-cream-deep text-sm">Cancel</button>
+              {quote && (
+                <button onClick={pay} disabled={phase === 'paying'} className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium disabled:opacity-50">
+                  {phase === 'paying' ? 'Opening Razorpay…' : quote.due_now_paise > 0 ? `Pay ${P(quote.due_now_paise)}` : 'Authorize & book change'}
+                </button>
+              )}
+            </DialogFooter>
+          </>
+        )}
+        {phase === 'done' && (
+          <DialogFooter><button onClick={onClose} className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm">Close</button></DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function GstDetails({ details, onSaved }) {
+  const [f, setF] = useState({ gstin: details.gstin || '', legal_name: details.legal_name || '', address: details.address || '', state_code: details.state_code || '' });
+  const [msg, setMsg] = useState('');
+  const save = async () => {
+    setMsg('');
+    try {
+      await apiRequest('/api/billing/details', { method: 'PUT', body: { ...f, gstin: f.gstin.trim().toUpperCase() || null } });
+      setMsg('Saved'); onSaved();
+    } catch (e) { setMsg(e.message); }
+  };
+  const input = 'w-full rounded-lg border border-cream-deep px-3 py-2 text-sm bg-white';
+  return (
+    <div className="grid md:grid-cols-2 gap-3">
+      <input className={input} placeholder="GSTIN (optional)" value={f.gstin} onChange={(e) => setF({ ...f, gstin: e.target.value })} />
+      <input className={input} placeholder="Legal name on invoice" value={f.legal_name} onChange={(e) => setF({ ...f, legal_name: e.target.value })} />
+      <input className={`${input} md:col-span-2`} placeholder="Billing address" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} />
+      <input className={input} placeholder="State code (e.g. 03 for Punjab)" value={f.state_code} onChange={(e) => setF({ ...f, state_code: e.target.value })} />
+      <div className="flex items-center gap-3">
+        <button onClick={save} className="px-4 py-2 rounded-lg bg-ink text-white text-sm">Save details</button>
+        {msg && <span className="text-xs text-ink-soft">{msg}</span>}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminBilling() {
   const [data, setData] = useState(null);
+  const [invoices, setInvoices] = useState([]);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [changing, setChanging] = useState(false);
-  const [subscribing, setSubscribing] = useState(null);
+  const [cycle, setCycle] = useState('monthly');
+  const [checkout, setCheckout] = useState(null);
 
   const load = async () => {
-    setLoading(true);
     try {
-      setData(await apiRequest('/api/billing'));
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+      const [b, inv] = await Promise.all([apiRequest('/api/billing'), apiRequest('/api/billing/invoices').catch(() => [])]);
+      setData(b); setInvoices(inv); setError('');
+    } catch (err) { setError(err.message); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const cancel = async () => {
+    if (!window.confirm('Cancel auto-renewal? You keep full access until the end of the current billing period.')) return;
+    try { await apiRequest('/api/billing/cancel', { method: 'POST' }); await load(); } catch (e) { setError(e.message); }
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  if (!data && !error) return <p className="text-sm text-ink-soft">Loading…</p>;
+  if (!data) return <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>;
 
-  const changePlan = async (plan) => {
-    if (!confirm(`Switch to the ${plan} plan? This updates your account but does not itself collect payment — a real billing flow needs to be wired before this is a self-serve action.`)) return;
-    setChanging(true);
-    setError('');
-    try {
-      await apiRequest('/api/billing/plan', { method: 'PATCH', body: { plan } });
-      await load();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setChanging(false);
-    }
-  };
-
-  const subscribeAndPay = async (plan) => {
-    setSubscribing(plan);
-    setError('');
-    try {
-      const res = await apiRequest('/api/billing/subscribe', { method: 'POST', body: { plan } });
-      // Razorpay's hosted page — completes the payment-method mandate.
-      // The plan itself only actually switches once that's done and the
-      // webhook fires (subscription.activated), not immediately here.
-      window.open(res.short_url, '_blank', 'noopener,noreferrer');
-      await load();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubscribing(null);
-    }
-  };
-
-  if (loading) return <p className="text-sm text-ink-soft">Loading…</p>;
-  if (error && !data) return <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>;
+  const plans = Object.entries(data.all_plans).sort((a, b) => a[1].rank - b[1].rank);
+  const currentRank = data.all_plans[data.plan]?.rank || 0;
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="font-display text-3xl text-ink">Billing</h1>
-        <p className="text-sm text-ink-soft mt-1">Your plan and usage.</p>
+        <p className="text-sm text-ink-soft mt-1">Your Waynur plan, usage and invoices. Prices exclude 18% GST.</p>
       </div>
 
       {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
 
-      {BILLING_STATUS_LABEL[data.billing_status] && (
-        <div className={`rounded-xl px-4 py-3 text-sm ${
-          BILLING_STATUS_LABEL[data.billing_status].tone === 'destructive'
-            ? 'bg-destructive/10 border border-destructive/20 text-destructive'
-            : 'bg-amber-500/10 border border-amber-500/20 text-amber-800'
-        }`}>
-          {BILLING_STATUS_LABEL[data.billing_status].text}
+      <div className="grid md:grid-cols-[1.2fr_1fr] gap-4">
+        <div className="rounded-2xl bg-white border border-cream-deep/70 p-6">
+          <div className="font-display text-2xl text-ink">{data.plan_name}</div>
+          <div className="text-sm text-ink-soft mt-1">
+            {INR(data.price)}/month + GST ({INR(data.price_with_gst)})
+            {data.subscription && <> · {data.subscription.billing_cycle} · {data.subscription.cancel_at_period_end ? 'ends' : 'renews'} {dateIN(data.renews_at)}</>}
+          </div>
+          {data.pending_plan && (
+            <p className="text-sm text-ink mt-3">Switching to {data.all_plans[data.pending_plan]?.name} on {dateIN(data.renews_at)}.</p>
+          )}
+          {data.awaiting_payment && !data.subscription && (
+            <p className="text-sm text-amber-800 mt-3">A checkout for {data.all_plans[data.awaiting_payment.plan_code]?.name} was started but not paid yet.</p>
+          )}
+          {data.can_manage && data.subscription && !data.subscription.cancel_at_period_end && (
+            <button onClick={cancel} className="mt-4 text-xs text-ink-soft underline underline-offset-2">Cancel auto-renewal</button>
+          )}
         </div>
-      )}
-
-      <div className="rounded-2xl bg-white border border-cream-deep/70 p-6">
-        <div className="font-display text-2xl text-ink">{data.plan_name} Plan</div>
-        <div className="text-sm text-ink-soft mt-1">
-          {INR(data.price)}/month · renews {data.renews_at ? new Date(data.renews_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-          {data.has_subscription && <span className="ml-2 text-xs text-emerald-700">· auto-renews via Razorpay</span>}
+        <div className="rounded-2xl bg-white border border-cream-deep/70 p-6">
+          <h2 className="font-display text-lg text-ink mb-1">Usage</h2>
+          <UsageRow label="Students" used={data.usage.students.used} limit={data.usage.students.limit} />
+          <UsageRow label="Staff" used={data.usage.staff.used} limit={data.usage.staff.limit} />
+          <UsageRow label="Accountant seats" used={data.usage.accountant_seats.used} limit={data.usage.accountant_seats.limit} />
         </div>
       </div>
 
-      <div className="rounded-2xl bg-white border border-cream-deep/70 p-6">
-        <h2 className="font-display text-lg text-ink mb-2">Usage</h2>
-        <UsageRow label="Students" used={data.usage.students.used} limit={data.usage.students.limit} />
-        <UsageRow label="Staff" used={data.usage.staff.used} limit={data.usage.staff.limit} />
-        <UsageRow label="Accountant seats" used={data.usage.accountant_seats.used} limit={data.usage.accountant_seats.limit} />
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h2 className="font-display text-xl text-ink">Plans</h2>
+        <div className="inline-flex rounded-lg border border-cream-deep p-0.5 text-sm">
+          {['monthly', 'yearly'].map((c) => (
+            <button key={c} onClick={() => setCycle(c)} className={`px-3 py-1.5 rounded-md capitalize ${cycle === c ? 'bg-ink text-white' : 'text-ink-soft'}`}>{c}</button>
+          ))}
+        </div>
       </div>
 
       <div className="grid md:grid-cols-3 gap-4">
-        {Object.entries(data.all_plans).map(([key, p]) => (
-          <div key={key} className={`rounded-2xl border p-5 ${key === data.plan ? 'border-terracotta bg-terracotta/5' : 'border-cream-deep/70 bg-white'}`}>
-            {key === data.plan && <span className="inline-block mb-2 text-xs font-medium px-2 py-0.5 rounded-full bg-terracotta text-primary-foreground">Your plan</span>}
-            <div className="font-display text-lg text-ink">{p.name}</div>
-            <div className="text-sm text-ink-soft mt-0.5">{INR(p.price)}/month</div>
-            <ul className="text-xs text-ink-soft mt-3 space-y-1">
-              <li>Up to {p.student_limit === 999999 ? 'unlimited' : p.student_limit} students</li>
-              <li>{p.accountant_seats > 0 ? `${p.accountant_seats} accountant seats` : 'No accountant role'}</li>
-            </ul>
-            {key !== data.plan && data.plans_payable_online.includes(key) && (
-              <button
-                onClick={() => subscribeAndPay(key)}
-                disabled={subscribing === key}
-                className="mt-4 w-full px-3 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition disabled:opacity-50"
-              >
-                {subscribing === key ? 'Starting…' : `Subscribe & Pay — ${p.name}`}
-              </button>
-            )}
-            {key !== data.plan && !data.plans_payable_online.includes(key) && (
-              <button
-                onClick={() => changePlan(key)}
-                disabled={changing}
-                className="mt-4 w-full px-3 py-2 rounded-lg border border-cream-deep text-ink text-sm font-medium hover:bg-cream-deep/40 transition disabled:opacity-50"
-                title="Online payment isn't set up for this plan yet — this only updates your account, contact support to actually pay"
-              >
-                Switch to {p.name} (no payment)
-              </button>
-            )}
-          </div>
-        ))}
+        {plans.map(([key, p]) => {
+          const isCurrent = key === data.plan && data.subscription?.billing_cycle === cycle;
+          const available = cycle === 'yearly' ? p.yearly_online : p.monthly_online;
+          const verb = !data.subscription ? 'Subscribe' : p.rank > currentRank ? 'Upgrade' : p.rank < currentRank ? 'Downgrade' : 'Switch';
+          const price = cycle === 'yearly' ? p.yearly_price : p.price;
+          return (
+            <div key={key} className={`rounded-2xl border p-5 flex flex-col ${key === data.plan ? 'border-terracotta bg-terracotta/5' : 'border-cream-deep/70 bg-white'}`}>
+              <div className="font-display text-lg text-ink">{p.name}</div>
+              <div className="text-sm text-ink mt-0.5">{price ? `${INR(price)}/${cycle === 'yearly' ? 'year' : 'month'}` : '—'}</div>
+              <div className="text-xs text-ink-soft">+18% GST{price ? ` = ${INR(Math.round(price * 118) / 100)}` : ''}</div>
+              <ul className="text-xs text-ink-soft mt-3 space-y-1 flex-1">
+                <li>{p.student_limit === 999999 ? 'Unlimited students' : `Up to ${p.student_limit} students`}</li>
+                <li>{p.accountant_seats > 0 ? `${p.accountant_seats} accountant seats` : 'No accountant role'}</li>
+              </ul>
+              {isCurrent ? (
+                <span className="mt-4 text-center text-xs font-medium py-2 rounded-lg bg-terracotta/10 text-terracotta">Current plan</span>
+              ) : !data.can_manage ? (
+                <span className="mt-4 text-center text-xs text-ink-soft py-2">Only the Principal can change plans</span>
+              ) : available ? (
+                <button onClick={() => setCheckout({ plan: key, cycle })} className="mt-4 w-full px-3 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
+                  {verb} — {p.name}
+                </button>
+              ) : (
+                <span className="mt-4 text-center text-xs text-ink-soft py-2">Contact support for {cycle} billing</span>
+              )}
+            </div>
+          );
+        })}
       </div>
+
+      <div className="rounded-2xl bg-white border border-cream-deep/70 p-6">
+        <h2 className="font-display text-lg text-ink mb-3">Invoices</h2>
+        {invoices.length === 0 ? (
+          <p className="text-sm text-ink-soft">No invoices yet. A GST invoice is created automatically for every payment.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="text-left text-ink-soft border-b border-cream-deep">
+                <th className="py-2 font-normal">Invoice</th><th className="font-normal">Date</th><th className="font-normal">For</th><th className="font-normal text-right">Amount</th><th />
+              </tr></thead>
+              <tbody>
+                {invoices.map((i) => (
+                  <tr key={i.id} className="border-b border-cream-deep/50">
+                    <td className="py-2 font-mono text-xs">{i.invoice_number}</td>
+                    <td>{dateIN(i.issued_at)}</td>
+                    <td className="text-ink-soft">{i.description}</td>
+                    <td className="text-right">{P(i.total_paise)}</td>
+                    <td className="text-right">
+                      <button onClick={() => apiDownload(`/api/billing/invoices/${i.id}/pdf`, `${i.invoice_number.replace(/\//g, '-')}.pdf`)} className="text-terracotta text-xs underline underline-offset-2">PDF</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {data.can_manage && (
+        <div className="rounded-2xl bg-white border border-cream-deep/70 p-6">
+          <h2 className="font-display text-lg text-ink mb-1">GST details for invoices</h2>
+          <p className="text-xs text-ink-soft mb-3">Add your GSTIN to claim input tax credit. State code decides CGST+SGST vs IGST.</p>
+          <GstDetails details={data.billing_details} onSaved={load} />
+        </div>
+      )}
+
+      {checkout && (
+        <CheckoutModal open planCode={checkout.plan} cycle={checkout.cycle} onClose={() => { setCheckout(null); load(); }} onDone={load} />
+      )}
     </div>
   );
 }
