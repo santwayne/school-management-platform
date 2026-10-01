@@ -7,6 +7,7 @@ import {
   ListChecks, UserCheck, MessagesSquare, UploadCloud, Award, FileCheck2,
   ClipboardEdit, FileText, NotebookPen, Menu, X, Gauge } from 'lucide-react';
 import { useAuth } from '../AuthContext';
+import BillingBanner from './BillingBanner';
 import { apiRequest } from '../api';
 
 // Backed by the generic, event-driven `dashboard_notifications` table
@@ -310,6 +311,7 @@ export default function AdminShell({ children }) {
           </div>
         </div>
         <main className="flex-1 px-8 py-6 space-y-6 max-w-[1400px] w-full">
+          {(user?.role === 'principal' || user?.role === 'accountant') && <BillingBanner />}
           {children}
         </main>
       </div>

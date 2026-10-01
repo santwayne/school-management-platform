@@ -1,9 +1,10 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
+import { s3, s3PublicUrl } from '../utils/s3.js';
 import {
   getStudentProfile,
   upsertStudentProfile,
@@ -17,13 +18,6 @@ const router = express.Router();
 
 // Same S3 client/config as routes/settings.js — reused, not reconfigured,
 // so a single AWS_S3_BUCKET/AWS_REGION pair backs logo + profile photos.
-const s3 = new S3Client({
-  region: process.env.AWS_REGION,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  },
-});
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -43,7 +37,7 @@ async function uploadPhotoToS3(file, folder) {
     Body: file.buffer,
     ContentType: file.mimetype,
   }));
-  return `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+  return s3PublicUrl(key);
 }
 
 function handleUploadErrors(req, res, next) {

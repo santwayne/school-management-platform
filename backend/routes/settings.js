@@ -2,11 +2,12 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import crypto from 'crypto';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
 import { sendTemplateMessage } from '../services/whatsappService.js';
 import { audit } from '../services/opsService.js';
+import { s3, s3PublicUrl } from '../utils/s3.js';
 
 // Meta requires an approved template for the first outbound message in a
 // conversation window — a brand-new number being verified here has no open
@@ -18,13 +19,6 @@ const OTP_TEMPLATE = process.env.WHATSAPP_OTP_TEMPLATE || 'verification_code';
 
 const router = express.Router();
 
-const s3 = new S3Client({
-  region: process.env.AWS_REGION,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  },
-});
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -445,7 +439,7 @@ router.post('/logo', requireAuth, requirePrincipal, (req, res, next) => {
       ContentType: req.file.mimetype,
     }));
 
-    const logo_url = `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+    const logo_url = s3PublicUrl(key);
 
     const result = await pool.query(
       `INSERT INTO school_settings (school_id, logo_url) VALUES ($1, $2)

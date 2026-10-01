@@ -1,21 +1,15 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 import pool from '../config/db.js';
 import { requireAuth, requireStudent } from '../middleware/auth.js';
 import { send as sendNotification } from '../services/notificationService.js';
+import { s3, s3PublicUrl } from '../utils/s3.js';
 
 const router = express.Router();
 
 // Same S3 client convention as routes/settings.js and routes/profiles.js.
-const s3 = new S3Client({
-  region: process.env.AWS_REGION,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  },
-});
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -75,7 +69,7 @@ async function uploadMediaFile(file, activityId) {
     ContentType: file.mimetype,
   }));
   return {
-    media_url: `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
+    media_url: s3PublicUrl(key),
     media_type: isVideo ? 'video' : 'photo',
   };
 }

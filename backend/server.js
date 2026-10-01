@@ -67,6 +67,7 @@ import './workers/performanceDriftWorker.js';
 import './workers/weeklyProgressSummaryWorker.js';
 import './workers/recurringDoubtWorker.js';
 import './workers/dailyDigestWorker.js';
+import { startBillingSweeper } from './workers/billingWorker.js';
 import admissionFollowupWorker from './workers/admissionFollowupWorker.js';
 import { instrumentWorkers } from './workers/instrumentation.js';
 import { startHealthCheckLoop } from './workers/healthCheck.js';
@@ -168,6 +169,7 @@ async function start() {
 
   app.listen(PORT, async () => {
     console.log(`Core Backend running on port ${PORT}`);
+    startBillingSweeper();
     try {
       await purgeTimezonelessRepeatables();
     } catch (err) {
