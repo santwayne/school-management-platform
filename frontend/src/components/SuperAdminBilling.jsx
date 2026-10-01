@@ -43,7 +43,6 @@ function PlanEditor({ plan, onSaved, onCancel }) {
     yearly_price: plan.yearly_price ?? '',
     student_limit: plan.unlimited_students ? '' : plan.student_limit,
     unlimited_students: plan.unlimited_students,
-    accountant_seats: plan.accountant_seats,
     apply_to_existing: true,
     reason: '',
   });
@@ -52,8 +51,7 @@ function PlanEditor({ plan, onSaved, onCancel }) {
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
   const priceChanged = Number(f.price) !== plan.price;
   const limitsChanged = (f.unlimited_students !== plan.unlimited_students)
-    || (!f.unlimited_students && Number(f.student_limit) !== plan.student_limit)
-    || Number(f.accountant_seats) !== plan.accountant_seats;
+    || (!f.unlimited_students && Number(f.student_limit) !== plan.student_limit);
 
   const save = async () => {
     setBusy(true); setError('');
@@ -66,7 +64,6 @@ function PlanEditor({ plan, onSaved, onCancel }) {
           yearly_price: f.yearly_price === '' ? null : Number(f.yearly_price),
           student_limit: f.unlimited_students ? 999999 : Number(f.student_limit),
           unlimited_students: f.unlimited_students,
-          accountant_seats: Number(f.accountant_seats),
           apply_to_existing: f.apply_to_existing,
           reason: f.reason,
         },
@@ -93,7 +90,6 @@ function PlanEditor({ plan, onSaved, onCancel }) {
         <Field label="Yearly price (₹, before GST)" hint="Leave empty to switch yearly billing off for this plan">
           <input type="number" min="1" step="0.01" className={inputCls} value={f.yearly_price} onChange={set('yearly_price')} />
         </Field>
-        <Field label="Accountant seats"><input type="number" min="0" className={inputCls} value={f.accountant_seats} onChange={set('accountant_seats')} /></Field>
         <Field label="Student limit">
           <div className="flex items-center gap-3">
             <input type="number" min="1" className={inputCls} value={f.student_limit} onChange={set('student_limit')} disabled={f.unlimited_students} />
@@ -110,7 +106,7 @@ function PlanEditor({ plan, onSaved, onCancel }) {
       {limitsChanged && (
         <label className="flex items-start gap-2 text-sm text-ink">
           <input type="checkbox" className="mt-0.5" checked={f.apply_to_existing} onChange={set('apply_to_existing')} />
-          <span>Also apply the new limits to the {plan.schools_on_plan} school(s) already on {plan.name}</span>
+          <span>Also apply the new student limit to the {plan.schools_on_plan} school(s) already on {plan.name}</span>
         </label>
       )}
       {priceChanged && (
@@ -205,7 +201,7 @@ function PlanCard({ plan, mode, onChange, notify }) {
         </div>
         <div>
           <div className="text-xs uppercase tracking-wider text-ink-soft">Limits</div>
-          <div className="text-ink">{plan.unlimited_students ? 'Unlimited' : plan.student_limit} students · {plan.accountant_seats} accountant seat{plan.accountant_seats === 1 ? '' : 's'}</div>
+          <div className="text-ink">{plan.unlimited_students ? 'Unlimited' : plan.student_limit} students · unlimited accountants</div>
         </div>
         <div>
           <div className="text-xs uppercase tracking-wider text-ink-soft">Razorpay monthly plan</div>

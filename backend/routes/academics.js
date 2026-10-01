@@ -558,13 +558,7 @@ router.post('/teachers', requireAuth, requirePrincipal, async (req, res) => {
     return res.status(400).json({ error: 'phone must be a valid Indian mobile number (10 digits, optionally with +91)' });
   }
   const finalRole = ['accountant', 'librarian', 'operator'].includes(role) ? role : 'teacher';
-  if (finalRole === 'accountant') {
-    try {
-      await assertCapacity(req.user.school_id, { addAccountants: 1 });
-    } catch (err) {
-      return res.status(err.statusCode || 500).json({ error: err.message, code: err.code });
-    }
-  }
+  // Accountant logins are unlimited on every plan — no capacity check here.
   try {
     const password_hash = await bcrypt.hash(password, 10);
     const result = await pool.query(

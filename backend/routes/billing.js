@@ -35,7 +35,11 @@ router.get('/', requireAuth, requireFinance, async (req, res) => {
       ? (await pool.query(`SELECT billing_cycle, status, cancel_at_period_end, current_period_end FROM subscriptions WHERE id = $1`, [s.current_subscription_id])).rows[0]
       : null;
     const awaiting = (await pool.query(
-      `SELECT id, plan_code, kind, status FROM subscriptions WHERE school_id = $1 AND status IN ('created', 'authenticated') ORDER BY id DESC LIMIT 1`,
+      // An unpaid checkout ('created') only counts as "awaiting payment" for 30
+      // minutes — a closed Razorpay window shouldn't leave the banner up for good.
+      `SELECT id, plan_code, kind, status FROM subscriptions
+       WHERE school_id = $1 AND (status = 'authenticated' OR (status = 'created' AND created_at > NOW() - INTERVAL '30 minutes'))
+       ORDER BY id DESC LIMIT 1`,
       [schoolId])).rows[0] || null;
 
     res.json({
@@ -55,11 +59,10 @@ router.get('/', requireAuth, requireFinance, async (req, res) => {
       usage: {
         students: { used: usage.students, limit: plan.student_limit },
         staff: { used: usage.staff, limit: null },
-        accountant_seats: { used: usage.accountants, limit: plan.accountant_seats },
       },
       all_plans: Object.fromEntries(Object.values(plans).map((p) => [p.code, {
         name: p.name, price: p.price_paise / 100, yearly_price: p.yearly_price_paise ? p.yearly_price_paise / 100 : null,
-        student_limit: p.student_limit, accountant_seats: p.accountant_seats, rank: p.rank,
+        student_limit: p.student_limit, rank: p.rank,
         monthly_online: !!p.razorpay_plan_id, yearly_online: !!p.yearly_price_paise,
       }])),
     });
@@ -200,8 +203,8 @@ router.patch('/plan', requireAuth, requireSuperAdmin, async (req, res) => {
   if (!school_id || !plans[plan]) return res.status(400).json({ error: 'school_id and a valid plan are required' });
   if (!reason || String(reason).trim().length < 5) return res.status(400).json({ error: 'A reason is required for manual plan changes' });
   const r = await pool.query(
-    `UPDATE schools SET plan = $2, student_limit = $3, accountant_seat_limit = $4 WHERE id = $1 RETURNING id, plan`,
-    [school_id, plan, plans[plan].student_limit, plans[plan].accountant_seats]
+    `UPDATE schools SET plan = $2, student_limit = $3 WHERE id = $1 RETURNING id, plan`,
+    [school_id, plan, plans[plan].student_limit]
   );
   if (!r.rowCount) return res.status(404).json({ error: 'School not found' });
   await audit({ schoolId: school_id, actorType: 'super_admin', actorId: req.user.super_admin_id, action: 'billing.plan_override', detail: { plan, reason } });
@@ -290,11 +293,10 @@ router.patch('/admin/plans/:code', requireAuth, requireSuperAdmin, async (req, r
     const sets = cols.map((c, i) => `${c} = $${i + 2}`).join(', ');
     await client.query(`UPDATE plans SET ${sets}, updated_at = NOW() WHERE code = $1`, [plan.code, ...cols.map((c) => changes[c])]);
     let schoolsUpdated = 0;
-    const limitsChanged = changes.student_limit !== undefined || changes.accountant_seats !== undefined;
-    if (limitsChanged && req.body?.apply_to_existing !== false) {
+    if (changes.student_limit !== undefined && req.body?.apply_to_existing !== false) {
       const r = await client.query(
-        `UPDATE schools SET student_limit = $2, accountant_seat_limit = $3 WHERE plan = $1`,
-        [plan.code, changes.student_limit ?? plan.student_limit, changes.accountant_seats ?? plan.accountant_seats]);
+        `UPDATE schools SET student_limit = $2 WHERE plan = $1`,
+        [plan.code, changes.student_limit]);
       schoolsUpdated = r.rowCount;
     }
     const before = Object.fromEntries(cols.map((c) => [c, plan[c]]));

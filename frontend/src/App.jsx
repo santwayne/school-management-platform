@@ -9,7 +9,6 @@ const PrincipalDashboard = lazy(() => import('./components/PrincipalDashboard'))
 const AdminHome = lazy(() => import('./components/AdminHome'));
 const AccountantHome = lazy(() => import('./components/AccountantHome'));
 const SuperAdminHome = lazy(() => import('./components/SuperAdminHome'));
-const FinanceAdmin = lazy(() => import('./components/FinanceAdmin'));
 const AIGrading = lazy(() => import('./components/AIGrading'));
 const SuperAdminLogin = lazy(() => import('./components/SuperAdminLogin'));
 const SuperAdminDashboard = lazy(() => import('./components/SuperAdminDashboard'));
@@ -128,6 +127,16 @@ function HomeRedirect() {
   return <Navigate to={homeFor(user.role)} replace />;
 }
 
+// Accountants get the hub in their own shell; a principal who lands on the
+// accountant URL (old bookmark/link) goes to the same hub at /finance instead
+// of being bounced to the dashboard.
+function FeeCollectionRoute() {
+  const { user } = useAuth();
+  const { search } = useLocation();
+  if (user?.role === 'principal') return <Navigate to={`/finance${search}`} replace />;
+  return <ProtectedRoute accountantOnly>{inShell(AccountantShell, FeeCollectionHub)}</ProtectedRoute>;
+}
+
 function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
@@ -175,7 +184,8 @@ function AppRoutes() {
         <Route path="/certificates/verify/:code" element={<PublicCertificateVerify />} />
         <Route path="/dashboard" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminHome)}</ProtectedRoute>} />
         <Route path="/dashboard-alerts" element={<ProtectedRoute principalOnly>{inShell(AdminShell, PrincipalDashboard)}</ProtectedRoute>} />
-        <Route path="/finance" element={<ProtectedRoute principalOnly>{inShell(AdminShell, FinanceAdmin)}</ProtectedRoute>} />
+        {/* Principal gets the same Fee Collection hub as the accountant: manual entry, WhatsApp cash-slip queue and online payment links. */}
+        <Route path="/finance" element={<ProtectedRoute principalOnly>{inShell(AdminShell, FeeCollectionHub)}</ProtectedRoute>} />
         <Route path="/classes" element={<ProtectedRoute principalOnly>{inShell(AdminShell, ClassManager)}</ProtectedRoute>} />
         <Route path="/syllabus" element={<ProtectedRoute principalOnly>{inShell(AdminShell, SyllabusManager)}</ProtectedRoute>} />
         <Route path="/admin/manage" element={<ProtectedRoute principalOnly>{inShell(AdminShell, ManageSchool)}</ProtectedRoute>} />
@@ -208,7 +218,7 @@ function AppRoutes() {
         <Route path="/report-cards" element={<ProtectedRoute teacherOrPrincipalOnly>{inShell(AdminShell, ReportCards)}</ProtectedRoute>} />
 
         <Route path="/accountant" element={<ProtectedRoute accountantOnly>{inShell(AccountantShell, AccountantHome)}</ProtectedRoute>} />
-        <Route path="/accountant/fee-collection" element={<ProtectedRoute accountantOnly>{inShell(AccountantShell, FeeCollectionHub)}</ProtectedRoute>} />
+        <Route path="/accountant/fee-collection" element={<FeeCollectionRoute />} />
         <Route path="/accountant/payroll" element={<ProtectedRoute accountantOnly>{inShell(AccountantShell, AdminPayroll)}</ProtectedRoute>} />
 
         <Route path="/student" element={<ProtectedRoute studentOnly><StudentHome /></ProtectedRoute>} />

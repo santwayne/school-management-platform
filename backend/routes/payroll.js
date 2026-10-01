@@ -68,10 +68,22 @@ router.post('/run', requireAuth, requireFinance, async (req, res) => {
        RETURNING *`,
       [period, schoolId]
     );
-    if (result.rowCount > 0) {
-      await audit({ schoolId, actorType: 'user', actorId: req.user.teacher_id, action: 'payroll.run', entityType: 'teacher_salary_history', detail: { period, generated_count: result.rowCount } });
+    // Re-running refreshes still-unpaid rows to the current salary. Without
+    // this, a salary changed after the first run (e.g. ₹12,669 → ₹14,000)
+    // stayed at the old snapshot forever. PAID rows are never touched.
+    const refreshed = await pool.query(
+      `UPDATE teacher_salary_history h
+       SET amount_paid = ts.monthly_amount
+       FROM teacher_salary ts
+       WHERE ts.teacher_id = h.teacher_id AND h.school_id = $2 AND h.period = $1::varchar
+         AND h.status = 'PENDING' AND h.amount_paid IS DISTINCT FROM ts.monthly_amount
+       RETURNING h.id, h.teacher_id, h.amount_paid`,
+      [period, schoolId]
+    );
+    if (result.rowCount > 0 || refreshed.rowCount > 0) {
+      await audit({ schoolId, actorType: 'user', actorId: req.user.teacher_id, action: 'payroll.run', entityType: 'teacher_salary_history', detail: { period, generated_count: result.rowCount, refreshed_count: refreshed.rowCount } });
     }
-    res.status(201).json({ success: true, generated_count: result.rowCount, rows: result.rows });
+    res.status(201).json({ success: true, generated_count: result.rowCount, refreshed_count: refreshed.rowCount, rows: result.rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -52,7 +52,7 @@ function NotificationBell({ canSeeFinance }) {
         ...waQueue.map((w) => ({
           key: `wa-${w.id}`,
           text: `WhatsApp cash slip needs confirming — ${w.collector_name}`,
-          to: '/finance',
+          to: '/finance?tab=whatsapp',
           read: false,
           generic: false,
         })),

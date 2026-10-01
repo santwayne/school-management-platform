@@ -58,9 +58,11 @@ export async function getUsage(schoolId, client = pool) {
 }
 
 // Backend enforcement of plan limits (previously only shown in the UI).
+// Only the student limit is a plan limit; accountant logins are unlimited on
+// every plan (addAccountants is accepted and ignored for older callers).
 // Throws 402 with a clear message; callers map err.statusCode to the response.
-export async function assertCapacity(schoolId, { addStudents = 0, addAccountants = 0 } = {}, client = pool) {
-  if (!addStudents && !addAccountants) return;
+export async function assertCapacity(schoolId, { addStudents = 0 } = {}, client = pool) {
+  if (!addStudents) return;
   const schoolRes = await client.query('SELECT plan FROM schools WHERE id = $1', [schoolId]);
   const plans = await getPlans(client);
   const plan = plans[schoolRes.rows[0]?.plan] || plans.starter;
@@ -68,11 +70,6 @@ export async function assertCapacity(schoolId, { addStudents = 0, addAccountants
   const usage = await getUsage(schoolId, client);
   if (addStudents && usage.students + addStudents > plan.student_limit) {
     throw httpError(402, `Your ${plan.name} plan allows ${plan.student_limit} students (currently ${usage.students}). Upgrade from Billing to add more.`, { code: 'PLAN_LIMIT_STUDENTS' });
-  }
-  if (addAccountants && usage.accountants + addAccountants > plan.accountant_seats) {
-    throw httpError(402, plan.accountant_seats === 0
-      ? `Accountant logins aren't included in the ${plan.name} plan. Upgrade from Billing to add one.`
-      : `Your ${plan.name} plan includes ${plan.accountant_seats} accountant seat(s), all in use. Upgrade from Billing to add more.`, { code: 'PLAN_LIMIT_ACCOUNTANTS' });
   }
 }
 

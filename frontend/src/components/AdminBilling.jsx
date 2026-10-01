@@ -256,7 +256,6 @@ export default function AdminBilling() {
           <h2 className="font-display text-lg text-ink mb-1">Usage</h2>
           <UsageRow label="Students" used={data.usage.students.used} limit={data.usage.students.limit} />
           <UsageRow label="Staff" used={data.usage.staff.used} limit={data.usage.staff.limit} />
-          <UsageRow label="Accountant seats" used={data.usage.accountant_seats.used} limit={data.usage.accountant_seats.limit} />
         </div>
       </div>
 
@@ -282,7 +281,7 @@ export default function AdminBilling() {
               <div className="text-xs text-ink-soft">+18% GST{price ? ` = ${INR(Math.round(price * 118) / 100)}` : ''}</div>
               <ul className="text-xs text-ink-soft mt-3 space-y-1 flex-1">
                 <li>{p.student_limit === 999999 ? 'Unlimited students' : `Up to ${p.student_limit} students`}</li>
-                <li>{p.accountant_seats > 0 ? `${p.accountant_seats} accountant seats` : 'No accountant role'}</li>
+                <li>Unlimited accountant logins</li>
               </ul>
               {isCurrent ? (
                 <span className="mt-4 text-center text-xs font-medium py-2 rounded-lg bg-terracotta/10 text-terracotta">Current plan</span>

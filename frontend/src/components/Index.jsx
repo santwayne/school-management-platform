@@ -207,8 +207,8 @@ function Security() {
 }
 
 const PLANS = [
-  { name: 'Starter', tag: 'For single schools under 500 students', features: ['WhatsApp updates for every parent', 'Attendance, marks & homework', 'Email support'] },
-  { name: 'Growth', tag: 'For growing schools & small chains', features: ['Everything in Starter', 'Fees, payroll & bus tracking', 'AI tutor + Accountant role', 'Priority WhatsApp support'], highlight: true },
+  { name: 'Starter', tag: 'For single schools under 500 students', features: ['WhatsApp updates for every parent', 'Attendance, marks & homework', 'Accountant logins included', 'Email support'] },
+  { name: 'Growth', tag: 'For growing schools & small chains', features: ['Everything in Starter', 'Fees, payroll & bus tracking', 'AI tutor', 'Priority WhatsApp support'], highlight: true },
   { name: 'District', tag: 'For groups, trusts & districts', features: ['Everything in Growth', 'Multi-school dashboards', 'Custom integrations', 'Dedicated support'] },
 ];
 
