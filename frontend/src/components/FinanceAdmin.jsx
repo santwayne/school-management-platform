@@ -226,8 +226,11 @@ const TABS = [
   { key: 'structure', label: 'Fee Structure' },
 ];
 
-export default function FinanceAdmin() {
-  const [tab, setTab] = useState('dashboard');
+// `tab` is controlled by FeeCollectionHub (one tab bar for the whole Fees
+// page). Used on its own, it falls back to its own tab bar.
+export default function FinanceAdmin({ tab: controlledTab } = {}) {
+  const [innerTab, setTab] = useState('dashboard');
+  const tab = controlledTab || innerTab;
   const [student, setStudent] = useState(null);
   const [feeForm, setFeeForm] = useState({ amount: '', mode: 'Cash', remarks: '' });
   const [proofPhoto, setProofPhoto] = useState(null);
@@ -265,8 +268,8 @@ export default function FinanceAdmin() {
   };
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="border-b border-cream-deep/70 flex gap-1">
+    <div className={controlledTab ? 'space-y-4' : 'p-6 space-y-4'}>
+      {!controlledTab && <div className="border-b border-cream-deep/70 flex gap-1">
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -278,7 +281,7 @@ export default function FinanceAdmin() {
             {t.label}
           </button>
         ))}
-      </div>
+      </div>}
 
       {tab === 'dashboard' && <FeeDashboard />}
 
