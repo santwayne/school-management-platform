@@ -57,6 +57,11 @@ function Row({ k, v, strong, muted }) {
 function CheckoutModal({ open, onClose, planCode, cycle, onDone }) {
   const [quote, setQuote] = useState(null);
   const [phase, setPhase] = useState('quote'); // quote | paying | activating | done | error
+  // Our dialog is a Radix modal: while open it sets pointer-events:none on
+  // <body> and traps focus, which froze the Razorpay window (nothing clickable
+  // or typable). So the dialog hides while Razorpay is open and comes back
+  // afterwards (Activating… / error / closed).
+  const [rzpOpen, setRzpOpen] = useState(false);
   const [error, setError] = useState('');
   const pollRef = useRef(null);
 
@@ -98,15 +103,21 @@ function CheckoutModal({ open, onClose, planCode, cycle, onDone }) {
         ...res.checkout,
         theme: { color: '#B5532F' },
         handler: async (resp) => {
+          setRzpOpen(false);
           try { await apiRequest('/api/billing/checkout/confirm', { method: 'POST', body: resp }); } catch { /* webhook is authoritative */ }
           poll(res.subscription_row_id);
         },
-        modal: { ondismiss: () => setPhase((p) => (p === 'paying' ? 'quote' : p)) },
+        modal: { ondismiss: () => { setRzpOpen(false); setPhase((p) => (p === 'paying' ? 'quote' : p)); } },
       });
-      rzp.on('payment.failed', (r) => { setError(r?.error?.description || 'Payment failed'); setPhase('quote'); });
+      // Razorpay keeps its window open for a retry after a failure; just
+      // remember the reason so it shows once the window is closed.
+      rzp.on('payment.failed', (r) => setError(r?.error?.description || 'Payment failed'));
+      setRzpOpen(true);
+      // Let the dialog finish closing (releases the body lock + focus trap) first.
+      await new Promise((r) => setTimeout(r, 300));
       rzp.open();
     } catch (e) {
-      setError(e.message); setPhase('quote');
+      setRzpOpen(false); setError(e.message); setPhase('quote');
     }
   };
 
@@ -115,7 +126,7 @@ function CheckoutModal({ open, onClose, planCode, cycle, onDone }) {
     : quote?.kind === 'upgrade' ? 'Upgrade applies immediately after payment.' : 'Activates as soon as payment is confirmed.';
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o && phase !== 'activating' && phase !== 'paying') onClose(); }}>
+    <Dialog open={open && !rzpOpen} onOpenChange={(o) => { if (!o && phase !== 'activating' && phase !== 'paying') onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{quote ? `${quote.kind === 'downgrade' ? 'Move to' : quote.kind === 'upgrade' ? 'Upgrade to' : 'Subscribe to'} ${quote.plan.name}` : 'Checkout'}</DialogTitle>
