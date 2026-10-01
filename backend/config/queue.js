@@ -83,3 +83,9 @@ export const payrollQueue = new Queue('PayrollQueue', { connection });
 
 // Certificate issuing (every 10 min).
 export const certificateQueue = new Queue('CertificateQueue', { connection });
+
+// Plan billing: Razorpay subscription/order webhook events are stored in
+// billing_events and acked instantly; this queue does the real work. If
+// Redis is down the webhook processes inline instead and the in-process
+// sweeper (workers/billingWorker.js) retries anything left behind.
+export const billingQueue = new Queue('BillingQueue', { connection });

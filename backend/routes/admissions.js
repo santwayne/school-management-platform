@@ -8,6 +8,7 @@ import { sendTemplateMessage } from '../services/whatsappService.js';
 import { audit, registerAction, raiseException } from '../services/opsService.js';
 import { gradeKey, gradeLabel, classesForGrade, sendEnquiryText } from '../services/admissionAgent.js';
 import { razorpayClient } from './paymentLinks.js';
+import { assertCapacity } from '../services/billingService.js';
 
 // ------------------------------------------------------------------
 // Admissions API.
@@ -77,6 +78,7 @@ export async function convertEnquiry(schoolId, enquiryId, { classId, childName }
     if (e.converted_student_id) throw httpError(409, 'Already admitted');
     const name = (childName || e.child_name || '').trim();
     if (!name) throw httpError(400, "Child's name is required before admitting");
+    await assertCapacity(schoolId, { addStudents: 1 }, client); // plan limit
 
     let cls = null;
     if (classId) {

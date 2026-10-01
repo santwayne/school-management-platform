@@ -5,6 +5,7 @@ import { requireAuth, requirePrincipal } from '../middleware/auth.js';
 import { send as sendNotification } from '../services/notificationService.js';
 import { normalizePhone } from '../utils/phone.js';
 import { audit } from '../services/opsService.js';
+import { assertCapacity } from '../services/billingService.js';
 
 const router = express.Router();
 
@@ -176,6 +177,10 @@ router.post('/bulk-upsert', requireAuth, requirePrincipal, async (req, res) => {
             continue;
           }
         }
+
+        // Plan limit (server-side). Throws → caught below as a row error,
+        // so rows within the limit still import and the rest are reported.
+        await assertCapacity(schoolId, { addStudents: 1 });
 
         const randHex = Math.random().toString(36).substring(2, 6).toUpperCase();
         const loginId = `STD-${schoolId}-${randHex}`;
