@@ -6,6 +6,10 @@ import { getPlans, getUsage, quoteChange, startCheckout, cancelAtPeriodEnd, proc
 import { withGst, isReadOnly } from '../services/billingMath.js';
 import { verifyCheckoutSignature } from '../utils/razorpay.js';
 import { audit } from '../services/opsService.js';
+import {
+  keyMode, validatePlanPatch, razorpayPlanProblems, listPlansForAdmin, fetchRazorpayPlan, createRazorpayPlan,
+  logPlanChange, listPlanAudit,
+} from '../services/planAdmin.js';
 
 const router = express.Router();
 
@@ -202,6 +206,108 @@ router.patch('/plan', requireAuth, requireSuperAdmin, async (req, res) => {
   if (!r.rowCount) return res.status(404).json({ error: 'School not found' });
   await audit({ schoolId: school_id, actorType: 'super_admin', actorId: req.user.super_admin_id, action: 'billing.plan_override', detail: { plan, reason } });
   res.json(r.rows[0]);
+});
+
+// ---- Super Admin: plan catalog (prices, limits, Razorpay plan IDs) ----
+
+const rzpError = (err) => err.response?.data?.error?.description || err.message;
+
+router.get('/admin/plans', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    res.json({ mode: keyMode(), plans: await listPlansForAdmin(), history: await listPlanAudit() });
+  } catch (err) { sendErr(res, err, 'Failed to load plans'); }
+});
+
+// Create the monthly Razorpay Plan for this Waynur plan (GST-inclusive) and save its ID.
+router.post('/admin/plans/:code/razorpay', requireAuth, requireSuperAdmin, async (req, res) => {
+  const plan = (await pool.query(`SELECT * FROM plans WHERE code = $1`, [req.params.code])).rows[0];
+  if (!plan) return res.status(404).json({ error: 'Plan not found' });
+  if (keyMode() === 'none') return res.status(400).json({ error: 'RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are not set on the server' });
+  try {
+    const rzp = await createRazorpayPlan(plan);
+    await pool.query(`UPDATE plans SET razorpay_plan_id = $2, updated_at = NOW() WHERE code = $1`, [plan.code, rzp.id]);
+    await logPlanChange({ planCode: plan.code, actorId: req.user.super_admin_id, action: 'razorpay_plan_created',
+      detail: { razorpay_plan_id: rzp.id, previous: plan.razorpay_plan_id, amount_paise: rzp.item?.amount, mode: keyMode() } });
+    res.json({ razorpay_plan_id: rzp.id, plans: await listPlansForAdmin() });
+  } catch (err) {
+    console.error('[billing] create Razorpay plan failed:', err.response?.data || err.message);
+    res.status(502).json({ error: `Razorpay rejected the plan: ${rzpError(err)}` });
+  }
+});
+
+// Link an existing Razorpay Plan ID (e.g. one created in the Razorpay dashboard).
+// Verified against Razorpay first. Empty value clears the DB value (falls back to .env).
+router.put('/admin/plans/:code/razorpay-id', requireAuth, requireSuperAdmin, async (req, res) => {
+  const plan = (await pool.query(`SELECT * FROM plans WHERE code = $1`, [req.params.code])).rows[0];
+  if (!plan) return res.status(404).json({ error: 'Plan not found' });
+  const planId = String(req.body?.razorpay_plan_id || '').trim();
+  try {
+    if (planId) {
+      if (!/^plan_[A-Za-z0-9]+$/.test(planId)) return res.status(400).json({ error: 'Razorpay plan IDs look like plan_XXXXXXXXXXXX' });
+      if (keyMode() === 'none') return res.status(400).json({ error: 'RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are not set on the server' });
+      const rzp = await fetchRazorpayPlan(planId);
+      if (!rzp) return res.status(400).json({ error: `${planId} was not found in Razorpay (${keyMode()} mode). Test and live plans are separate.` });
+      const problems = razorpayPlanProblems(rzp, plan.price_paise);
+      if (problems.length) return res.status(400).json({ error: `This Razorpay plan can't bill ${plan.name}: ${problems.join('; ')}` });
+    }
+    await pool.query(`UPDATE plans SET razorpay_plan_id = $2, updated_at = NOW() WHERE code = $1`, [plan.code, planId || null]);
+    await logPlanChange({ planCode: plan.code, actorId: req.user.super_admin_id, action: planId ? 'razorpay_plan_linked' : 'razorpay_plan_cleared',
+      detail: { razorpay_plan_id: planId || null, previous: plan.razorpay_plan_id, mode: keyMode() } });
+    res.json({ plans: await listPlansForAdmin() });
+  } catch (err) {
+    console.error('[billing] verify Razorpay plan failed:', err.response?.data || err.message);
+    res.status(502).json({ error: `Could not check the plan with Razorpay: ${rzpError(err)}` });
+  }
+});
+
+// Edit name / limits / prices. A monthly price change creates a new Razorpay
+// Plan first (Razorpay plans are immutable); if that fails nothing is saved.
+router.patch('/admin/plans/:code', requireAuth, requireSuperAdmin, async (req, res) => {
+  const plan = (await pool.query(`SELECT * FROM plans WHERE code = $1`, [req.params.code])).rows[0];
+  if (!plan) return res.status(404).json({ error: 'Plan not found' });
+  const { changes, errors } = validatePlanPatch(req.body || {}, plan);
+  if (errors.length) return res.status(400).json({ error: errors.join('. ') });
+  if (!Object.keys(changes).length) return res.json({ plans: await listPlansForAdmin(), unchanged: true });
+  const reason = String(req.body?.reason || '').trim();
+  if (reason.length < 5) return res.status(400).json({ error: 'Add a short reason for this change (shown in the change history)' });
+
+  let newRzp = null;
+  if (changes.price_paise !== undefined) {
+    if (keyMode() === 'none') return res.status(400).json({ error: 'Changing the monthly price needs Razorpay keys on the server (a new Razorpay plan is created)' });
+    try {
+      newRzp = await createRazorpayPlan({ ...plan, ...changes }, changes.price_paise);
+      changes.razorpay_plan_id = newRzp.id;
+    } catch (err) {
+      console.error('[billing] create Razorpay plan for price change failed:', err.response?.data || err.message);
+      return res.status(502).json({ error: `Price not changed — Razorpay rejected the new plan: ${rzpError(err)}` });
+    }
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const cols = Object.keys(changes);
+    const sets = cols.map((c, i) => `${c} = $${i + 2}`).join(', ');
+    await client.query(`UPDATE plans SET ${sets}, updated_at = NOW() WHERE code = $1`, [plan.code, ...cols.map((c) => changes[c])]);
+    let schoolsUpdated = 0;
+    const limitsChanged = changes.student_limit !== undefined || changes.accountant_seats !== undefined;
+    if (limitsChanged && req.body?.apply_to_existing !== false) {
+      const r = await client.query(
+        `UPDATE schools SET student_limit = $2, accountant_seat_limit = $3 WHERE plan = $1`,
+        [plan.code, changes.student_limit ?? plan.student_limit, changes.accountant_seats ?? plan.accountant_seats]);
+      schoolsUpdated = r.rowCount;
+    }
+    const before = Object.fromEntries(cols.map((c) => [c, plan[c]]));
+    await logPlanChange({ planCode: plan.code, actorId: req.user.super_admin_id, action: 'plan_updated',
+      detail: { before, after: changes, reason, schools_updated: schoolsUpdated, mode: keyMode() } }, client);
+    await client.query('COMMIT');
+    res.json({ plans: await listPlansForAdmin(), schools_updated: schoolsUpdated, new_razorpay_plan_id: newRzp?.id || null });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    sendErr(res, err, 'Failed to update plan');
+  } finally {
+    client.release();
+  }
 });
 
 // Super Admin: re-run a stuck webhook event.
