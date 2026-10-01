@@ -6,6 +6,7 @@ import { detectLanguage, inr } from './admissionAgent.js';
 import { haversineMeters } from './busProximityService.js';
 import { processPendingRequests } from './certificateService.js';
 import { createPaymentLinkRecord } from '../routes/paymentLinks.js';
+import { getStudentDues } from '../utils/feeDues.js';
 
 // ------------------------------------------------------------------
 // Parent WhatsApp assistant.
@@ -273,21 +274,21 @@ async function istToday() {
 
 const handlers = {
   async fee_balance({ child, c }) {
-    const r = await pool.query(`SELECT amount_due, amount_paid FROM student_payment WHERE student_id = $1`, [child.id]);
-    const bus = await pool.query(
-      `SELECT COALESCE(SUM(monthly_fee), 0) AS due FROM student_transport_fees WHERE student_id = $1 AND collection_status <> 'collected'`,
-      [child.id]
-    );
-    const busDue = Number(bus.rows[0]?.due || 0);
-    if (!r.rowCount && !busDue) return { text: c.fee_unknown(child.first) };
-    const due = Math.max(0, Number(r.rows[0]?.amount_due || 0) - Number(r.rows[0]?.amount_paid || 0)) + busDue;
-    if (due <= 0) return { text: c.fee_none(child.first) };
-    return { text: c.fee_due(child.first, inr(due), busDue ? inr(busDue) : null) };
+    // Was reading student_payment.amount_due (never written → always ₹0).
+    const d = await getStudentDues(child.id);
+    if (!d.configured && !d.transport) return { text: c.fee_unknown(child.first) };
+    if (d.total <= 0) return { text: c.fee_none(child.first) };
+    return { text: c.fee_due(child.first, inr(d.total), d.transport ? inr(d.transport) : null) };
   },
 
   async pay_now({ child, c, parent }) {
-    const r = await pool.query(`SELECT amount_due, amount_paid FROM student_payment WHERE student_id = $1`, [child.id]);
-    const due = Math.max(0, Number(r.rows[0]?.amount_due || 0) - Number(r.rows[0]?.amount_paid || 0));
+    // Tuition only, same as before: an online link payment is recorded as a
+    // tuition row in student_payment_history (paymentLinks.js webhook), so
+    // folding transport into it would mark transport as still unpaid while
+    // over-crediting tuition. Transport is collected via its own flow.
+    const d = await getStudentDues(child.id);
+    if (!d.configured) return { text: c.fee_unknown(child.first) };
+    const due = d.tuition;
     if (!due) return { text: c.fee_none(child.first) };
     try {
       // Same function the fee-reminder worker and the Fees screen use.

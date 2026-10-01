@@ -4,6 +4,7 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import pool from '../config/db.js';
 import { sendTemplateMessage, sendMediaMessage } from './whatsappService.js';
 import { raiseException, audit, autoResolve } from './opsService.js';
+import { getStudentDues } from '../utils/feeDues.js';
 
 // Same S3 client/config as routes/profiles.js and routes/settings.js —
 // reused, not reconfigured, so a single AWS_S3_BUCKET/AWS_REGION pair backs
@@ -65,15 +66,19 @@ export function formatSerial(type, year, n) {
 async function studentFacts(client, studentId, schoolId) {
   const r = await client.query(
     `SELECT s.id, s.name, s.class_id, c.name AS class_name, c.section, p.name AS parent_name, p.phone AS parent_phone, p.opt_in_status,
-            sp.date_of_birth, sp.admission_date, sp.gender,
-            GREATEST(COALESCE(pay.amount_due, 0) - COALESCE(pay.amount_paid, 0), 0)
-              + COALESCE((SELECT SUM(monthly_fee) FROM student_transport_fees t WHERE t.student_id = s.id AND t.collection_status <> 'collected'), 0) AS dues
+            sp.date_of_birth, sp.admission_date, sp.gender
      FROM students s LEFT JOIN classes c ON c.id = s.class_id LEFT JOIN parents p ON p.id = s.parent_id
-     LEFT JOIN student_profiles sp ON sp.student_id = s.id LEFT JOIN student_payment pay ON pay.student_id = s.id
+     LEFT JOIN student_profiles sp ON sp.student_id = s.id
      WHERE s.id = $1 AND s.school_id = $2`,
     [studentId, schoolId]
   );
-  return r.rows[0] || null;
+  if (!r.rows[0]) return null;
+  // Dues used to come from student_payment.amount_due, which nothing ever
+  // writes — so every student had ₹0 dues and fee/leaving certificates were
+  // issued even with fees outstanding. Now the same live calculation the
+  // Fee Dashboard and the WhatsApp bot use (utils/feeDues.js).
+  const d = await getStudentDues(studentId, client);
+  return { ...r.rows[0], dues: d.total };
 }
 
 // Issue inside a transaction: gap-free serial (row lock on the counter),
