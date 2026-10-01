@@ -41,12 +41,14 @@ the same formula the Fee Dashboard and fee-reminder worker use. Used by `parentA
 - Old PR #52 subscriptions (no `subscriptions` row) are adopted automatically from Razorpay notes on their next webhook.
 
 ### Tests
-`node --test tests/feeDues.test.js tests/billing.test.js` (pure, no DB).
+`node --test tests/feeDues.test.js tests/billing.test.js tests/planAdmin.test.js` (pure, no DB).
+`E2E_DATABASE_URL=... node tests/e2e-planAdmin.mjs` — Super Admin plan manager against real server + mock Razorpay (26 checks).
 `E2E_DATABASE_URL=postgres://...throwaway... node tests/e2e-billing.mjs` — real server + Postgres + mock Razorpay, Redis off. 34 checks. **Never point it at production.**
 
 ## 3. Go-live checklist (Razorpay)
 1. Settings → Business name **Waynur** (currently "unikraft"). Complete KYC / activation.
 2. Create 3 Plans (monthly) at GST-inclusive amounts: Starter ₹5,898.82, Growth ₹15,338.82, District ₹35,398.82. Put IDs in `plans.razorpay_plan_id` (or `RAZORPAY_PLAN_ID_*` env).
+   Easier: Super Admin → Subscriptions & Billing → Plans & pricing → **Create in Razorpay** (or **Link plan ID** for a dashboard-made plan; it is verified against Razorpay). Prices/limits are edited there too; a monthly price change creates a new Razorpay plan automatically. Changes are logged in `plan_audit`.
 3. Live keys → `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`.
 4. Live webhook `https://waynur.com/api/payment-links/webhook`, new secret → `RAZORPAY_WEBHOOK_SECRET`. Events: `subscription.*`, `invoice.paid`, `order.paid`, `payment.captured`, `payment_link.paid`.
 5. `.env`: `WAYNUR_GSTIN`, `WAYNUR_ADDRESS`, `WAYNUR_LEGAL_NAME`, `WAYNUR_STATE_CODE=03`.

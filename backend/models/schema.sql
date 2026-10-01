@@ -2421,6 +2421,17 @@ INSERT INTO plans (code, name, price_paise, yearly_price_paise, student_limit, a
   ('district', 'District', 2999900, 29999000, 999999, 10, 3)
 ON CONFLICT (code) DO NOTHING;
 
+-- Super Admin edits to the plan catalog (price, limits, Razorpay plan ID).
+-- Separate from audit_log because that table is per-school.
+CREATE TABLE IF NOT EXISTS plan_audit (
+    id SERIAL PRIMARY KEY,
+    plan_code VARCHAR(20) NOT NULL,
+    actor_id INT,
+    action VARCHAR(50) NOT NULL,
+    detail JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS subscriptions (
     id SERIAL PRIMARY KEY,
     school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
