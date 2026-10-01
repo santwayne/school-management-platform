@@ -1,29 +1,19 @@
 import express from 'express';
-import axios from 'axios';
 import crypto from 'crypto';
 import pool from '../config/db.js';
 import { requireAuth, requireFinance } from '../middleware/auth.js';
 import { sendTextMessage } from '../services/whatsappService.js';
 import { send as sendNotification } from '../services/notificationService.js';
 import { audit } from '../services/opsService.js';
+import { razorpayClient, verifyWebhookSignature } from '../utils/razorpay.js';
+import { recordBillingEvent, isPlanBillingEvent, processBillingEvent } from '../services/billingService.js';
+import { billingQueue } from '../config/queue.js';
 
 const router = express.Router();
 
-// NOTE: this calls the real Razorpay REST API (no SDK needed, plain axios —
-// same pattern as whatsappService.js). It requires RAZORPAY_KEY_ID and
-// RAZORPAY_KEY_SECRET to be set in the environment. Without real Razorpay
-// credentials this will fail at request time with a clear auth error rather
-// than silently pretending to succeed — nothing here is mocked.
-export function razorpayClient() {
-  return axios.create({
-    baseURL: 'https://api.razorpay.com/v1',
-    auth: {
-      username: process.env.RAZORPAY_KEY_ID,
-      password: process.env.RAZORPAY_KEY_SECRET,
-    },
-    timeout: 10000,
-  });
-}
+// Razorpay REST client moved to utils/razorpay.js (shared with plan
+// billing); re-exported so existing importers keep working.
+export { razorpayClient };
 
 // Core "create a Razorpay payment link for one student's fee" logic — pulled
 // out of the POST / route below so the automatic fee-reminder worker
@@ -157,56 +147,28 @@ async function handleAdmissionPaymentWebhook(referenceId, res) {
   }
 }
 
-// School plan subscriptions (routes/billing.js). billing_status is
-// informational only, by product decision — a failed/halted renewal is
-// surfaced for Super Admin review, NOT used to auto-restrict access.
-async function handleSubscriptionWebhook(event, payload, res) {
-  const subscription = payload?.subscription?.entity;
-  if (!subscription?.id) return res.sendStatus(200);
-
+// School PLAN billing (Waynur's own subscriptions/orders) — store the event
+// once (idempotent on Razorpay's event id), ack 200 immediately, and let the
+// BillingQueue worker apply it. If Redis is unreachable, process inline so a
+// plan payment is never lost; the sweeper retries anything that fails.
+async function handlePlanBillingWebhook(req, res) {
+  const eventId = req.headers['x-razorpay-event-id']
+    || `body-${crypto.createHash('sha256').update(req.rawBody).digest('hex')}`;
+  const { id, duplicate } = await recordBillingEvent(eventId, req.body);
+  res.sendStatus(200);
+  if (duplicate || !id) return;
   try {
-    let billingStatus;
-    let renewsAt = null;
-    if (event === 'subscription.activated' || event === 'subscription.charged') {
-      billingStatus = 'active';
-      // current_end is Unix seconds (UTC) — Razorpay's own subscription
-      // clock, independent of the school's IST academic-year clock used
-      // elsewhere (utils/academicYear.js); nothing to reconcile between the
-      // two, they answer different questions (renewal date vs. fee period).
-      if (subscription.current_end) renewsAt = new Date(subscription.current_end * 1000);
-    } else if (event === 'subscription.pending' || event === 'subscription.halted') {
-      billingStatus = 'past_due';
-    } else if (event === 'subscription.cancelled' || event === 'subscription.completed') {
-      billingStatus = 'cancelled';
-    } else {
-      return res.sendStatus(200); // other lifecycle events (e.g. subscription.updated) — nothing to do
-    }
-
-    // The plan itself only actually takes effect here, on activation/first
-    // charge — POST /subscribe (routes/billing.js) deliberately never
-    // touches schools.plan itself, since the mandate isn't authorized (or
-    // charged) until the principal completes Razorpay's hosted page.
-    // subscription.notes.plan is the same value this app set at creation
-    // time (POST /subscriptions), read back rather than trusted from
-    // anywhere else in this payload.
-    const plan = subscription.notes?.plan;
-    await pool.query(
-      `UPDATE schools SET
-         billing_status = $1,
-         plan_renews_at = COALESCE($2, plan_renews_at),
-         plan = CASE WHEN $3::text IS NOT NULL AND $1 = 'active' THEN $3 ELSE plan END
-       WHERE razorpay_subscription_id = $4`,
-      [billingStatus, renewsAt, plan || null, subscription.id]
-    );
-    res.sendStatus(200);
+    await billingQueue.add('billingEvent', { billingEventId: id }, {
+      jobId: `billing-${id}`, attempts: 5, backoff: { type: 'exponential', delay: 30000 }, removeOnComplete: 1000,
+    });
   } catch (err) {
-    console.error('Subscription webhook processing error:', err);
-    res.sendStatus(500);
+    console.error('[billing] enqueue failed (Redis?) — processing inline:', err.message);
+    processBillingEvent(id).catch((e) => console.error('[billing] inline processing failed, sweeper will retry:', e.message));
   }
 }
 
-// Razorpay webhook — fires on payment.captured. Verifies the signature
-// against RAZORPAY_WEBHOOK_SECRET before trusting anything in the payload.
+// Razorpay webhook — one account-wide URL for every event type. Verifies the
+// signature against RAZORPAY_WEBHOOK_SECRET before trusting anything.
 router.post('/webhook', async (req, res) => {
   const signature = req.headers['x-razorpay-signature'];
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
@@ -216,20 +178,15 @@ router.post('/webhook', async (req, res) => {
       console.error('RAZORPAY_WEBHOOK_SECRET not set — refusing to process webhook');
       return res.sendStatus(500);
     }
-    const expected = crypto.createHmac('sha256', secret).update(req.rawBody).digest('hex');
-    if (expected !== signature) {
+    if (!verifyWebhookSignature(req.rawBody, signature, secret)) {
       console.error('Razorpay webhook signature mismatch — possible spoofed request');
       return res.sendStatus(403);
     }
 
     const event = req.body.event;
 
-    // School plan subscriptions (routes/billing.js POST /subscribe) — a
-    // separate Razorpay product (Subscriptions, not Payment Links) landing
-    // on this same webhook URL, since a merchant configures one webhook URL
-    // account-wide covering every event type, not one per feature.
-    if (event.startsWith('subscription.')) {
-      return handleSubscriptionWebhook(event, req.body.payload, res);
+    if (isPlanBillingEvent(req.body)) {
+      return await handlePlanBillingWebhook(req, res);
     }
 
     if (event !== 'payment_link.paid' && event !== 'payment.captured') return res.sendStatus(200);

@@ -2396,3 +2396,108 @@ CREATE TABLE IF NOT EXISTS admission_payment_links (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_admission_payment_links_enquiry ON admission_payment_links(enquiry_id);
+
+-- ---------- Waynur plan billing v2 (Razorpay Subscriptions) ----------
+-- Plan catalog lives in the DB now instead of a hardcoded object in
+-- routes/billing.js. price_paise is the PRE-GST list price shown to schools;
+-- the Razorpay Plan referenced by razorpay_plan_id must be created at the
+-- GST-inclusive amount (price × 1.18) since Razorpay charges exactly the
+-- plan amount. razorpay_plan_id NULL → that plan can't be bought online.
+CREATE TABLE IF NOT EXISTS plans (
+    code VARCHAR(20) PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    price_paise BIGINT NOT NULL,
+    yearly_price_paise BIGINT,
+    student_limit INT NOT NULL,
+    accountant_seats INT NOT NULL,
+    razorpay_plan_id VARCHAR(100),
+    rank INT NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO plans (code, name, price_paise, yearly_price_paise, student_limit, accountant_seats, rank) VALUES
+  ('starter',  'Starter',   499900,  4999000, 100,    0,  1),
+  ('growth',   'Growth',   1299900, 12999000, 500,    2,  2),
+  ('district', 'District', 2999900, 29999000, 999999, 10, 3)
+ON CONFLICT (code) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    plan_code VARCHAR(20) NOT NULL REFERENCES plans(code),
+    billing_cycle VARCHAR(10) NOT NULL DEFAULT 'monthly',      -- 'monthly' (Razorpay subscription) | 'yearly' (one-time order)
+    kind VARCHAR(12) NOT NULL DEFAULT 'new',                   -- 'new' | 'upgrade' | 'downgrade' | 'renewal'
+    razorpay_subscription_id VARCHAR(100) UNIQUE,
+    razorpay_order_id VARCHAR(100) UNIQUE,
+    status VARCHAR(20) NOT NULL DEFAULT 'created',             -- created | authenticated | active | pending | halted | cancelled | completed | expired
+    current_period_start TIMESTAMPTZ,
+    current_period_end TIMESTAMPTZ,
+    replaces_subscription_id INT REFERENCES subscriptions(id),
+    cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,
+    halted_at TIMESTAMPTZ,
+    created_by INT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_school ON subscriptions(school_id, created_at DESC);
+
+-- The school row stays the denormalised "current state" every other route
+-- already reads (plan, billing_status, plan_renews_at); subscriptions is the
+-- history. pending_plan_code = a downgrade booked for the next cycle.
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS pending_plan_code VARCHAR(20);
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS current_subscription_id INT;
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS current_period_end TIMESTAMPTZ;
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS billing_grace_until TIMESTAMPTZ;
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS billing_gstin VARCHAR(15);
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS billing_legal_name VARCHAR(255);
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS billing_address TEXT;
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS billing_state_code VARCHAR(2); -- GST state code, e.g. '03' Punjab
+ALTER TABLE schools ALTER COLUMN billing_status TYPE VARCHAR(24);
+
+-- Every webhook delivery, verbatim. UNIQUE razorpay_event_id = idempotency:
+-- Razorpay retries deliveries, so the same event can arrive several times.
+CREATE TABLE IF NOT EXISTS billing_events (
+    id BIGSERIAL PRIMARY KEY,
+    razorpay_event_id VARCHAR(100) UNIQUE NOT NULL,
+    event VARCHAR(60) NOT NULL,
+    payload JSONB NOT NULL,
+    status VARCHAR(12) NOT NULL DEFAULT 'received',             -- received | processed | ignored | failed
+    attempts INT NOT NULL DEFAULT 0,
+    error TEXT,
+    received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    processed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_billing_events_pending ON billing_events(status, received_at) WHERE status IN ('received', 'failed');
+
+-- GST tax invoices for plan payments. Numbering is gap-free and sequential
+-- per financial year (row lock on invoice_counters), as GST rules require.
+CREATE TABLE IF NOT EXISTS invoice_counters (
+    fy VARCHAR(7) PRIMARY KEY,          -- '2026-27'
+    last_seq INT NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS invoices (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE RESTRICT,
+    subscription_id INT REFERENCES subscriptions(id),
+    invoice_number VARCHAR(30) UNIQUE NOT NULL,
+    fy VARCHAR(7) NOT NULL,
+    seq INT NOT NULL,
+    razorpay_payment_id VARCHAR(100) UNIQUE,
+    plan_code VARCHAR(20),
+    description TEXT NOT NULL,
+    sac_code VARCHAR(10) NOT NULL DEFAULT '998314',
+    taxable_paise BIGINT NOT NULL,
+    cgst_paise BIGINT NOT NULL DEFAULT 0,
+    sgst_paise BIGINT NOT NULL DEFAULT 0,
+    igst_paise BIGINT NOT NULL DEFAULT 0,
+    total_paise BIGINT NOT NULL,
+    place_of_supply VARCHAR(2),
+    buyer_name VARCHAR(255),
+    buyer_gstin VARCHAR(15),
+    buyer_address TEXT,
+    period_start TIMESTAMPTZ,
+    period_end TIMESTAMPTZ,
+    issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (fy, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_invoices_school ON invoices(school_id, issued_at DESC);

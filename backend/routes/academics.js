@@ -4,6 +4,7 @@ import pool from '../config/db.js';
 import { requireAuth, requirePrincipal, requireLibrary } from '../middleware/auth.js';
 import { normalizePhone } from '../utils/phone.js';
 import { audit } from '../services/opsService.js';
+import { assertCapacity } from '../services/billingService.js';
 
 const router = express.Router();
 
@@ -175,6 +176,13 @@ router.post('/students/bulk', requireAuth, requirePrincipal, async (req, res) =>
 
   if (!class_id || !Array.isArray(students) || students.length === 0) {
     return res.status(400).json({ error: 'class_id and a non-empty students array are required' });
+  }
+
+  // Plan limit, enforced server-side (was UI-only).
+  try {
+    await assertCapacity(schoolId, { addStudents: students.length });
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ error: err.message, code: err.code });
   }
 
   const client = await pool.connect();
@@ -550,6 +558,13 @@ router.post('/teachers', requireAuth, requirePrincipal, async (req, res) => {
     return res.status(400).json({ error: 'phone must be a valid Indian mobile number (10 digits, optionally with +91)' });
   }
   const finalRole = ['accountant', 'librarian', 'operator'].includes(role) ? role : 'teacher';
+  if (finalRole === 'accountant') {
+    try {
+      await assertCapacity(req.user.school_id, { addAccountants: 1 });
+    } catch (err) {
+      return res.status(err.statusCode || 500).json({ error: err.message, code: err.code });
+    }
+  }
   try {
     const password_hash = await bcrypt.hash(password, 10);
     const result = await pool.query(

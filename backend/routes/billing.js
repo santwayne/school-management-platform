@@ -1,151 +1,213 @@
 import express from 'express';
+import PDFDocument from 'pdfkit';
 import pool from '../config/db.js';
-import { requireAuth, requirePrincipal } from '../middleware/auth.js';
-import { razorpayClient } from './paymentLinks.js';
+import { requireAuth, requireFinance, requireBillingOwner, requireSuperAdmin } from '../middleware/auth.js';
+import { getPlans, getUsage, quoteChange, startCheckout, cancelAtPeriodEnd, processBillingEvent } from '../services/billingService.js';
+import { withGst, isReadOnly } from '../services/billingMath.js';
+import { verifyCheckoutSignature } from '../utils/razorpay.js';
+import { audit } from '../services/opsService.js';
 
 const router = express.Router();
 
-const PLAN_DETAILS = {
-  starter: { name: 'Starter', price: 4999, student_limit: 100, accountant_seats: 0 },
-  growth: { name: 'Growth', price: 12999, student_limit: 500, accountant_seats: 2 },
-  district: { name: 'District', price: 29999, student_limit: 999999, accountant_seats: 10 },
+const sendErr = (res, err, fallback) => {
+  if (err.statusCode) return res.status(err.statusCode).json({ error: err.message, code: err.code, blockers: err.blockers });
+  console.error(fallback, err.response?.data || err);
+  return res.status(500).json({ error: fallback });
 };
 
-// A Razorpay "Plan" is a merchant-configured product-catalog entity —
-// created once via the Razorpay Dashboard (or API, out-of-band), not
-// something this app creates per subscription request. Mapped here via env
-// var rather than a DB column since there's exactly one per plan tier,
-// account-wide, not per-school.
-const RAZORPAY_PLAN_ID = {
-  starter: process.env.RAZORPAY_PLAN_ID_STARTER,
-  growth: process.env.RAZORPAY_PLAN_ID_GROWTH,
-  district: process.env.RAZORPAY_PLAN_ID_DISTRICT,
-};
-
-// Current plan + live usage, for the Principal's own billing page (separate
-// from the Super Admin's cross-school billing view).
-router.get('/', requireAuth, requirePrincipal, async (req, res) => {
-  const school_id = req.user.school_id;
+// Current plan, usage, status — Principal and Accountant can view.
+router.get('/', requireAuth, requireFinance, async (req, res) => {
+  const schoolId = req.user.school_id;
   try {
-    const schoolRes = await pool.query(
-      'SELECT plan, plan_renews_at, billing_status, razorpay_subscription_id FROM schools WHERE id = $1',
-      [school_id]
-    );
-    if (schoolRes.rowCount === 0) return res.status(404).json({ error: 'School not found' });
-
-    const plan = schoolRes.rows[0].plan || 'starter';
-    const planInfo = PLAN_DETAILS[plan] || PLAN_DETAILS.starter;
-
-    // Demo rows (Super Admin's "Generate demo users" tool marks these
-    // is_demo = TRUE) must not count against a school's real plan/seat
-    // usage — same exclusion payrollService.js already applies for payroll.
-    const studentCountRes = await pool.query(
-      `SELECT COUNT(*) FROM students WHERE school_id = $1 AND is_demo = FALSE`,
-      [school_id]
-    );
-    const staffCountRes = await pool.query(
-      `SELECT COUNT(*) FROM teachers WHERE school_id = $1 AND is_demo = FALSE`,
-      [school_id]
-    );
-    const accountantCountRes = await pool.query(
-      `SELECT COUNT(*) FROM teachers WHERE school_id = $1 AND role = 'accountant' AND is_demo = FALSE`,
-      [school_id]
-    );
+    const s = (await pool.query(
+      `SELECT plan, plan_renews_at, billing_status, billing_grace_until, current_period_end, pending_plan_code,
+              current_subscription_id, billing_gstin, billing_legal_name, billing_address, billing_state_code
+       FROM schools WHERE id = $1`, [schoolId])).rows[0];
+    if (!s) return res.status(404).json({ error: 'School not found' });
+    const plans = await getPlans();
+    const plan = plans[s.plan] || plans.starter;
+    const usage = await getUsage(schoolId);
+    const sub = s.current_subscription_id
+      ? (await pool.query(`SELECT billing_cycle, status, cancel_at_period_end, current_period_end FROM subscriptions WHERE id = $1`, [s.current_subscription_id])).rows[0]
+      : null;
+    const awaiting = (await pool.query(
+      `SELECT id, plan_code, kind, status FROM subscriptions WHERE school_id = $1 AND status IN ('created', 'authenticated') ORDER BY id DESC LIMIT 1`,
+      [schoolId])).rows[0] || null;
 
     res.json({
-      plan,
-      plan_name: planInfo.name,
-      price: planInfo.price,
-      renews_at: schoolRes.rows[0].plan_renews_at,
-      billing_status: schoolRes.rows[0].billing_status || 'active',
-      has_subscription: !!schoolRes.rows[0].razorpay_subscription_id,
-      plans_payable_online: Object.keys(RAZORPAY_PLAN_ID).filter((k) => !!RAZORPAY_PLAN_ID[k]),
+      plan: plan.code,
+      plan_name: plan.name,
+      price: plan.price_paise / 100,
+      price_with_gst: withGst(plan.price_paise) / 100,
+      billing_status: s.billing_status,
+      read_only: isReadOnly(s),
+      grace_until: s.billing_grace_until,
+      renews_at: s.current_period_end || s.plan_renews_at,
+      pending_plan: s.pending_plan_code,
+      subscription: sub,
+      awaiting_payment: awaiting,
+      can_manage: req.user.role === 'principal',
+      billing_details: { gstin: s.billing_gstin, legal_name: s.billing_legal_name, address: s.billing_address, state_code: s.billing_state_code },
       usage: {
-        students: { used: parseInt(studentCountRes.rows[0].count, 10), limit: planInfo.student_limit },
-        staff: { used: parseInt(staffCountRes.rows[0].count, 10), limit: null },
-        accountant_seats: { used: parseInt(accountantCountRes.rows[0].count, 10), limit: planInfo.accountant_seats },
+        students: { used: usage.students, limit: plan.student_limit },
+        staff: { used: usage.staff, limit: null },
+        accountant_seats: { used: usage.accountants, limit: plan.accountant_seats },
       },
-      all_plans: PLAN_DETAILS,
+      all_plans: Object.fromEntries(Object.values(plans).map((p) => [p.code, {
+        name: p.name, price: p.price_paise / 100, yearly_price: p.yearly_price_paise ? p.yearly_price_paise / 100 : null,
+        student_limit: p.student_limit, accountant_seats: p.accountant_seats, rank: p.rank,
+        monthly_online: !!p.razorpay_plan_id, yearly_online: !!p.yearly_price_paise,
+      }])),
     });
   } catch (err) {
-    console.error('Billing fetch error:', err);
-    res.status(500).json({ error: 'Failed to fetch billing info' });
+    sendErr(res, err, 'Failed to fetch billing info');
   }
 });
 
-// POST /api/billing/subscribe — real, recurring, principal-initiated
-// payment via Razorpay Subscriptions. Creates (or reuses) a subscription
-// against the merchant's pre-configured Razorpay Plan for this tier, and
-// hands back the hosted `short_url` for the principal to authorize the
-// mandate right now — deliberately not relying on Razorpay's own
-// email/SMS notification (customer_notify: 0), since the principal is
-// already on this page and can just be redirected straight there. The
-// actual plan flip only happens later, on the webhook's
-// `subscription.activated` event below — never here — since the mandate
-// isn't actually authorized (or charged) until the principal completes
-// that hosted page.
-router.post('/subscribe', requireAuth, requirePrincipal, async (req, res) => {
-  const school_id = req.user.school_id;
-  const { plan } = req.body;
-  if (!PLAN_DETAILS[plan]) {
-    return res.status(400).json({ error: 'Invalid plan. Must be starter, growth, or district' });
-  }
-  const razorpayPlanId = RAZORPAY_PLAN_ID[plan];
-  if (!razorpayPlanId) {
-    return res.status(400).json({
-      error: `Online payment isn't set up yet for the ${PLAN_DETAILS[plan].name} plan — contact support to subscribe.`,
-    });
-  }
-
+// Price breakdown for the checkout modal (list price, 18% GST, proration,
+// when the change applies). Creates nothing.
+router.get('/quote', requireAuth, requireBillingOwner, async (req, res) => {
   try {
-    const schoolRes = await pool.query('SELECT name FROM schools WHERE id = $1', [school_id]);
-    if (schoolRes.rowCount === 0) return res.status(404).json({ error: 'School not found' });
-
-    // Razorpay requires an explicit total_count of billing cycles — there's
-    // no "indefinite" option on the API itself. 120 monthly cycles (10
-    // years) is a real constraint of Razorpay Subscriptions, not a product
-    // decision to cap how long a school can stay subscribed; renews on its
-    // own well before that via subscription.charged, same as any month.
-    const razorRes = await razorpayClient().post('/subscriptions', {
-      plan_id: razorpayPlanId,
-      customer_notify: 0,
-      total_count: 120,
-      notes: { school_id: String(school_id), plan },
-    });
-
-    await pool.query(
-      `UPDATE schools SET razorpay_subscription_id = $1, billing_status = 'pending_activation' WHERE id = $2`,
-      [razorRes.data.id, school_id]
-    );
-
-    res.status(201).json({ subscription_id: razorRes.data.id, short_url: razorRes.data.short_url });
+    const { _internal, ...q } = await quoteChange({ schoolId: req.user.school_id, planCode: req.query.plan, cycle: req.query.cycle || 'monthly' });
+    res.json(q);
   } catch (err) {
-    console.error('Subscription create error:', err.response?.data || err.message);
-    res.status(500).json({ error: 'Failed to start subscription' });
+    sendErr(res, err, 'Failed to price this plan');
   }
 });
 
-// Change plan WITHOUT charging anything — a manual/support override for
-// Super Admin use (comping a school, fixing billing_status after a support
-// call), now that POST /subscribe above is the real self-serve payment
-// path. Left in place rather than removed since other flows may still rely
-// on being able to flip a plan without going through Razorpay.
-router.patch('/plan', requireAuth, requirePrincipal, async (req, res) => {
-  const school_id = req.user.school_id;
-  const { plan } = req.body;
-  if (!PLAN_DETAILS[plan]) {
-    return res.status(400).json({ error: 'Invalid plan. Must be starter, growth, or district' });
-  }
+// Starts payment. Returns Razorpay Checkout options. Does NOT change the plan —
+// only the verified webhook does (services/billingService.js).
+router.post('/checkout', requireAuth, requireBillingOwner, async (req, res) => {
   try {
-    const result = await pool.query(
-      `UPDATE schools SET plan = $1, plan_renews_at = CURRENT_DATE + INTERVAL '30 days' WHERE id = $2 RETURNING plan, plan_renews_at`,
-      [plan, school_id]
-    );
-    res.json(result.rows[0]);
+    const out = await startCheckout({
+      schoolId: req.user.school_id, teacherId: req.user.teacher_id, planCode: req.body.plan, cycle: req.body.cycle || 'monthly',
+    });
+    res.status(201).json(out);
   } catch (err) {
-    console.error('Plan update error:', err);
-    res.status(500).json({ error: 'Failed to update plan' });
+    sendErr(res, err, 'Failed to start checkout');
   }
+});
+// Back-compat for the PR #52 frontend; same behaviour, monthly only.
+router.post('/subscribe', requireAuth, requireBillingOwner, async (req, res) => {
+  try {
+    res.status(201).json(await startCheckout({ schoolId: req.user.school_id, teacherId: req.user.teacher_id, planCode: req.body.plan, cycle: 'monthly' }));
+  } catch (err) {
+    sendErr(res, err, 'Failed to start checkout');
+  }
+});
+
+// Checkout handler callback → verify the signature, then let the UI poll
+// /status. Still NOT authoritative for the plan; it just tells us the
+// browser-side payment finished so we can show "Activating…".
+router.post('/checkout/confirm', requireAuth, requireBillingOwner, async (req, res) => {
+  const { razorpay_payment_id, razorpay_subscription_id, razorpay_order_id, razorpay_signature } = req.body || {};
+  const ok = verifyCheckoutSignature({
+    paymentId: razorpay_payment_id, subscriptionId: razorpay_subscription_id, orderId: razorpay_order_id, signature: razorpay_signature,
+  });
+  if (!ok) return res.status(400).json({ error: 'Payment signature could not be verified' });
+  const own = await pool.query(
+    `SELECT id FROM subscriptions WHERE school_id = $1 AND (razorpay_subscription_id = $2 OR razorpay_order_id = $3)`,
+    [req.user.school_id, razorpay_subscription_id || null, razorpay_order_id || null]
+  );
+  if (!own.rowCount) return res.status(404).json({ error: 'Unknown checkout' });
+  res.json({ status: 'verifying', subscription_row_id: own.rows[0].id });
+});
+
+// Polled by the "Activating…" state until the webhook has landed.
+router.get('/checkout/:id/status', requireAuth, requireFinance, async (req, res) => {
+  const r = await pool.query(
+    `SELECT sub.status, sub.kind, sub.plan_code, s.plan, s.pending_plan_code FROM subscriptions sub JOIN schools s ON s.id = sub.school_id
+     WHERE sub.id = $1 AND sub.school_id = $2`, [req.params.id, req.user.school_id]);
+  if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
+  const x = r.rows[0];
+  const done = x.status === 'active'
+    || (x.kind === 'upgrade' && x.status === 'authenticated' && x.plan === x.plan_code)
+    || (x.kind === 'downgrade' && x.pending_plan_code === x.plan_code);
+  res.json({ status: done ? 'done' : x.status, kind: x.kind, plan: x.plan, pending_plan: x.pending_plan_code });
+});
+
+router.post('/cancel', requireAuth, requireBillingOwner, async (req, res) => {
+  try {
+    res.json(await cancelAtPeriodEnd({ schoolId: req.user.school_id, teacherId: req.user.teacher_id }));
+  } catch (err) {
+    sendErr(res, err, 'Failed to cancel');
+  }
+});
+
+// GST details printed on invoices (buyer GSTIN, legal name, state for CGST/SGST vs IGST).
+router.put('/details', requireAuth, requireBillingOwner, async (req, res) => {
+  const { gstin, legal_name, address, state_code } = req.body || {};
+  if (gstin && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin)) return res.status(400).json({ error: 'GSTIN format looks wrong' });
+  if (state_code && !/^\d{2}$/.test(state_code)) return res.status(400).json({ error: 'state_code must be the 2-digit GST state code' });
+  const sc = state_code || (gstin ? gstin.slice(0, 2) : null);
+  await pool.query(
+    `UPDATE schools SET billing_gstin = $2, billing_legal_name = $3, billing_address = $4, billing_state_code = $5 WHERE id = $1`,
+    [req.user.school_id, gstin || null, legal_name || null, address || null, sc]
+  );
+  res.json({ ok: true });
+});
+
+router.get('/invoices', requireAuth, requireFinance, async (req, res) => {
+  const r = await pool.query(
+    `SELECT id, invoice_number, description, total_paise, taxable_paise, cgst_paise, sgst_paise, igst_paise, issued_at, period_start, period_end
+     FROM invoices WHERE school_id = $1 ORDER BY issued_at DESC LIMIT 100`, [req.user.school_id]);
+  res.json(r.rows);
+});
+
+const rupees = (p) => `Rs. ${(Number(p) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+router.get('/invoices/:id/pdf', requireAuth, requireFinance, async (req, res) => {
+  const r = await pool.query(`SELECT * FROM invoices WHERE id = $1 AND school_id = $2`, [req.params.id, req.user.school_id]);
+  if (!r.rowCount) return res.status(404).json({ error: 'Invoice not found' });
+  const inv = r.rows[0];
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${inv.invoice_number.replace(/\//g, '-')}.pdf"`);
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  doc.pipe(res);
+  doc.fontSize(18).text('TAX INVOICE', { align: 'right' });
+  doc.moveDown(0.5).fontSize(11).text(process.env.WAYNUR_LEGAL_NAME || 'Wayne E Solutions (Waynur)');
+  doc.fontSize(9).text(process.env.WAYNUR_ADDRESS || '').text(`GSTIN: ${process.env.WAYNUR_GSTIN || '—'}`).text(`State code: ${process.env.WAYNUR_STATE_CODE || '03'}`);
+  doc.moveDown().fontSize(10)
+    .text(`Invoice no: ${inv.invoice_number}`).text(`Date: ${new Date(inv.issued_at).toLocaleDateString('en-IN')}`)
+    .text(`Razorpay payment: ${inv.razorpay_payment_id || '—'}`);
+  doc.moveDown().fontSize(10).text('Billed to:', { underline: true })
+    .text(inv.buyer_name || '').text(inv.buyer_address || '').text(`GSTIN: ${inv.buyer_gstin || 'Unregistered'}`)
+    .text(`Place of supply (state code): ${inv.place_of_supply || '—'}`);
+  doc.moveDown().text(`${inv.description}`).text(`SAC: ${inv.sac_code}`);
+  if (inv.period_start && inv.period_end) {
+    doc.text(`Service period: ${new Date(inv.period_start).toLocaleDateString('en-IN')} – ${new Date(inv.period_end).toLocaleDateString('en-IN')}`);
+  }
+  doc.moveDown();
+  const line = (k, v) => doc.text(k, { continued: true }).text(v, { align: 'right' });
+  line('Taxable value', rupees(inv.taxable_paise));
+  if (Number(inv.igst_paise)) line('IGST @ 18%', rupees(inv.igst_paise));
+  else { line('CGST @ 9%', rupees(inv.cgst_paise)); line('SGST @ 9%', rupees(inv.sgst_paise)); }
+  doc.font('Helvetica-Bold'); line('Total', rupees(inv.total_paise)); doc.font('Helvetica');
+  doc.moveDown(2).fontSize(8).fillColor('#666').text('This is a computer-generated invoice and does not require a signature.');
+  doc.end();
+});
+
+// ---- Super Admin only: manual override (comp a school, fix after a support call).
+// This used to be open to every principal with no payment — anyone could
+// self-upgrade to District for free. Now audited and super-admin only.
+router.patch('/plan', requireAuth, requireSuperAdmin, async (req, res) => {
+  const { school_id, plan, reason } = req.body || {};
+  const plans = await getPlans();
+  if (!school_id || !plans[plan]) return res.status(400).json({ error: 'school_id and a valid plan are required' });
+  if (!reason || String(reason).trim().length < 5) return res.status(400).json({ error: 'A reason is required for manual plan changes' });
+  const r = await pool.query(
+    `UPDATE schools SET plan = $2, student_limit = $3, accountant_seat_limit = $4 WHERE id = $1 RETURNING id, plan`,
+    [school_id, plan, plans[plan].student_limit, plans[plan].accountant_seats]
+  );
+  if (!r.rowCount) return res.status(404).json({ error: 'School not found' });
+  await audit({ schoolId: school_id, actorType: 'super_admin', actorId: req.user.super_admin_id, action: 'billing.plan_override', detail: { plan, reason } });
+  res.json(r.rows[0]);
+});
+
+// Super Admin: re-run a stuck webhook event.
+router.post('/events/:id/retry', requireAuth, requireSuperAdmin, async (req, res) => {
+  await pool.query(`UPDATE billing_events SET status = 'failed' WHERE id = $1 AND status <> 'processed'`, [req.params.id]);
+  try { res.json({ result: await processBillingEvent(req.params.id) }); } catch (err) { sendErr(res, err, 'Retry failed'); }
 });
 
 export default router;
