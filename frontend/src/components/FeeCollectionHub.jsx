@@ -4,29 +4,35 @@ import { apiRequest } from '../api';
 import FinanceAdmin, { StudentPicker } from './FinanceAdmin';
 
 const INR = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
+// One tab bar for the whole Fees page (the old "Collect (manual)" tab used to
+// nest FinanceAdmin's own Dashboard / Collect Fee / Fee Structure bar inside it).
 const TABS = [
-  { key: 'manual', label: 'Collect (manual)' },
+  { key: 'dashboard', label: 'Dashboard' },
+  { key: 'collect', label: 'Collect Fee' },
+  { key: 'structure', label: 'Fee Structure' },
   { key: 'whatsapp', label: 'WhatsApp queue' },
   { key: 'online', label: 'Online payments' },
 ];
+const LEGACY_TAB = { manual: 'collect' };
 
 export default function FeeCollectionHub() {
   // ?tab=whatsapp|online deep-links straight to a tab (used by notifications).
   const [params, setParams] = useSearchParams();
-  const tab = TABS.some((t) => t.key === params.get('tab')) ? params.get('tab') : 'manual';
-  const setTab = (key) => setParams(key === 'manual' ? {} : { tab: key }, { replace: true });
+  const requested = LEGACY_TAB[params.get('tab')] || params.get('tab');
+  const tab = TABS.some((t) => t.key === requested) ? requested : 'dashboard';
+  const setTab = (key) => setParams(key === 'dashboard' ? {} : { tab: key }, { replace: true });
   return (
     <div className="space-y-4">
       <div>
         <h1 className="font-display text-3xl text-ink">Fee Collection</h1>
-        <p className="text-sm text-ink-soft mt-1">Manual entry, WhatsApp cash slip review, and online payment links.</p>
+        <p className="text-sm text-ink-soft mt-1">Dues overview, manual collection, fee structure, WhatsApp cash slips and online payment links.</p>
       </div>
-      <div className="border-b border-cream-deep/70 flex gap-1">
+      <div className="border-b border-cream-deep/70 flex gap-1 overflow-x-auto">
         {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition whitespace-nowrap ${
               tab === t.key ? 'border-terracotta text-terracotta-deep' : 'border-transparent text-ink-soft hover:text-ink'
             }`}
           >
@@ -34,7 +40,7 @@ export default function FeeCollectionHub() {
           </button>
         ))}
       </div>
-      {tab === 'manual' && <div className="-mx-6"><FinanceAdmin /></div>}
+      {['dashboard', 'collect', 'structure'].includes(tab) && <FinanceAdmin tab={tab} />}
       {tab === 'whatsapp' && <WhatsAppQueue />}
       {tab === 'online' && <OnlinePayments />}
     </div>

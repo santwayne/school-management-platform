@@ -4,6 +4,7 @@ import { attendanceQueue, ESCALATION_DELAY_MS } from '../config/queue.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sendTemplateMessage } from '../services/whatsappService.js';
 import { recordRun, raiseException, audit } from '../services/opsService.js';
+import { absenceAlertErrorSummary } from '../utils/absenceAlertSummary.js';
 
 const router = express.Router();
 
@@ -20,8 +21,29 @@ const ABSENCE_TEMPLATE_NAME = process.env.WHATSAPP_ABSENCE_TEMPLATE || 'student_
 // short-lived invocation, so queued jobs sat in Redis and were never
 // processed. Sending inline here means the API response itself reflects
 // whether the message actually went out.
+// BullMQ's queue.add() waits forever while Redis is unreachable (the shared
+// connection uses maxRetriesPerRequest: null), which used to hang the whole
+// "mark attendance" request. Give it a few seconds, then carry on without the
+// voice-call escalation and say so in the log.
+const QUEUE_ADD_TIMEOUT_MS = 4000;
+async function queueAddWithTimeout(name, data, opts) {
+  let timer;
+  try {
+    return await Promise.race([
+      attendanceQueue.add(name, data, opts),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Redis unavailable — voice-call escalation not scheduled')), QUEUE_ADD_TIMEOUT_MS); }),
+    ]);
+  } catch (err) {
+    console.error(`[attendance] ${name} not queued:`, err.message);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function sendAbsentNotificationNow({ attendanceId, parent, studentId }) {
   let status = 'SENT';
+  let error = null;
   try {
     await sendTemplateMessage(
       parent.phone,
@@ -32,6 +54,10 @@ async function sendAbsentNotificationNow({ attendanceId, parent, studentId }) {
   } catch (err) {
     console.error(`WhatsApp send failed for attendance ${attendanceId}:`, err.message);
     status = 'FAILED';
+    // Meta's own reason (e.g. "(#200) You do not have the necessary
+    // permissions…") is far more useful than axios's "status code 403".
+    const meta = err.response?.data?.error?.message;
+    error = meta ? `WhatsApp ${err.response.status}: ${meta}` : err.message || 'WhatsApp send failed';
   }
 
   const logRes = await pool.query(
@@ -48,7 +74,7 @@ async function sendAbsentNotificationNow({ attendanceId, parent, studentId }) {
   // exact same problem this function was written to fix for the immediate
   // send — see the deployment note in the PR/chat before assuming escalation
   // calls are firing in production.
-  await attendanceQueue.add(
+  await queueAddWithTimeout(
     'escalateToVoiceCall',
     {
       attendanceId,
@@ -61,7 +87,7 @@ async function sendAbsentNotificationNow({ attendanceId, parent, studentId }) {
     { delay: ESCALATION_DELAY_MS }
   );
 
-  return { student_id: studentId, whatsapp_status: status, notification_log_id: notificationLogId };
+  return { student_id: studentId, whatsapp_status: status, notification_log_id: notificationLogId, error };
 }
 
 // Control Center reporting for the inline absence-alert send. Never throws.
@@ -79,6 +105,7 @@ async function reportAbsenceAlertOutcome({ schoolId, notifications, unreachable,
       itemsTotal: total,
       itemsSucceeded: succeeded,
       itemsFailed: failed.length + unreachable.length,
+      errorSummary: absenceAlertErrorSummary(notifications, unreachable),
     });
 
     for (const n of notifications) {

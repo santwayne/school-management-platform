@@ -3,7 +3,8 @@ import axios from 'axios';
 function client() {
   const token = process.env.WHATSAPP_ACCESS_TOKEN || '';
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
-  const url = `https://graph.facebook.com/v21.0/${phoneId}/messages`;
+  // WHATSAPP_API_BASE: override only for local testing (mock Graph API).
+  const url = `${process.env.WHATSAPP_API_BASE || 'https://graph.facebook.com/v21.0'}/${phoneId}/messages`;
   console.log('[WhatsApp] phoneId:', phoneId, '| tokenLen:', token.length, '| tokenSuffix:', token.slice(-6));
   return axios.create({
     baseURL: url,
