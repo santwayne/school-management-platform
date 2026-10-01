@@ -18,6 +18,12 @@ test('plan patch: only real changes are returned, rupees become paise', () => {
   assert.deepEqual(changes, { yearly_price_paise: 13999000, student_limit: 600 });
 });
 
+test('plan patch: accountant seats are no longer a plan setting (ignored)', () => {
+  const { changes, errors } = validatePlanPatch({ accountant_seats: 7 }, growth);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(changes, {});
+});
+
 test('plan patch: monthly price change is detected (needs a new Razorpay plan)', () => {
   const { changes } = validatePlanPatch({ price: 13499.5 }, growth);
   assert.equal(changes.price_paise, 1349950);
@@ -31,8 +37,8 @@ test('plan patch: unlimited students and clearing yearly price', () => {
 });
 
 test('plan patch: bad input is rejected', () => {
-  const { errors } = validatePlanPatch({ name: 'x', price: 0, student_limit: -5, accountant_seats: 1.5, yearly_price: 'abc' }, growth);
-  assert.equal(errors.length, 5);
+  const { errors } = validatePlanPatch({ name: 'x', price: 0, student_limit: -5, yearly_price: 'abc' }, growth);
+  assert.equal(errors.length, 4);
 });
 
 test('razorpay plan check: correct GST-inclusive monthly plan passes', () => {

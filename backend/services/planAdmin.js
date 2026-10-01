@@ -47,12 +47,6 @@ export function validatePlanPatch(body = {}, current) {
     else if (v !== current.student_limit) changes.student_limit = v;
   }
 
-  if (body.accountant_seats !== undefined) {
-    const v = Number(body.accountant_seats);
-    if (!isWholeNumber(v) || v > 1000) errors.push('Accountant seats must be a whole number between 0 and 1000');
-    else if (v !== current.accountant_seats) changes.accountant_seats = v;
-  }
-
   if (body.price !== undefined) {
     const paise = Math.round(Number(body.price) * 100);
     if (!Number.isFinite(paise) || paise < 100 || paise > MAX_PRICE_PAISE) errors.push('Monthly price must be between ₹1 and ₹1,00,00,000');
@@ -104,7 +98,6 @@ export async function listPlansForAdmin() {
       yearly_price_with_gst: p.yearly_price_paise ? withGst(Number(p.yearly_price_paise)) / 100 : null,
       student_limit: p.student_limit,
       unlimited_students: p.student_limit >= UNLIMITED,
-      accountant_seats: p.accountant_seats,
       rank: p.rank,
       active: p.active,
       schools_on_plan: p.schools_on_plan,
@@ -135,7 +128,7 @@ export async function createRazorpayPlan(plan, pricePaise = plan.price_paise) {
       name: `Waynur ${plan.name}`,
       amount: withGst(Number(pricePaise)),
       currency: 'INR',
-      description: `${plan.student_limit >= UNLIMITED ? 'Unlimited' : `Up to ${plan.student_limit}`} students, ${plan.accountant_seats} accountant seats (incl. 18% GST)`,
+      description: `${plan.student_limit >= UNLIMITED ? 'Unlimited' : `Up to ${plan.student_limit}`} students (incl. 18% GST)`,
     },
     notes: { waynur_plan_code: plan.code, price_paise_pre_gst: String(pricePaise) },
   });

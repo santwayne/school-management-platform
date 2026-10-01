@@ -13,6 +13,7 @@ const PLANS = [
       'WhatsApp updates for every parent',
       'Attendance, marks & homework',
       'Student & staff records',
+      'Accountant logins included',
       'Email support',
     ],
   },
@@ -24,7 +25,7 @@ const PLANS = [
     features: [
       'Everything in Starter',
       'Fees, payroll & bus tracking',
-      'AI tutor + Accountant role',
+      'AI tutor',
       'Lesson plans & syllabus tracking',
       'Priority WhatsApp support',
     ],

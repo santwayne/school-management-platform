@@ -107,21 +107,22 @@ ok(calls.some((c) => c.url === `/v1/subscriptions/${subId}/cancel` && c.body.can
 await hook('subscription.charged', { ...subEnt('active'), payment: { entity: { id: 'pay_old2', amount: 1533882 } } });
 ok((await school()).plan === 'district', 'late event on superseded sub does not revert plan');
 
-// ---- downgrade blocked by usage
+// ---- downgrade blocked by usage (students over the Growth limit; accountants never block)
 await pool.query(`INSERT INTO teachers (school_id, name, email, phone, password_hash, role) VALUES ($1,'Acc A','acca@x.test','+919999900001','x','accountant'),($1,'Acc B','accb@x.test','+919999900002','x','accountant'),($1,'Acc C','accc@x.test','+919999900003','x','accountant')`, [sid]);
+await pool.query(`INSERT INTO students (school_id, name) SELECT $1, 'Bulk ' || g FROM generate_series(1, 501) g`, [sid]);
 // make district sub current so downgrade is a "downgrade"
 await pool.query(`UPDATE subscriptions SET status='active', current_period_start=to_timestamp($2), current_period_end=to_timestamp($3) WHERE razorpay_subscription_id=$1`, [uSub, ps, pe]);
 await pool.query(`UPDATE schools SET current_subscription_id=(SELECT id FROM subscriptions WHERE razorpay_subscription_id=$2) WHERE id=$1`, [sid, uSub]);
 const dg = await j('GET', '/api/billing/quote?plan=growth&cycle=monthly', token);
 ok(dg.status === 409 && dg.body.code === 'DOWNGRADE_BLOCKED', `downgrade blocked: ${dg.body.error}`);
-await pool.query(`DELETE FROM teachers WHERE email IN ('accb@x.test','accc@x.test')`);
+await pool.query(`DELETE FROM students WHERE school_id = $1 AND name LIKE 'Bulk %'`, [sid]);
 const dg2 = await j('GET', '/api/billing/quote?plan=growth&cycle=monthly', token);
 ok(dg2.status === 200 && dg2.body.applies === 'next_cycle', 'downgrade allowed once usage fits, applies next cycle');
 
 // ---- limits enforced on backend
 await pool.query(`UPDATE schools SET plan='starter' WHERE id=$1`, [sid]);
 const acc = await j('POST', '/api/academics/teachers', token, { name: 'New Acc', email: 'newacc@x.test', phone: '9876543210', password: 'Passw0rd!', role: 'accountant' });
-ok(acc.status === 402, `starter: accountant creation blocked (${acc.status})`);
+ok(acc.status === 201, `starter: accountant logins are unlimited (${acc.status})`);
 const cls = (await pool.query(`SELECT id FROM classes WHERE school_id=$1 LIMIT 1`, [sid])).rows[0].id;
 const bulk = await j('POST', '/api/academics/students/bulk', token, { class_id: cls, students: Array.from({ length: 101 }, (_, i) => ({ name: `Kid ${i}` })) });
 ok(bulk.status === 402, `starter: 101 students blocked (${bulk.status})`);

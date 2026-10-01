@@ -61,9 +61,6 @@ export function downgradeBlockers(usage, targetPlan) {
   if (usage.students > targetPlan.student_limit) {
     out.push(`${usage.students} students enrolled, ${targetPlan.name} allows ${targetPlan.student_limit}`);
   }
-  if (usage.accountants > targetPlan.accountant_seats) {
-    out.push(`${usage.accountants} accountant logins, ${targetPlan.name} allows ${targetPlan.accountant_seats}`);
-  }
   return out;
 }
 

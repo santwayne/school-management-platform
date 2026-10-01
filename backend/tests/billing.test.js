@@ -36,13 +36,15 @@ test('proration: upgrade halfway through the month pays half the difference', ()
 });
 
 test('change classification + downgrade blockers', () => {
-  const starter = { code: 'starter', name: 'Starter', rank: 1, student_limit: 100, accountant_seats: 0 };
-  const growth = { code: 'growth', name: 'Growth', rank: 2, student_limit: 500, accountant_seats: 2 };
+  const starter = { code: 'starter', name: 'Starter', rank: 1, student_limit: 100 };
+  const growth = { code: 'growth', name: 'Growth', rank: 2, student_limit: 500 };
   assert.equal(classifyChange(starter, growth), 'upgrade');
   assert.equal(classifyChange(growth, starter), 'downgrade');
   assert.equal(classifyChange(null, growth), 'new');
-  assert.equal(downgradeBlockers({ students: 140, accountants: 1 }, starter).length, 2);
+  assert.equal(downgradeBlockers({ students: 140, accountants: 1 }, starter).length, 1);
   assert.equal(downgradeBlockers({ students: 90, accountants: 0 }, starter).length, 0);
+  // Accountant logins are unlimited on every plan — never a downgrade blocker.
+  assert.equal(downgradeBlockers({ students: 90, accountants: 25 }, starter).length, 0);
 });
 
 test('read-only only after grace / paid period ends', () => {

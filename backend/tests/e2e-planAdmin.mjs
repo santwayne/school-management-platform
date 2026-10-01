@@ -76,12 +76,13 @@ try {
 
   // ---- edit limits (applies to schools on that plan)
   await pool.query(`UPDATE schools SET plan='growth' WHERE id = (SELECT school_id FROM teachers WHERE email='principal@demoschool.test')`);
-  r = await j('PATCH', '/api/billing/admin/plans/growth', token, { student_limit: 650, accountant_seats: 3 });
+  r = await j('PATCH', '/api/billing/admin/plans/growth', token, { student_limit: 650 });
   ok(r.status === 400 && /reason/.test(r.body.error), 'edit without a reason is refused');
-  r = await j('PATCH', '/api/billing/admin/plans/growth', token, { student_limit: 650, accountant_seats: 3, reason: 'More seats for Growth tier' });
+  r = await j('PATCH', '/api/billing/admin/plans/growth', token, { student_limit: 650, reason: 'More students for Growth tier' });
   ok(r.status === 200 && plan(r.body.plans, 'growth').student_limit === 650 && r.body.schools_updated >= 1, `limits updated (schools_updated=${r.body.schools_updated})`);
-  const sch = (await pool.query(`SELECT student_limit, accountant_seat_limit FROM schools WHERE id = (SELECT school_id FROM teachers WHERE email='principal@demoschool.test')`)).rows[0];
-  ok(sch.student_limit === 650 && sch.accountant_seat_limit === 3, 'existing Growth school got the new limits');
+  const sch = (await pool.query(`SELECT student_limit FROM schools WHERE id = (SELECT school_id FROM teachers WHERE email='principal@demoschool.test')`)).rows[0];
+  ok(sch.student_limit === 650, 'existing Growth school got the new student limit');
+  ok(plan(r.body.plans, 'growth').accountant_seats === undefined, 'plan admin no longer exposes accountant seats');
   ok(plan(r.body.plans, 'growth').razorpay_plan_id === growthId, 'limit-only edit keeps the same Razorpay plan');
 
   // ---- price change creates a new Razorpay plan
