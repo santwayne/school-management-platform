@@ -310,10 +310,11 @@ async function findOrAdoptSubscription(client, rzSub) {
 
 async function makeCurrent(client, sub) {
   await client.query(
-    `UPDATE schools SET plan = $2, billing_status = 'active', current_subscription_id = $3,
-       current_period_end = $4, plan_renews_at = $4::date, razorpay_subscription_id = COALESCE($5, razorpay_subscription_id),
+    `UPDATE schools SET plan = $2::varchar, billing_status = 'active', current_subscription_id = $3::int,
+       current_period_end = $4::timestamptz, plan_renews_at = ($4::timestamptz AT TIME ZONE 'Asia/Kolkata')::date,
+       razorpay_subscription_id = COALESCE($5::varchar, razorpay_subscription_id),
        billing_grace_until = NULL,
-       pending_plan_code = CASE WHEN pending_plan_code = $2 THEN NULL ELSE pending_plan_code END
+       pending_plan_code = CASE WHEN pending_plan_code = $2::varchar THEN NULL ELSE pending_plan_code END
      WHERE id = $1`,
     [sub.school_id, sub.plan_code, sub.id, sub.current_period_end, sub.razorpay_subscription_id]
   );
@@ -366,10 +367,10 @@ async function applyEvent(client, event, payload) {
     if (!newStatus) return 'ignored';
 
     const upd = await client.query(
-      `UPDATE subscriptions SET status = $2,
-         current_period_start = COALESCE($3, current_period_start),
-         current_period_end = COALESCE($4, current_period_end),
-         halted_at = CASE WHEN $2 = 'halted' THEN COALESCE(halted_at, NOW()) ELSE NULL END,
+      `UPDATE subscriptions SET status = $2::varchar,
+         current_period_start = COALESCE($3::timestamptz, current_period_start),
+         current_period_end = COALESCE($4::timestamptz, current_period_end),
+         halted_at = CASE WHEN $2::varchar = 'halted' THEN COALESCE(halted_at, NOW()) ELSE NULL END,
          updated_at = NOW()
        WHERE id = $1 RETURNING *`,
       [sub.id, newStatus, ts(rzSub.current_start), ts(rzSub.current_end)]
@@ -411,7 +412,7 @@ async function applyEvent(client, event, payload) {
     } else if (newStatus === 'halted' && isCurrent) {
       await client.query(
         `UPDATE schools SET billing_status = 'halted',
-           billing_grace_until = COALESCE(billing_grace_until, NOW() + ($2 || ' days')::interval)
+           billing_grace_until = COALESCE(billing_grace_until, NOW() + ($2::text || ' days')::interval)
          WHERE id = $1`,
         [s.school_id, String(GRACE_DAYS)]
       );

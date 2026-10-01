@@ -7,7 +7,7 @@ import { send as sendNotification } from '../services/notificationService.js';
 import { audit } from '../services/opsService.js';
 import { razorpayClient, verifyWebhookSignature } from '../utils/razorpay.js';
 import { recordBillingEvent, isPlanBillingEvent, processBillingEvent } from '../services/billingService.js';
-import { billingQueue } from '../config/queue.js';
+import { billingQueue, connection as redisConnection } from '../config/queue.js';
 
 const router = express.Router();
 
@@ -158,9 +158,15 @@ async function handlePlanBillingWebhook(req, res) {
   res.sendStatus(200);
   if (duplicate || !id) return;
   try {
-    await billingQueue.add('billingEvent', { billingEventId: id }, {
-      jobId: `billing-${id}`, attempts: 5, backoff: { type: 'exponential', delay: 30000 }, removeOnComplete: 1000,
-    });
+    // With Redis down, ioredis (maxRetriesPerRequest: null) makes queue.add()
+    // hang forever instead of throwing — so never wait on it blindly.
+    if (redisConnection.status !== 'ready') throw new Error(`redis ${redisConnection.status}`);
+    await Promise.race([
+      billingQueue.add('billingEvent', { billingEventId: id }, {
+        jobId: `billing-${id}`, attempts: 5, backoff: { type: 'exponential', delay: 30000 }, removeOnComplete: 1000,
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('enqueue timeout')), 2000)),
+    ]);
   } catch (err) {
     console.error('[billing] enqueue failed (Redis?) — processing inline:', err.message);
     processBillingEvent(id).catch((e) => console.error('[billing] inline processing failed, sweeper will retry:', e.message));
