@@ -1,99 +1,114 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import { AuthProvider, useAuth } from './AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './components/Login';
-import TeacherPortal from './components/TeacherPortal';
-import PrincipalDashboard from './components/PrincipalDashboard';
-import AdminHome from './components/AdminHome';
-import AccountantHome from './components/AccountantHome';
-import SuperAdminHome from './components/SuperAdminHome';
-import FinanceAdmin from './components/FinanceAdmin';
-import AIGrading from './components/AIGrading';
-import SuperAdminLogin from './components/SuperAdminLogin';
-import SuperAdminDashboard from './components/SuperAdminDashboard';
-import ClassManager from './components/ClassManager';
-import SyllabusManager from './components/SyllabusManager';
-import ManageSchool from './components/ManageSchool';
-import Onboarding from './components/Onboarding';
+const TeacherPortal = lazy(() => import('./components/TeacherPortal'));
+const PrincipalDashboard = lazy(() => import('./components/PrincipalDashboard'));
+const AdminHome = lazy(() => import('./components/AdminHome'));
+const AccountantHome = lazy(() => import('./components/AccountantHome'));
+const SuperAdminHome = lazy(() => import('./components/SuperAdminHome'));
+const FinanceAdmin = lazy(() => import('./components/FinanceAdmin'));
+const AIGrading = lazy(() => import('./components/AIGrading'));
+const SuperAdminLogin = lazy(() => import('./components/SuperAdminLogin'));
+const SuperAdminDashboard = lazy(() => import('./components/SuperAdminDashboard'));
+const ClassManager = lazy(() => import('./components/ClassManager'));
+const SyllabusManager = lazy(() => import('./components/SyllabusManager'));
+const ManageSchool = lazy(() => import('./components/ManageSchool'));
+const Onboarding = lazy(() => import('./components/Onboarding'));
 import Index from './components/Index';
-import Team from './components/Team';
-import Legal from './components/Legal';
-import Features from './components/Features';
-import Pricing from './components/Pricing';
-import Faq from './components/Faq';
-import TeacherWhatsAppDemo from './components/TeacherWhatsAppDemo';
-import SuperAdminBilling from './components/SuperAdminBilling';
-import AdminAttendance from './components/AdminAttendance';
-import ClassNotesComposer from './components/ClassNotesComposer';
-import StaffBroadcast from './components/StaffBroadcast';
-import AdminPayroll from './components/AdminPayroll';
-import AdminTransport from './components/AdminTransport';
-import StudentTutor from './components/StudentTutor';
-import StudentHome from './components/StudentHome';
-import AdminReports from './components/AdminReports';
-import AdminSettings from './components/AdminSettings';
-import AdminCommunications from './components/AdminCommunications';
-import AdminMessages from './components/AdminMessages';
-import AdminBilling from './components/AdminBilling';
-import FeeCollectionHub from './components/FeeCollectionHub';
-import StudentHomework from './components/StudentHomework';
-import StudentNotes from './components/StudentNotes';
-import StudentProgress from './components/StudentProgress';
-import StudentResults from './components/StudentResults';
-import StudentRewards from './components/StudentRewards';
-import StudentLibrary from './components/StudentLibrary';
+const Team = lazy(() => import('./components/Team'));
+const Legal = lazy(() => import('./components/Legal'));
+const Features = lazy(() => import('./components/Features'));
+const Pricing = lazy(() => import('./components/Pricing'));
+const Faq = lazy(() => import('./components/Faq'));
+const TeacherWhatsAppDemo = lazy(() => import('./components/TeacherWhatsAppDemo'));
+const SuperAdminBilling = lazy(() => import('./components/SuperAdminBilling'));
+const AdminAttendance = lazy(() => import('./components/AdminAttendance'));
+const ClassNotesComposer = lazy(() => import('./components/ClassNotesComposer'));
+const StaffBroadcast = lazy(() => import('./components/StaffBroadcast'));
+const AdminPayroll = lazy(() => import('./components/AdminPayroll'));
+const AdminTransport = lazy(() => import('./components/AdminTransport'));
+const StudentTutor = lazy(() => import('./components/StudentTutor'));
+const StudentHome = lazy(() => import('./components/StudentHome'));
+const AdminReports = lazy(() => import('./components/AdminReports'));
+const AdminSettings = lazy(() => import('./components/AdminSettings'));
+const AdminCommunications = lazy(() => import('./components/AdminCommunications'));
+const AdminMessages = lazy(() => import('./components/AdminMessages'));
+const AdminBilling = lazy(() => import('./components/AdminBilling'));
+const FeeCollectionHub = lazy(() => import('./components/FeeCollectionHub'));
+const StudentHomework = lazy(() => import('./components/StudentHomework'));
+const StudentNotes = lazy(() => import('./components/StudentNotes'));
+const StudentProgress = lazy(() => import('./components/StudentProgress'));
+const StudentResults = lazy(() => import('./components/StudentResults'));
+const StudentRewards = lazy(() => import('./components/StudentRewards'));
+const StudentLibrary = lazy(() => import('./components/StudentLibrary'));
 import AdminShell from './components/AdminShell';
 import AccountantShell from './components/AccountantShell';
 import SuperAdminShell from './components/SuperAdminShell';
 import OperatorShell from './components/OperatorShell';
-import OpsOverview from './components/ops/OpsOverview';
-import ExceptionInbox from './components/ops/ExceptionInbox';
-import { AutomationsList, AutomationDetail } from './components/ops/Automations';
-import AuditLog from './components/ops/AuditLog';
-import OpsSettings from './components/ops/OpsSettings';
-import AdminStaffLeave from './components/AdminStaffLeave';
-import TeacherLeave from './components/TeacherLeave';
-import MyPayslips from './components/MyPayslips';
-import AdminTimetable from './components/AdminTimetable';
-import TeacherLessonPlans from './components/TeacherLessonPlans';
-import AdminLessonPlans from './components/AdminLessonPlans';
-import AdminEventCalendar from './components/AdminEventCalendar';
-import AdminLibrary from './components/AdminLibrary';
-import TransportPayouts from './components/TransportPayouts';
-import AdminActivities from './components/AdminActivities';
-import StudentActivities from './components/StudentActivities';
-import SuperAdminAiVoiceTutor from './components/SuperAdminAiVoiceTutor';
-import StudentProfile from './components/StudentProfile';
-import AdminOptionalSubjects from './components/AdminOptionalSubjects';
-import AdminStudentLeave from './components/AdminStudentLeave';
-import StudentLeave from './components/StudentLeave';
-import AdmissionsPipeline from './components/admissions/AdmissionsPipeline';
-import EnquiryDetail from './components/admissions/EnquiryDetail';
-import VisitSlots from './components/admissions/VisitSlots';
-import AdmissionSettings from './components/admissions/AdmissionSettings';
-import PublicAdmissionEnquiry from './components/PublicAdmissionEnquiry';
-import ParentMessages from './components/parents/ParentMessages';
-import SubstitutionBoard from './components/staff/SubstitutionBoard';
-import IssuedCertificates from './components/IssuedCertificates';
-import PublicCertificateVerify from './components/PublicCertificateVerify';
-import AdminBulkUpload from './components/AdminBulkUpload';
-import AdminCertificates from './components/AdminCertificates';
-import AdminDocumentRequests from './components/AdminDocumentRequests';
-import StudentCertificateRequest from './components/StudentCertificateRequest';
-import MarksEntry from './components/MarksEntry';
-import ReportCards from './components/ReportCards';
-import StudentAttendance from './components/StudentAttendance';
+const OpsOverview = lazy(() => import('./components/ops/OpsOverview'));
+const ExceptionInbox = lazy(() => import('./components/ops/ExceptionInbox'));
+const AutomationsList = lazy(() => import('./components/ops/Automations').then((m) => ({ default: m.AutomationsList })));
+const AutomationDetail = lazy(() => import('./components/ops/Automations').then((m) => ({ default: m.AutomationDetail })));
+const AuditLog = lazy(() => import('./components/ops/AuditLog'));
+const OpsSettings = lazy(() => import('./components/ops/OpsSettings'));
+const AdminStaffLeave = lazy(() => import('./components/AdminStaffLeave'));
+const TeacherLeave = lazy(() => import('./components/TeacherLeave'));
+const MyPayslips = lazy(() => import('./components/MyPayslips'));
+const AdminTimetable = lazy(() => import('./components/AdminTimetable'));
+const TeacherLessonPlans = lazy(() => import('./components/TeacherLessonPlans'));
+const AdminLessonPlans = lazy(() => import('./components/AdminLessonPlans'));
+const AdminEventCalendar = lazy(() => import('./components/AdminEventCalendar'));
+const AdminLibrary = lazy(() => import('./components/AdminLibrary'));
+const TransportPayouts = lazy(() => import('./components/TransportPayouts'));
+const AdminActivities = lazy(() => import('./components/AdminActivities'));
+const StudentActivities = lazy(() => import('./components/StudentActivities'));
+const SuperAdminAiVoiceTutor = lazy(() => import('./components/SuperAdminAiVoiceTutor'));
+const StudentProfile = lazy(() => import('./components/StudentProfile'));
+const AdminOptionalSubjects = lazy(() => import('./components/AdminOptionalSubjects'));
+const AdminStudentLeave = lazy(() => import('./components/AdminStudentLeave'));
+const StudentLeave = lazy(() => import('./components/StudentLeave'));
+const AdmissionsPipeline = lazy(() => import('./components/admissions/AdmissionsPipeline'));
+const EnquiryDetail = lazy(() => import('./components/admissions/EnquiryDetail'));
+const VisitSlots = lazy(() => import('./components/admissions/VisitSlots'));
+const AdmissionSettings = lazy(() => import('./components/admissions/AdmissionSettings'));
+const PublicAdmissionEnquiry = lazy(() => import('./components/PublicAdmissionEnquiry'));
+const ParentMessages = lazy(() => import('./components/parents/ParentMessages'));
+const SubstitutionBoard = lazy(() => import('./components/staff/SubstitutionBoard'));
+const IssuedCertificates = lazy(() => import('./components/IssuedCertificates'));
+const PublicCertificateVerify = lazy(() => import('./components/PublicCertificateVerify'));
+const AdminBulkUpload = lazy(() => import('./components/AdminBulkUpload'));
+const AdminCertificates = lazy(() => import('./components/AdminCertificates'));
+const AdminDocumentRequests = lazy(() => import('./components/AdminDocumentRequests'));
+const StudentCertificateRequest = lazy(() => import('./components/StudentCertificateRequest'));
+const MarksEntry = lazy(() => import('./components/MarksEntry'));
+const ReportCards = lazy(() => import('./components/ReportCards'));
+const StudentAttendance = lazy(() => import('./components/StudentAttendance'));
 
 // Every role now has its own sidebar shell (matches the approved Lovable
 // designs) — Admin/Accountant/Student/Super Admin pages render inside their
 // shell, wrapped once here so individual page components stay shell-agnostic.
 // Teacher Portal intentionally has no shell — it's the deliberately minimal
 // WhatsApp-first surface, not meant to carry the full sidebar chrome.
+//
+// Pages are code-split with React.lazy (one chunk per page), so the first load
+// only downloads the landing page, login and the shells. The Suspense boundary
+// sits inside the shell, so the sidebar stays put while a page chunk loads.
+function PageLoader() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center" role="status" aria-label="Loading">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-terracotta border-t-transparent" />
+    </div>
+  );
+}
+
 const inShell = (Shell, Page) => (
   <Shell>
-    <Page />
+    <Suspense fallback={<PageLoader />}>
+      <Page />
+    </Suspense>
   </Shell>
 );
 
@@ -123,6 +138,7 @@ function AppRoutes() {
   return (
     <BrowserRouter>
       <ScrollToTop />
+      <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path="/" element={<Index />} />
         <Route path="/team" element={<Team />} />
@@ -216,6 +232,7 @@ function AppRoutes() {
 
         <Route path="*" element={<HomeRedirect />} />
       </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

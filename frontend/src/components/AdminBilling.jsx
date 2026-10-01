@@ -6,15 +6,21 @@ const INR = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFract
 const P = (paise) => INR(Number(paise || 0) / 100);
 const dateIN = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 
+// Load Razorpay Checkout once and share the promise, so the billing page can
+// warm it up on mount and the "Subscribe" click never waits on the script.
+let razorpayPromise = null;
 function loadRazorpay() {
   if (window.Razorpay) return Promise.resolve(true);
-  return new Promise((resolve) => {
+  if (razorpayPromise) return razorpayPromise;
+  razorpayPromise = new Promise((resolve) => {
     const s = document.createElement('script');
     s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    s.async = true;
     s.onload = () => resolve(true);
-    s.onerror = () => resolve(false);
+    s.onerror = () => { razorpayPromise = null; s.remove(); resolve(false); };
     document.body.appendChild(s);
   });
+  return razorpayPromise;
 }
 
 function UsageRow({ label, used, limit }) {
@@ -82,9 +88,12 @@ function CheckoutModal({ open, onClose, planCode, cycle, onDone }) {
   const pay = async () => {
     setError(''); setPhase('paying');
     try {
-      const ok = await loadRazorpay();
+      // Script load and checkout creation run in parallel instead of back-to-back.
+      const [ok, res] = await Promise.all([
+        loadRazorpay(),
+        apiRequest('/api/billing/checkout', { method: 'POST', body: { plan: planCode, cycle } }),
+      ]);
       if (!ok) throw new Error('Could not load Razorpay. Check your connection and try again.');
-      const res = await apiRequest('/api/billing/checkout', { method: 'POST', body: { plan: planCode, cycle } });
       const rzp = new window.Razorpay({
         ...res.checkout,
         theme: { color: '#B5532F' },
@@ -204,7 +213,7 @@ export default function AdminBilling() {
       setData(b); setInvoices(inv); setError('');
     } catch (err) { setError(err.message); }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); loadRazorpay(); }, []);
 
   const cancel = async () => {
     if (!window.confirm('Cancel auto-renewal? You keep full access until the end of the current billing period.')) return;
