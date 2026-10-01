@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiRequest } from '../api';
 import FinanceAdmin, { StudentPicker } from './FinanceAdmin';
 
@@ -10,7 +11,10 @@ const TABS = [
 ];
 
 export default function FeeCollectionHub() {
-  const [tab, setTab] = useState('manual');
+  // ?tab=whatsapp|online deep-links straight to a tab (used by notifications).
+  const [params, setParams] = useSearchParams();
+  const tab = TABS.some((t) => t.key === params.get('tab')) ? params.get('tab') : 'manual';
+  const setTab = (key) => setParams(key === 'manual' ? {} : { tab: key }, { replace: true });
   return (
     <div className="space-y-4">
       <div>

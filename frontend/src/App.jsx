@@ -9,7 +9,6 @@ const PrincipalDashboard = lazy(() => import('./components/PrincipalDashboard'))
 const AdminHome = lazy(() => import('./components/AdminHome'));
 const AccountantHome = lazy(() => import('./components/AccountantHome'));
 const SuperAdminHome = lazy(() => import('./components/SuperAdminHome'));
-const FinanceAdmin = lazy(() => import('./components/FinanceAdmin'));
 const AIGrading = lazy(() => import('./components/AIGrading'));
 const SuperAdminLogin = lazy(() => import('./components/SuperAdminLogin'));
 const SuperAdminDashboard = lazy(() => import('./components/SuperAdminDashboard'));
@@ -175,7 +174,8 @@ function AppRoutes() {
         <Route path="/certificates/verify/:code" element={<PublicCertificateVerify />} />
         <Route path="/dashboard" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminHome)}</ProtectedRoute>} />
         <Route path="/dashboard-alerts" element={<ProtectedRoute principalOnly>{inShell(AdminShell, PrincipalDashboard)}</ProtectedRoute>} />
-        <Route path="/finance" element={<ProtectedRoute principalOnly>{inShell(AdminShell, FinanceAdmin)}</ProtectedRoute>} />
+        {/* Principal gets the same Fee Collection hub as the accountant: manual entry, WhatsApp cash-slip queue and online payment links. */}
+        <Route path="/finance" element={<ProtectedRoute principalOnly>{inShell(AdminShell, FeeCollectionHub)}</ProtectedRoute>} />
         <Route path="/classes" element={<ProtectedRoute principalOnly>{inShell(AdminShell, ClassManager)}</ProtectedRoute>} />
         <Route path="/syllabus" element={<ProtectedRoute principalOnly>{inShell(AdminShell, SyllabusManager)}</ProtectedRoute>} />
         <Route path="/admin/manage" element={<ProtectedRoute principalOnly>{inShell(AdminShell, ManageSchool)}</ProtectedRoute>} />
