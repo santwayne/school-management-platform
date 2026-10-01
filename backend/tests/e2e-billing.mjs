@@ -19,7 +19,7 @@ const srv = spawn('node', ['server.js'], {
   env: { ...process.env, DATABASE_URL: DB, JWT_SECRET: 'jwt', PORT: '5055', REDIS_URL: 'redis://127.0.0.1:6390',
     RAZORPAY_API_BASE: 'http://127.0.0.1:9999/v1', RAZORPAY_KEY_ID: 'rzp_test_x', RAZORPAY_KEY_SECRET: 'ks',
     RAZORPAY_WEBHOOK_SECRET: SECRET, RAZORPAY_PLAN_ID_STARTER: 'plan_s', RAZORPAY_PLAN_ID_GROWTH: 'plan_g', RAZORPAY_PLAN_ID_DISTRICT: 'plan_d',
-    BILLING_SWEEP_MS: '600000' },
+    BILLING_SWEEP_MS: '600000', SEED_DEMO_DATA: 'true' },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let log = '';
