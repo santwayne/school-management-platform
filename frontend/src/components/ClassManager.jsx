@@ -16,6 +16,11 @@ export default function ClassManager() {
   const [parentPhone, setParentPhone] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  // Errors from the Add Class / Subject / Student forms show next to that form,
+  // not at the top of the page where they're easy to miss.
+  const [formError, setFormError] = useState({ form: null, message: '' });
+  const showFormError = (form, message) => setFormError({ form, message });
+  const clearFormError = () => setFormError({ form: null, message: '' });
   // The PIN is only ever returned once, right at enrollment (only its bcrypt
   // hash is stored after that) - shown here until dismissed so it isn't lost
   // the moment the "Student enrolled" toast disappears.
@@ -77,25 +82,25 @@ export default function ClassManager() {
 
   const handleAddClass = async (e) => {
     e.preventDefault();
-    setError('');
+    clearFormError();
     try {
       await apiRequest('/api/academics/classes', { method: 'POST', body: { name: newClass } });
       setNewClass('');
       loadBaseData();
     } catch (err) {
-      setError(err.message);
+      showFormError('class', err.message);
     }
   };
 
   const handleAddSubject = async (e) => {
     e.preventDefault();
-    setError('');
+    clearFormError();
     try {
       await apiRequest('/api/academics/subjects', { method: 'POST', body: { name: newSubject } });
       setNewSubject('');
       loadBaseData();
     } catch (err) {
-      setError(err.message);
+      showFormError('subject', err.message);
     }
   };
 
@@ -149,14 +154,14 @@ export default function ClassManager() {
 
   const handleAddStudent = async (e) => {
     e.preventDefault();
-    setError('');
+    clearFormError();
     // Parent phone is optional here — only validate/normalize when one was
     // actually typed in, don't block enrolling a student with no parent yet.
     let normalizedPhone = '';
     if (parentPhone.trim()) {
       normalizedPhone = normalizePhone(parentPhone);
       if (!normalizedPhone) {
-        setError('Enter a valid parent mobile number (10 digits, optionally with +91), or leave it blank.');
+        showFormError('student', 'Enter a valid parent mobile number (10 digits, optionally with +91), or leave it blank.');
         return;
       }
     }
@@ -172,7 +177,7 @@ export default function ClassManager() {
       loadRoster();
       loadParents();
     } catch (err) {
-      setError(err.message);
+      showFormError('student', err.message);
     }
   };
 
@@ -274,12 +279,14 @@ export default function ClassManager() {
             <h2 className="text-lg font-semibold text-ink">Add Class</h2>
             <input type="text" placeholder="e.g. Class 8A" value={newClass} onChange={(e) => setNewClass(e.target.value)} required className="w-full p-2 border text-sm rounded" />
             <button type="submit" className="w-full py-2 bg-terracotta hover:bg-terracotta-deep text-white rounded text-sm font-medium">Create Class</button>
+            {formError.form === 'class' && <p role="alert" className="text-sm text-destructive">{formError.message}</p>}
           </form>
 
           <form onSubmit={handleAddSubject} className="bg-white p-5 border rounded-lg shadow-sm space-y-3">
             <h2 className="text-lg font-semibold text-ink">Add Subject</h2>
             <input type="text" placeholder="e.g. Mathematics" value={newSubject} onChange={(e) => setNewSubject(e.target.value)} required className="w-full p-2 border text-sm rounded" />
             <button type="submit" className="w-full py-2 bg-terracotta hover:bg-terracotta-deep text-white rounded text-sm font-medium">Create Subject</button>
+            {formError.form === 'subject' && <p role="alert" className="text-sm text-destructive">{formError.message}</p>}
           </form>
 
           <form onSubmit={handleAddStudent} className="bg-white p-5 border rounded-lg shadow-sm space-y-3">
@@ -290,6 +297,7 @@ export default function ClassManager() {
             <input type="text" placeholder="Full Name" value={studentName} onChange={(e) => setStudentName(e.target.value)} required className="w-full p-2 border text-sm rounded" />
             <input type="text" placeholder="Parent Mobile (optional)" value={parentPhone} onChange={(e) => setParentPhone(e.target.value)} className="w-full p-2 border text-sm rounded" />
             <button type="submit" className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-sm font-medium">Enroll Student</button>
+            {formError.form === 'student' && <p role="alert" className="text-sm text-destructive">{formError.message}</p>}
           </form>
 
           <div className="bg-white p-5 border rounded-lg shadow-sm space-y-2">

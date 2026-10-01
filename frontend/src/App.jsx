@@ -127,6 +127,16 @@ function HomeRedirect() {
   return <Navigate to={homeFor(user.role)} replace />;
 }
 
+// Accountants get the hub in their own shell; a principal who lands on the
+// accountant URL (old bookmark/link) goes to the same hub at /finance instead
+// of being bounced to the dashboard.
+function FeeCollectionRoute() {
+  const { user } = useAuth();
+  const { search } = useLocation();
+  if (user?.role === 'principal') return <Navigate to={`/finance${search}`} replace />;
+  return <ProtectedRoute accountantOnly>{inShell(AccountantShell, FeeCollectionHub)}</ProtectedRoute>;
+}
+
 function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
@@ -208,7 +218,7 @@ function AppRoutes() {
         <Route path="/report-cards" element={<ProtectedRoute teacherOrPrincipalOnly>{inShell(AdminShell, ReportCards)}</ProtectedRoute>} />
 
         <Route path="/accountant" element={<ProtectedRoute accountantOnly>{inShell(AccountantShell, AccountantHome)}</ProtectedRoute>} />
-        <Route path="/accountant/fee-collection" element={<ProtectedRoute accountantOnly>{inShell(AccountantShell, FeeCollectionHub)}</ProtectedRoute>} />
+        <Route path="/accountant/fee-collection" element={<FeeCollectionRoute />} />
         <Route path="/accountant/payroll" element={<ProtectedRoute accountantOnly>{inShell(AccountantShell, AdminPayroll)}</ProtectedRoute>} />
 
         <Route path="/student" element={<ProtectedRoute studentOnly><StudentHome /></ProtectedRoute>} />

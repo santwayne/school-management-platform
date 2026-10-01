@@ -35,7 +35,11 @@ router.get('/', requireAuth, requireFinance, async (req, res) => {
       ? (await pool.query(`SELECT billing_cycle, status, cancel_at_period_end, current_period_end FROM subscriptions WHERE id = $1`, [s.current_subscription_id])).rows[0]
       : null;
     const awaiting = (await pool.query(
-      `SELECT id, plan_code, kind, status FROM subscriptions WHERE school_id = $1 AND status IN ('created', 'authenticated') ORDER BY id DESC LIMIT 1`,
+      // An unpaid checkout ('created') only counts as "awaiting payment" for 30
+      // minutes — a closed Razorpay window shouldn't leave the banner up for good.
+      `SELECT id, plan_code, kind, status FROM subscriptions
+       WHERE school_id = $1 AND (status = 'authenticated' OR (status = 'created' AND created_at > NOW() - INTERVAL '30 minutes'))
+       ORDER BY id DESC LIMIT 1`,
       [schoolId])).rows[0] || null;
 
     res.json({

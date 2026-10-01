@@ -415,6 +415,7 @@ function PayrollTab() {
   // teacher_salary, so a null monthly_amount there is exactly "no salary
   // set" — reused here instead of adding a second endpoint for the same data.
   const [missingSalary, setMissingSalary] = useState([]);
+  const [notice, setNotice] = useState('');
 
   const period = `${year}-${String(month + 1).padStart(2, '0')}`;
 
@@ -474,8 +475,14 @@ function PayrollTab() {
       if (!proceed) return;
     }
     setError('');
+    setNotice('');
     try {
-      await apiRequest('/api/payroll/run', { method: 'POST', body: { period } });
+      const r = await apiRequest('/api/payroll/run', { method: 'POST', body: { period } });
+      setNotice(
+        r.refreshed_count
+          ? `${r.generated_count} new entr${r.generated_count === 1 ? 'y' : 'ies'}; ${r.refreshed_count} unpaid entr${r.refreshed_count === 1 ? 'y' : 'ies'} updated to the current salary.`
+          : `${r.generated_count} new entr${r.generated_count === 1 ? 'y' : 'ies'}. Unpaid amounts already match current salaries.`
+      );
       load();
     } catch (err) {
       setError(err.message);
@@ -511,9 +518,11 @@ function PayrollTab() {
           <Play className="w-4 h-4" /> Run payroll for {MONTHS[month]}
         </button>
         <span className="text-xs text-ink-soft inline-flex items-center gap-1">
-          <Info className="w-3 h-3" /> Re-running won't create duplicate entries.
+          <Info className="w-3 h-3" /> Re-running never duplicates entries — it updates unpaid ones to the current salary. Paid entries don't change.
         </span>
       </div>
+
+      {notice && <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-900">{notice}</div>}
 
       {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
 
