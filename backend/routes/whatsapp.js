@@ -284,6 +284,13 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
         }).catch((err) => console.error('[WhatsApp] admission assistant error:', err.message));
       } else {
         console.log(`[Admissions] Could not tell which school ${fromPhone} is enquiring about — no admission code in message and several schools are active.`);
+        // Don't leave the sender without a reply: they wrote first, so a
+        // free-form answer inside the 24h window is allowed. Ask for the
+        // school's admission code so the next message can be routed.
+        await sendTextMessage(
+          fromPhone,
+          'Thank you for your message. To connect you with the right school, please reply with the admission code shared by your school (it is printed on the school\'s admission notice or QR code).'
+        ).catch((err) => console.error('[WhatsApp] admission fallback reply failed:', err.message));
       }
       return res.sendStatus(200);
     }
