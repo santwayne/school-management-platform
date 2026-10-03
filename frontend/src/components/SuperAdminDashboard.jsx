@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiRequest } from '../api';
+import SuperAdminWhatsApp from './SuperAdminWhatsApp';
 
 const emptyForm = {
   name: '',
@@ -9,12 +10,19 @@ const emptyForm = {
   principal_email: '',
   principal_phone: '',
   principal_password: '',
+  // Optional — the school's WhatsApp can also be connected later from the list.
+  whatsapp_number: '',
+  whatsapp_phone_number_id: '',
+  whatsapp_waba_id: '',
+  whatsapp_access_token: '',
 };
 
 export default function SuperAdminDashboard() {
   const [schools, setSchools] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [demoCreds, setDemoCreds] = useState(null);
+  const [whatsappSchool, setWhatsappSchool] = useState(null);
+  const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   // P-14: toggleStatus had a couple seconds of round-trip with no loading
@@ -42,8 +50,14 @@ export default function SuperAdminDashboard() {
     setSubmitting(true);
     try {
       // NOTE: apiRequest already JSON.stringifies the body — pass the plain object.
-      await apiRequest('/api/super-admin/schools', { method: 'POST', body: form });
+      setNotice('');
+      const out = await apiRequest('/api/super-admin/schools', { method: 'POST', body: form });
       setForm(emptyForm);
+      if (out.whatsapp?.connected) {
+        setNotice(`School created and WhatsApp connected. ${out.whatsapp.email?.sent ? `Principal emailed at ${out.whatsapp.email.to.join(', ')}.` : `Principal was NOT emailed: ${out.whatsapp.email?.reason}`}`);
+      } else if (out.whatsapp) {
+        setError(`School created, but WhatsApp was not connected: ${out.whatsapp.error} Use the WhatsApp button in the list to try again.`);
+      }
       fetchSchools();
     } catch (err) {
       setError(err.message);
@@ -98,6 +112,8 @@ export default function SuperAdminDashboard() {
     <div className="p-6 max-w-7xl mx-auto space-y-8">
       <h1 className="font-display text-3xl font-bold text-ink">Super Admin — Schools</h1>
       {error && <div className="p-3 bg-red-100 text-destructive rounded">{error}</div>}
+      {notice && <div className="p-3 bg-emerald-50 text-emerald-800 rounded">{notice}</div>}
+      {whatsappSchool && <SuperAdminWhatsApp school={whatsappSchool} onClose={() => setWhatsappSchool(null)} onChanged={fetchSchools} />}
 
       {demoCreds && (
         <div className="p-4 bg-yellow-50 border border-yellow-300 rounded text-sm relative">
@@ -123,6 +139,13 @@ export default function SuperAdminDashboard() {
           <input type="email" name="principal-email-new" placeholder="Principal Email" autoComplete="off" value={form.principal_email} onChange={(e) => setForm({ ...form, principal_email: e.target.value })} required className="w-full p-2 border rounded" />
           <input type="text" placeholder="Principal Phone" autoComplete="off" value={form.principal_phone} onChange={(e) => setForm({ ...form, principal_phone: e.target.value })} required className="w-full p-2 border rounded" />
           <input type="password" name="principal-password-new" placeholder="Principal Password" autoComplete="new-password" value={form.principal_password} onChange={(e) => setForm({ ...form, principal_password: e.target.value })} required className="w-full p-2 border rounded" />
+          <hr />
+          <h3 className="text-sm font-medium text-ink-soft">School's WhatsApp number <span className="font-normal">(optional — can be added later)</span></h3>
+          <input type="text" placeholder="WhatsApp Business number, e.g. +91 98765 43210" autoComplete="off" value={form.whatsapp_number} onChange={(e) => setForm({ ...form, whatsapp_number: e.target.value })} className="w-full p-2 border rounded" />
+          <input type="text" placeholder="Phone Number ID (Meta)" autoComplete="off" value={form.whatsapp_phone_number_id} onChange={(e) => setForm({ ...form, whatsapp_phone_number_id: e.target.value })} className="w-full p-2 border rounded" />
+          <input type="text" placeholder="WhatsApp Business Account ID (optional)" autoComplete="off" value={form.whatsapp_waba_id} onChange={(e) => setForm({ ...form, whatsapp_waba_id: e.target.value })} className="w-full p-2 border rounded" />
+          <input type="password" name="wa-access-token-create" placeholder="Permanent access token" autoComplete="new-password" value={form.whatsapp_access_token} onChange={(e) => setForm({ ...form, whatsapp_access_token: e.target.value })} className="w-full p-2 border rounded" />
+          <p className="text-xs text-ink-soft">Once the number and keys are verified, the principal is emailed that WhatsApp is connected.</p>
           <button type="submit" disabled={submitting} className="w-full py-2 bg-terracotta text-white rounded font-medium hover:bg-terracotta-deep disabled:opacity-50">
             {submitting ? 'Creating...' : 'Create School'}
           </button>
@@ -134,6 +157,7 @@ export default function SuperAdminDashboard() {
               <tr>
                 <th className="px-6 py-4">School</th>
                 <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">WhatsApp</th>
                 <th className="px-6 py-4">Counts</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
@@ -151,6 +175,13 @@ export default function SuperAdminDashboard() {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-xs">
+                    {s.whatsapp_connected ? (
+                      <span className="text-green-800 font-medium">{s.whatsapp_number}</span>
+                    ) : (
+                      <span className="text-amber-700 font-medium">Not connected</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-xs">
                     <div>Teachers: <strong className="text-ink">{s.teacher_count}</strong></div>
                     <div>Students: <strong className="text-ink">{s.student_count}</strong></div>
                   </td>
@@ -161,6 +192,9 @@ export default function SuperAdminDashboard() {
                       className={`text-xs px-2 py-1 rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed ${s.status === 'active' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}
                     >
                       {statusBusyId === s.id ? '…' : s.status === 'active' ? 'Suspend' : 'Activate'}
+                    </button>
+                    <button onClick={() => setWhatsappSchool(s)} className="text-xs px-2 py-1 rounded bg-green-100 text-green-800 font-medium">
+                      WhatsApp
                     </button>
                     <button onClick={() => generateDemo(s.id)} className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800 font-medium">
                       Demo accounts

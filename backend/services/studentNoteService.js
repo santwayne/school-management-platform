@@ -18,7 +18,7 @@ export async function sendStudentNoteNow({ studentId, testId }) {
   );
   if (submissions.rowCount === 0) return { skipped: 'no_submissions' };
 
-  const studentRes = await pool.query(`SELECT s.id, s.name, s.class_id FROM students s WHERE s.id = $1`, [studentId]);
+  const studentRes = await pool.query(`SELECT s.id, s.name, s.class_id, s.school_id FROM students s WHERE s.id = $1`, [studentId]);
   const student = studentRes.rows[0];
   if (!student) return { skipped: 'student_not_found' };
 
@@ -70,7 +70,7 @@ export async function sendStudentNoteNow({ studentId, testId }) {
   }
 
   try {
-    await sendTextMessage(teacher.phone, `📋 Student note — ${student.name}\n\n${note}`);
+    await sendTextMessage(student.school_id, teacher.phone, `📋 Student note — ${student.name}\n\n${note}`);
     console.log(`[studentNoteService] Sent note for ${student.name} to ${teacher.name}`);
     return { sent: true, teacherId: teacher.id };
   } catch (err) {

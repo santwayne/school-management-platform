@@ -62,7 +62,7 @@ async function handleDailyDigest() {
 
     for (const contact of contacts.rows) {
       try {
-        await sendTemplateMessage(contact.whatsapp_number, LIBRARY_DIGEST_TEMPLATE, 'en', [
+        await sendTemplateMessage(schoolId, contact.whatsapp_number, LIBRARY_DIGEST_TEMPLATE, 'en', [
           String(dueSoon),
           String(overdue),
         ]);

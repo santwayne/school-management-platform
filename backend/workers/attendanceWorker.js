@@ -26,7 +26,8 @@ const attendanceWorker = new Worker(
 async function handleSendNotification({ attendanceId, parentId, parentPhone, parentLanguage, studentName }) {
   let status = 'SENT';
   try {
-    await sendTemplateMessage(parentPhone, ABSENCE_TEMPLATE_NAME, 'en', [
+    const school = await pool.query('SELECT school_id FROM parents WHERE id = $1', [parentId]);
+    await sendTemplateMessage(school.rows[0]?.school_id, parentPhone, ABSENCE_TEMPLATE_NAME, 'en', [
       studentName,
     ]);
   } catch (err) {

@@ -556,7 +556,7 @@ async function logParentMessage({ parent, studentId = null, direction, body, int
 export async function replyToParent(parent, body, { studentId = null, intent = null, handledBy = 'assistant' } = {}) {
   let ok = true;
   try {
-    await sendTextMessage(String(parent.phone).replace(/^\+/, ''), body);
+    await sendTextMessage(parent.school_id, String(parent.phone).replace(/^\+/, ''), body);
   } catch (err) {
     ok = false;
     console.error(`[parentAssistant] send failed for parent ${parent.id}:`, err.response?.data?.error?.message || err.message);

@@ -2531,3 +2531,27 @@ CREATE TABLE IF NOT EXISTS blog_posts (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_blog_posts_created ON blog_posts(created_at DESC);
+
+-- ---------- Per-school WhatsApp Business connection (added by Super Admin) ----------
+-- Each school sends from its own number. The number + Phone Number ID stay on
+-- school_settings (already there); the access token lives in its own table so
+-- it can never ride along on a `SELECT * FROM school_settings`, and is stored
+-- encrypted (utils/secretBox.js). Only a Super Admin can write these.
+CREATE TABLE IF NOT EXISTS school_whatsapp_credentials (
+    school_id INT PRIMARY KEY REFERENCES schools(id) ON DELETE CASCADE,
+    access_token_enc TEXT NOT NULL,
+    token_hint VARCHAR(20),
+    waba_id VARCHAR(40),
+    connected_by INT REFERENCES super_admins(id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_verified_name VARCHAR(255);
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_connected_at TIMESTAMP;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_connection_emailed_at TIMESTAMP;
+-- Before this, whatsapp_connected only meant "the principal verified a number
+-- by OTP" while every school actually sent from one shared platform number.
+-- A school is connected now only if a Super Admin has saved its own keys.
+UPDATE school_settings ss SET whatsapp_connected = FALSE
+ WHERE whatsapp_connected = TRUE
+   AND NOT EXISTS (SELECT 1 FROM school_whatsapp_credentials c WHERE c.school_id = ss.school_id);

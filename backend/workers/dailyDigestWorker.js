@@ -177,7 +177,7 @@ export async function runDailyDigest() {
       let schoolFailed = 0;
       for (const phone of phones) {
         try {
-          await sendTemplateMessage(phone, TEMPLATE, 'en', [
+          await sendTemplateMessage(s.id, phone, TEMPLATE, 'en', [
             sanitizeTemplateParam(facts.school_name, 100),
             line,
             String(facts.open_total),

@@ -6,6 +6,9 @@ import pool from '../config/db.js';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 import { normalizePhone } from '../utils/phone.js';
 import { issueRefreshToken } from '../services/refreshTokenService.js';
+import { connectSchoolWhatsApp, disconnectSchoolWhatsApp, getWhatsAppConnection, emailPrincipalWhatsAppConnected, ConnectionError } from '../services/whatsappConnection.js';
+import { sendTemplateMessage } from '../services/whatsappService.js';
+import { emailConfigured } from '../services/emailService.js';
 
 const router = express.Router();
 
@@ -40,6 +43,9 @@ router.post('/login', loginLimiter, async (req, res) => {
 // Admin: Create School + First Principal (Transaction Pattern)
 router.post('/schools', requireAuth, requireSuperAdmin, async (req, res) => {
   const { name, address, contact_phone, principal_name, principal_email, principal_phone, principal_password } = req.body;
+  // Optional: connect the school's WhatsApp number in the same step.
+  const { whatsapp_number, whatsapp_phone_number_id, whatsapp_access_token, whatsapp_waba_id } = req.body;
+  const wantsWhatsApp = Boolean(whatsapp_number || whatsapp_phone_number_id || whatsapp_access_token);
 
   if (!name || !principal_name || !principal_email || !principal_phone || !principal_password) {
     return res.status(400).json({ error: 'name, principal_name, principal_email, principal_phone, principal_password are required' });
@@ -70,7 +76,24 @@ router.post('/schools', requireAuth, requireSuperAdmin, async (req, res) => {
     );
 
     await client.query('COMMIT');
-    res.status(201).json({ success: true, schoolId });
+
+    // The school exists either way — a wrong key must not undo its creation.
+    // The result tells the Super Admin whether WhatsApp got connected and
+    // whether the principal was emailed, so they can fix it from the list.
+    let whatsapp = null;
+    if (wantsWhatsApp) {
+      try {
+        const out = await connectSchoolWhatsApp({
+          schoolId, whatsappNumber: whatsapp_number, phoneNumberId: whatsapp_phone_number_id,
+          accessToken: whatsapp_access_token, wabaId: whatsapp_waba_id, superAdminId: req.user.super_admin_id,
+        });
+        whatsapp = { connected: true, email: out.email };
+      } catch (waErr) {
+        if (!(waErr instanceof ConnectionError)) console.error('WhatsApp connect during school creation failed:', waErr);
+        whatsapp = { connected: false, error: waErr instanceof ConnectionError ? waErr.message : 'Could not connect WhatsApp — add the keys from the school list.' };
+      }
+    }
+    res.status(201).json({ success: true, schoolId, whatsapp });
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
@@ -86,7 +109,10 @@ router.get('/schools', requireAuth, requireSuperAdmin, async (req, res) => {
       SELECT s.*,
         (SELECT COUNT(*) FROM students WHERE school_id = s.id AND is_demo = FALSE) AS student_count,
         (SELECT COUNT(*) FROM teachers WHERE school_id = s.id AND is_demo = FALSE) AS teacher_count,
-        COALESCE((SELECT voice_tutor_enabled FROM school_settings WHERE school_id = s.id), FALSE) AS voice_tutor_enabled
+        COALESCE((SELECT voice_tutor_enabled FROM school_settings WHERE school_id = s.id), FALSE) AS voice_tutor_enabled,
+        COALESCE((SELECT whatsapp_connected FROM school_settings WHERE school_id = s.id), FALSE) AS whatsapp_connected,
+        (SELECT whatsapp_business_number FROM school_settings WHERE school_id = s.id AND whatsapp_connected) AS whatsapp_number,
+        (SELECT email FROM teachers WHERE school_id = s.id AND role = 'principal' AND COALESCE(is_demo, FALSE) = FALSE ORDER BY id LIMIT 1) AS principal_email
       FROM schools s
       ORDER BY s.created_at DESC
     `);
@@ -206,6 +232,73 @@ router.post('/schools/:id/test-users', requireAuth, requireSuperAdmin, async (re
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
+  }
+});
+
+// ---------- Per-school WhatsApp Business connection ----------
+// Only a Super Admin adds a school's WhatsApp number and keys (Phone Number
+// ID + access token). The principal sees the status read-only and is emailed
+// when the number goes live. The access token is write-only: it is stored
+// encrypted and never returned by any of these routes.
+
+function sendConnectionError(res, err, fallback) {
+  if (err instanceof ConnectionError) return res.status(err.status).json({ error: err.message });
+  console.error(fallback, err);
+  res.status(500).json({ error: fallback });
+}
+
+router.get('/schools/:id/whatsapp', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    res.json({ ...(await getWhatsAppConnection(req.params.id)), email_configured: emailConfigured() });
+  } catch (err) {
+    sendConnectionError(res, err, 'Failed to load WhatsApp connection');
+  }
+});
+
+// Add or replace the number + keys. Keys are checked with Meta first; on
+// success the principal is emailed (pass notify:false to skip).
+router.put('/schools/:id/whatsapp', requireAuth, requireSuperAdmin, async (req, res) => {
+  const { whatsapp_number, phone_number_id, access_token, waba_id, notify } = req.body;
+  try {
+    const out = await connectSchoolWhatsApp({
+      schoolId: req.params.id, whatsappNumber: whatsapp_number, phoneNumberId: phone_number_id,
+      accessToken: access_token, wabaId: waba_id, superAdminId: req.user.super_admin_id, notify: notify !== false,
+    });
+    res.json({ success: true, ...out });
+  } catch (err) {
+    sendConnectionError(res, err, 'Failed to save WhatsApp connection');
+  }
+});
+
+// Re-send the "WhatsApp connected" email (e.g. SMTP was down the first time,
+// or the principal's email address was corrected afterwards).
+router.post('/schools/:id/whatsapp/notify', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const email = await emailPrincipalWhatsAppConnected(req.params.id);
+    res.json({ success: email.sent, email });
+  } catch (err) {
+    sendConnectionError(res, err, 'Failed to send the email');
+  }
+});
+
+// Send Meta's always-approved hello_world template from the school's number
+// to confirm the connection really delivers.  { "to": "+919876543210" }
+router.post('/schools/:id/whatsapp/test', requireAuth, requireSuperAdmin, async (req, res) => {
+  const to = normalizePhone(req.body.to);
+  if (!to) return res.status(400).json({ error: 'to must be a valid mobile number' });
+  try {
+    const result = await sendTemplateMessage(req.params.id, to.replace(/^\+/, ''), 'hello_world', 'en_US', []);
+    res.json({ success: true, wa_message_id: result?.messages?.[0]?.id || null });
+  } catch (err) {
+    res.status(err.code === 'WHATSAPP_NOT_CONNECTED' ? 409 : 502).json({ error: err.response?.data?.error?.message || err.message });
+  }
+});
+
+router.delete('/schools/:id/whatsapp', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    res.json({ success: true, connection: await disconnectSchoolWhatsApp({ schoolId: req.params.id, superAdminId: req.user.super_admin_id }) });
+  } catch (err) {
+    sendConnectionError(res, err, 'Failed to disconnect WhatsApp');
   }
 });
 
