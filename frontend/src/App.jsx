@@ -22,6 +22,9 @@ const Legal = lazy(() => import('./components/Legal'));
 const Features = lazy(() => import('./components/Features'));
 const Pricing = lazy(() => import('./components/Pricing'));
 const Faq = lazy(() => import('./components/Faq'));
+const BlogIndex = lazy(() => import('./components/blog/BlogIndex'));
+const BlogPost = lazy(() => import('./components/blog/BlogPost'));
+const BlogAdmin = lazy(() => import('./components/blog/BlogAdmin'));
 const TeacherWhatsAppDemo = lazy(() => import('./components/TeacherWhatsAppDemo'));
 const SuperAdminBilling = lazy(() => import('./components/SuperAdminBilling'));
 const AdminAttendance = lazy(() => import('./components/AdminAttendance'));
@@ -156,6 +159,10 @@ function AppRoutes() {
         <Route path="/features" element={<Features />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/faq" element={<Faq />} />
+        <Route path="/blog" element={<BlogIndex />} />
+        <Route path="/blog/:slug" element={<BlogPost />} />
+        {/* Standalone blog panel: own login, no ProtectedRoute / AuthContext / dashboard shell. */}
+        <Route path="/blog-admin" element={<BlogAdmin />} />
         <Route path="/demo/teacher-whatsapp" element={<TeacherWhatsAppDemo />} />
         <Route path="/login" element={<Login />} />
         <Route path="/onboarding" element={<Onboarding />} />
