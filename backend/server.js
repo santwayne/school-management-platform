@@ -48,6 +48,7 @@ import payrollRunsRoutes from './routes/payrollRuns.js';
 import substitutionsRoutes from './routes/substitutions.js';
 import parentConversationsRoutes from './routes/parentConversations.js';
 import admissionsRoutes, { publicRouter as publicAdmissionsRoutes } from './routes/admissions.js';
+import { adminRouter as blogAdminRoutes, publicRouter as publicBlogRoutes } from './routes/blog.js';
 import './workers/gpsPollWorker.js';
 import './workers/teacherAttendanceAggregationWorker.js';
 
@@ -142,6 +143,9 @@ app.use('/api/substitutions', substitutionsRoutes);
 app.use('/api/parent-conversations', parentConversationsRoutes);
 app.use('/api/admissions', admissionsRoutes);
 app.use('/api/public/admissions', publicAdmissionsRoutes);
+// Website blog — standalone panel with its own login, separate from every dashboard.
+app.use('/api/blog-admin', blogAdminRoutes);
+app.use('/api/public/blog', publicBlogRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {

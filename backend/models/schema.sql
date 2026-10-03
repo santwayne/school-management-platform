@@ -2512,3 +2512,22 @@ CREATE TABLE IF NOT EXISTS invoices (
     UNIQUE (fy, seq)
 );
 CREATE INDEX IF NOT EXISTS idx_invoices_school ON invoices(school_id, issued_at DESC);
+
+-- ------------------------------------------------------------------
+-- Website blog (waynur.com/blog), managed from the standalone /blog-admin
+-- panel. Not school data: no school_id, and not tied to teachers or
+-- super_admins — see routes/blog.js.
+-- ------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS blog_posts (
+    id SERIAL PRIMARY KEY,
+    slug VARCHAR(120) UNIQUE NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    description TEXT NOT NULL,                    -- sanitised HTML article body
+    meta_title VARCHAR(255) NOT NULL,
+    meta_description VARCHAR(500) NOT NULL DEFAULT '',
+    tags TEXT[] NOT NULL DEFAULT '{}',
+    image_url TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_blog_posts_created ON blog_posts(created_at DESC);

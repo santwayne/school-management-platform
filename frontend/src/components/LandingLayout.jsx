@@ -6,6 +6,7 @@ import logoFull from '../assets/waynur-logo.png';
 const NAV_LINKS = [
   { label: 'Features', to: '/features' },
   { label: 'Pricing', to: '/pricing' },
+  { label: 'Blog', to: '/blog' },
   { label: 'FAQ', to: '/faq' },
   { label: 'Team', to: '/team' },
 ];
@@ -132,6 +133,7 @@ export function LandingFooter() {
             { label: 'Features', to: '/features' },
             { label: 'Pricing', to: '/pricing' },
             { label: 'FAQ', to: '/faq' },
+            { label: 'Blog', to: '/blog' },
             { label: 'School login', to: '/login' },
           ]}
         />
