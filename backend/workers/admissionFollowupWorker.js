@@ -43,7 +43,7 @@ export function hoursUntilNext(plan, sentCount) {
 
 async function sendAndLog(e, template, params, label) {
   try {
-    await sendTemplateMessage(e.phone.replace(/^\+/, ''), template, 'en', params);
+    await sendTemplateMessage(e.school_id, e.phone.replace(/^\+/, ''), template, 'en', params);
     await pool.query(
       `INSERT INTO enquiry_messages (school_id, enquiry_id, direction, body, template_name, sent_by, delivery_status) VALUES ($1,$2,'out',$3,$4,'system','sent')`,
       [e.school_id, e.id, label, template]

@@ -5,17 +5,9 @@ import crypto from 'crypto';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
-import { sendTemplateMessage } from '../services/whatsappService.js';
 import { audit } from '../services/opsService.js';
 import { s3, s3PublicUrl } from '../utils/s3.js';
 
-// Meta requires an approved template for the first outbound message in a
-// conversation window — a brand-new number being verified here has no open
-// session, so a plain sendTextMessage() is guaranteed to be rejected by
-// Meta's API (this was the actual cause of the 502: this route correctly
-// catches the send failure and returns 502, but the send was always going
-// to fail given how it was calling the WhatsApp API).
-const OTP_TEMPLATE = process.env.WHATSAPP_OTP_TEMPLATE || 'verification_code';
 
 const router = express.Router();
 
@@ -42,7 +34,9 @@ router.get('/', requireAuth, async (req, res) => {
       );
     }
     const schoolRes = await pool.query('SELECT name FROM schools WHERE id = $1', [school_id]);
-    res.json({ ...result.rows[0], school_name: schoolRes.rows[0]?.name || null });
+    // Leftovers of the removed OTP flow are never sent to the browser.
+    const { whatsapp_verify_code, whatsapp_verify_expires_at, whatsapp_pending_number, ...settings } = result.rows[0];
+    res.json({ ...settings, school_name: schoolRes.rows[0]?.name || null });
   } catch (err) {
     console.error('Settings fetch error:', err);
     res.status(500).json({ error: 'Failed to fetch settings' });
@@ -72,95 +66,11 @@ router.patch('/branding', requireAuth, requirePrincipal, async (req, res) => {
   }
 });
 
-// Step 1: send a 6-digit code to the number via our own WhatsApp Business
-// API. Nothing is marked "connected" yet — that only happens once the code
-// comes back correctly in /whatsapp/verify below. Previously this route set
-// whatsapp_connected = TRUE the instant someone typed a number in, with no
-// actual proof the number could receive anything.
-router.patch('/whatsapp', requireAuth, requirePrincipal, async (req, res) => {
-  const school_id = req.user.school_id;
-  const { whatsapp_business_number } = req.body;
-  if (!whatsapp_business_number) {
-    return res.status(400).json({ error: 'whatsapp_business_number is required' });
-  }
-  const code = String(crypto.randomInt(100000, 999999));
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-  try {
-    await sendTemplateMessage(whatsapp_business_number, OTP_TEMPLATE, 'en', [code]);
-  } catch (err) {
-    // Surface Meta's actual error instead of a generic 502 — this route's
-    // 502 was reported (QA Group 1 / P-2) as "always fails regardless of
-    // number", which points at a config problem (missing/invalid
-    // WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID, or the
-    // `verification_code` / WHATSAPP_OTP_TEMPLATE template not existing or
-    // not yet Meta-approved) rather than a bad phone number every time.
-    // GET /api/whatsapp/debug-templates already exists to check template
-    // approval status — this at least stops hiding which of those it is.
-    const metaError = err.response?.data?.error;
-    console.error('WhatsApp verification send failed:', metaError ? JSON.stringify(metaError) : err.message);
-    const reason = metaError?.error_user_msg || metaError?.message
-      || (!process.env.WHATSAPP_ACCESS_TOKEN || !process.env.WHATSAPP_PHONE_NUMBER_ID
-        ? 'WhatsApp Business API credentials are not configured on the server.'
-        : `The "${OTP_TEMPLATE}" template may not exist or isn't approved yet for this WhatsApp Business number.`);
-    return res.status(502).json({ error: `Could not send a verification message: ${reason}` });
-  }
-
-  try {
-    const result = await pool.query(
-      `INSERT INTO school_settings (school_id, whatsapp_pending_number, whatsapp_verify_code, whatsapp_verify_expires_at)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (school_id) DO UPDATE SET
-         whatsapp_pending_number = EXCLUDED.whatsapp_pending_number,
-         whatsapp_verify_code = EXCLUDED.whatsapp_verify_code,
-         whatsapp_verify_expires_at = EXCLUDED.whatsapp_verify_expires_at,
-         updated_at = CURRENT_TIMESTAMP
-       RETURNING school_id, whatsapp_pending_number`,
-      [school_id, whatsapp_business_number, code, expiresAt]
-    );
-    res.json({ success: true, pending_number: result.rows[0].whatsapp_pending_number, message: 'Verification code sent via WhatsApp.' });
-  } catch (err) {
-    console.error('WhatsApp settings update error:', err);
-    res.status(500).json({ error: 'Failed to save pending verification' });
-  }
-});
-
-// Step 2: confirm the code — only this flips whatsapp_connected to TRUE.
-router.post('/whatsapp/verify', requireAuth, requirePrincipal, async (req, res) => {
-  const school_id = req.user.school_id;
-  const { code } = req.body;
-  if (!code) return res.status(400).json({ error: 'code is required' });
-
-  try {
-    const { rows } = await pool.query('SELECT * FROM school_settings WHERE school_id = $1', [school_id]);
-    const settings = rows[0];
-    if (!settings?.whatsapp_verify_code || !settings?.whatsapp_pending_number) {
-      return res.status(400).json({ error: 'No verification in progress — request a new code first.' });
-    }
-    if (new Date(settings.whatsapp_verify_expires_at) < new Date()) {
-      return res.status(400).json({ error: 'Code expired — request a new one.' });
-    }
-    if (String(code).trim() !== settings.whatsapp_verify_code) {
-      return res.status(400).json({ error: 'Incorrect code.' });
-    }
-
-    const result = await pool.query(
-      `UPDATE school_settings SET
-         whatsapp_business_number = whatsapp_pending_number,
-         whatsapp_connected = TRUE,
-         whatsapp_pending_number = NULL,
-         whatsapp_verify_code = NULL,
-         whatsapp_verify_expires_at = NULL,
-         updated_at = CURRENT_TIMESTAMP
-       WHERE school_id = $1 RETURNING *`,
-      [school_id]
-    );
-    res.json(result.rows[0]);
-  } catch (err) {
-    console.error('WhatsApp verify error:', err);
-    res.status(500).json({ error: 'Failed to verify WhatsApp number' });
-  }
-});
+// WhatsApp: read-only for the school. The number and its keys are added by
+// the Waynur team (Super Admin → routes/superAdmin.js PUT /schools/:id/whatsapp),
+// and the principal is emailed when the number goes live. The old
+// "type a number + OTP" flow was removed along with the shared platform
+// number it verified against — GET / above returns the status to display.
 
 // Update notification toggles. The frontend flips one toggle at a time
 // (AdminSettings.jsx's toggleNotif sends only { [key]: value }), so the

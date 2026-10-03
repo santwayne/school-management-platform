@@ -77,7 +77,9 @@ import { runBootstrap } from './scripts/autoBootstrap.js';
 
 dotenv.config();
 
-const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET', 'WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID'];
+// WhatsApp keys are no longer global env vars — each school's number and
+// keys are added by a Super Admin and stored per school.
+const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET', 'WHATSAPP_APP_SECRET', 'SMTP_HOST', 'SMTP_USER', 'SMTP_PASS'];
 const missing = REQUIRED_ENV.filter((key) => !process.env[key]);
 if (missing.length) {
   console.warn(`Warning: missing env vars: ${missing.join(', ')} — related features will fail until set.`);

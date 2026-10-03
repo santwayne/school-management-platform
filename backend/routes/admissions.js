@@ -441,12 +441,14 @@ router.put('/knowledge-base', async (req, res) => {
 router.get('/settings', async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT admission_code, public_slug, COALESCE(admissions_open, TRUE) AS admissions_open, COALESCE(admission_followup_days, '1,3,7') AS admission_followup_days, whatsapp_phone_number_id, admission_fee_amount
+      `SELECT admission_code, public_slug, COALESCE(admissions_open, TRUE) AS admissions_open, COALESCE(admission_followup_days, '1,3,7') AS admission_followup_days, whatsapp_phone_number_id, admission_fee_amount,
+              CASE WHEN whatsapp_connected THEN whatsapp_business_number END AS whatsapp_number
        FROM school_settings WHERE school_id = $1`,
       [req.user.school_id]
     );
     const s = r.rows[0] || {};
-    const waNumber = process.env.WHATSAPP_DISPLAY_NUMBER || '';
+    // The school's own connected number (added by the Super Admin).
+    const waNumber = s.whatsapp_number || '';
     res.json({
       ...s,
       // Link to put on the school's website: opens WhatsApp with the school's
@@ -534,7 +536,7 @@ publicRouter.post('/:slug/enquiry', publicLimiter, async (req, res) => {
     //   "Hi {{1}}, thank you for your admission enquiry at {{2}}! Reply here to ask about fees, book a campus visit, or anything else."
     let whatsapp = 'sent';
     try {
-      await sendTemplateMessage(e164.replace(/^\+/, ''), process.env.WHATSAPP_ADMISSION_WELCOME_TEMPLATE || 'admission_welcome', 'en', [e.parent_name || 'there', s.name]);
+      await sendTemplateMessage(s.id, e164.replace(/^\+/, ''), process.env.WHATSAPP_ADMISSION_WELCOME_TEMPLATE || 'admission_welcome', 'en', [e.parent_name || 'there', s.name]);
       await pool.query(
         `INSERT INTO enquiry_messages (school_id, enquiry_id, direction, body, template_name, sent_by, delivery_status) VALUES ($1,$2,'out','[Welcome message]','admission_welcome','system','sent')`,
         [s.id, e.id]

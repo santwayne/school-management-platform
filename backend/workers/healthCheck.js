@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getSchoolWhatsApp, verifyWhatsAppCredentials } from '../services/whatsappService.js';
 import pool from '../config/db.js';
 import { connection } from '../config/queue.js';
 import { isStale, recordRun, raiseException, raiseExceptionForAllSchools, autoResolve } from '../services/opsService.js';
@@ -78,7 +79,7 @@ const LABELS = {
 // What an operator should actually do, in plain words, per integration.
 const FIX_HINTS = {
   redis: 'Background jobs (fee reminders, voice-call escalations, digests) are NOT running. Ask the developer to restart Redis on the server (sudo systemctl restart redis) and then restart the app (pm2 restart all).',
-  whatsapp: 'Parents are not receiving WhatsApp messages. The access token has most likely expired — generate a permanent System User token in Meta Business Settings and update WHATSAPP_ACCESS_TOKEN.',
+  whatsapp: 'Parents are not receiving WhatsApp messages. The access token has most likely expired — ask the Waynur team to generate a permanent System User token in Meta Business Settings and update the WhatsApp keys for this school from the Super Admin panel.',
   anthropic: 'AI features (tutor, doubt hints, grading, summaries) are failing or using fallbacks. Check ANTHROPIC_API_KEY and the account balance.',
   razorpay: 'Online fee payments and payment links may fail. Check RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET.',
   vapi: 'Absence voice-call escalations will fail. Check VAPI_API_KEY.',
@@ -135,24 +136,16 @@ async function checkRedis() {
   }
 }
 
-async function checkWhatsApp() {
-  const token = process.env.WHATSAPP_ACCESS_TOKEN;
-  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  if (!token || !phoneId) return { status: 'not_configured', detail: 'WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID not set' };
-  return cachedExternal('whatsapp', async () => {
-    try {
-      const r = await axios.get(`https://graph.facebook.com/v21.0/${phoneId}`, {
-        params: { fields: 'status,quality_rating,display_phone_number', access_token: token },
-        timeout: 8000,
-      });
-      const quality = r.data?.quality_rating;
-      if (quality === 'RED') return { status: 'degraded', detail: `Number ${r.data.display_phone_number} quality rating is RED — Meta may limit sending.` };
-      return { status: 'ok', detail: `Number ${r.data?.display_phone_number || ''} · quality ${quality || 'unknown'}` };
-    } catch (err) {
-      const metaErr = err.response?.data?.error;
-      if (metaErr?.code === 190) return { status: 'down', detail: 'Access token is invalid or expired (Meta error 190).' };
-      return { status: 'down', detail: metaErr?.message || err.message };
-    }
+// Each school has its own WhatsApp number + keys (added by a Super Admin),
+// so this is a per-school check, not a platform one.
+async function checkSchoolWhatsApp(schoolId) {
+  const creds = await getSchoolWhatsApp(schoolId);
+  if (!creds) return { status: 'not_configured', detail: 'No WhatsApp number connected for this school yet — WhatsApp messages are not being sent.' };
+  return cachedExternal(`whatsapp:${schoolId}`, async () => {
+    const check = await verifyWhatsAppCredentials(creds);
+    if (!check.ok) return { status: 'down', detail: check.error };
+    if (check.qualityRating === 'RED') return { status: 'degraded', detail: `Number ${check.displayPhoneNumber} quality rating is RED — Meta may limit sending.` };
+    return { status: 'ok', detail: `Number ${check.displayPhoneNumber || creds.displayNumber || ''} · quality ${check.qualityRating || 'unknown'}` };
   });
 }
 
@@ -306,7 +299,6 @@ export async function runHealthCheck(now = new Date()) {
 
     const platform = [
       ['redis', await checkRedis(), { critical: true }],
-      ['whatsapp', await checkWhatsApp(), { critical: true }],
       ['anthropic', await checkAnthropic(), {}],
       ['razorpay', await checkRazorpay(), {}],
       ['vapi', await checkVapi(), {}],
@@ -320,6 +312,7 @@ export async function runHealthCheck(now = new Date()) {
     const schools = await pool.query(`SELECT id FROM schools WHERE status = 'active'`);
     for (const { id } of schools.rows) {
       for (const [name, check] of [
+        ['whatsapp', checkSchoolWhatsApp],
         ['gps', checkSchoolGps],
         ['biometric', checkSchoolBiometric],
       ]) {

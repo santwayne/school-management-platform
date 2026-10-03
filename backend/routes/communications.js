@@ -257,7 +257,7 @@ router.post('/send', requireAuth, async (req, res) => {
     const recipientResults = [];
     for (const { phone, label } of recipients) {
       try {
-        const result = await sendTextMessage(phone, message);
+        const result = await sendTextMessage(school_id, phone, message);
         delivered += 1;
         recipientResults.push({ phone, label, status: 'SENT', wa_message_id: result?.messages?.[0]?.id || null, error_message: null });
       } catch (sendErr) {

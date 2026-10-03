@@ -208,7 +208,7 @@ export async function approvePayroll(schoolId, runId, user) {
     // "Hi {{1}}, your payslip for {{2}} is ready. Net pay: {{3}}. You can download it in the Waynur app."
     if (s.whatsapp_opt_in_status === 'OPTED_IN' && s.whatsapp_number) {
       try {
-        await sendTemplateMessage(String(s.whatsapp_number).replace(/^\+/, ''), process.env.WHATSAPP_PAYSLIP_TEMPLATE || 'payslip_ready', 'en', [s.name, periodLabel(run.period), inr(s.net_pay)]);
+        await sendTemplateMessage(schoolId, String(s.whatsapp_number).replace(/^\+/, ''), process.env.WHATSAPP_PAYSLIP_TEMPLATE || 'payslip_ready', 'en', [s.name, periodLabel(run.period), inr(s.net_pay)]);
       } catch (err) {
         console.error(`[payroll] payslip WhatsApp to ${s.teacher_id} failed:`, err.response?.data?.error?.message || err.message);
       }

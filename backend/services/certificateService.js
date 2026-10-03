@@ -151,7 +151,7 @@ export async function issueCertificate(schoolId, requestId, { issuedBy = null } 
     if (student.opt_in_status === 'OPTED_IN' && student.parent_phone) {
       const phone = String(student.parent_phone).replace(/^\+/, '');
       try {
-        await sendTemplateMessage(phone, process.env.WHATSAPP_CERTIFICATE_TEMPLATE || 'certificate_ready', 'en', [student.name, data.title, serial]);
+        await sendTemplateMessage(schoolId, phone, process.env.WHATSAPP_CERTIFICATE_TEMPLATE || 'certificate_ready', 'en', [student.name, data.title, serial]);
       } catch (err) {
         console.error(`[certificates] WhatsApp template for request ${requestId} failed:`, err.response?.data?.error?.message || err.message);
       }
@@ -162,7 +162,7 @@ export async function issueCertificate(schoolId, requestId, { issuedBy = null } 
       // and where else to get it, whether or not this succeeds.
       if (pdfUrl) {
         try {
-          await sendMediaMessage(phone, pdfUrl, `${data.title} — ${student.name} (No. ${serial})`);
+          await sendMediaMessage(schoolId, phone, pdfUrl, `${data.title} — ${student.name} (No. ${serial})`);
         } catch (err) {
           console.error(`[certificates] WhatsApp document for request ${requestId} failed (expected if the 24h window is closed):`, err.response?.data?.error?.message || err.message);
         }

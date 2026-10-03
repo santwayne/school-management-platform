@@ -135,7 +135,7 @@ router.post('/staff-broadcast', requireAuth, requirePrincipal, async (req, res) 
     const results = [];
     for (const t of teachers.rows) {
       try {
-        await sendTextMessage(t.whatsapp_number, message);
+        await sendTextMessage(schoolId, t.whatsapp_number, message);
         results.push({ teacher_id: t.id, status: 'SENT' });
       } catch (err) {
         results.push({ teacher_id: t.id, status: 'FAILED', error: err.message });

@@ -33,9 +33,6 @@ export default function AdminSettings() {
   const [logoUrl, setLogoUrl] = useState('');
   const [logoPreview, setLogoPreview] = useState('');
   const [uploading, setUploading] = useState(false);
-  const [whatsappNumber, setWhatsappNumber] = useState('');
-  const [verifyCode, setVerifyCode] = useState('');
-  const [awaitingCode, setAwaitingCode] = useState(false);
   const [limit, setLimit] = useState('5000');
   const [proximityRadius, setProximityRadius] = useState('500');
   const [feeReminderGraceDays, setFeeReminderGraceDays] = useState('7');
@@ -56,7 +53,6 @@ export default function AdminSettings() {
     try {
       const s = await apiRequest('/api/settings');
       setSettings(s);
-      setWhatsappNumber(s.whatsapp_business_number || '');
       setLimit(String(s.petty_cash_accountant_limit ?? 5000));
       setProximityRadius(String(s.proximity_alert_radius_meters ?? 500));
       setFeeReminderGraceDays(String(s.fee_reminder_grace_days ?? 7));
@@ -133,31 +129,6 @@ export default function AdminSettings() {
       });
       setSettings(s);
       flash('Branding saved.');
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const saveWhatsapp = async () => {
-    setError('');
-    try {
-      const res = await apiRequest('/api/settings/whatsapp', { method: 'PATCH', body: { whatsapp_business_number: whatsappNumber } });
-      setAwaitingCode(true);
-      flash(res.message || 'Verification code sent.');
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const verifyWhatsapp = async () => {
-    setError('');
-    if (!verifyCode) return setError('Enter the code sent to your WhatsApp.');
-    try {
-      const s = await apiRequest('/api/settings/whatsapp/verify', { method: 'POST', body: { code: verifyCode } });
-      setSettings(s);
-      setAwaitingCode(false);
-      setVerifyCode('');
-      flash('WhatsApp number verified and connected.');
     } catch (err) {
       setError(err.message);
     }
@@ -357,40 +328,43 @@ export default function AdminSettings() {
             </button>
           </Card>
 
+          {/* Read-only: the school's WhatsApp number and its keys are added by
+              the Waynur team (Super Admin). The principal is emailed when it goes live. */}
           <Card title="WhatsApp Business">
             <div className="flex items-center gap-2 mb-3">
               <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${settings.whatsapp_connected ? 'bg-emerald-500/10 text-emerald-700' : 'bg-cream-deep text-ink-soft'}`}>
                 {settings.whatsapp_connected ? 'Connected' : 'Not connected'}
               </span>
             </div>
-            <label className="block mb-3">
-              <span className="text-xs font-medium text-ink-soft">WhatsApp Business number</span>
-              <input
-                type="text"
-                value={whatsappNumber}
-                onChange={(e) => setWhatsappNumber(e.target.value)}
-                placeholder="+91XXXXXXXXXX"
-                className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
-              />
-            </label>
-            <p className="text-xs text-ink-soft mb-3">We send a 6-digit code to this number over WhatsApp — it only shows as connected once that code is confirmed.</p>
-            <button onClick={saveWhatsapp} className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
-              {awaitingCode ? 'Resend code' : 'Send verification code'}
-            </button>
-            {awaitingCode && (
-              <div className="flex items-center gap-2 mt-3">
-                <input
-                  type="text"
-                  value={verifyCode}
-                  onChange={(e) => setVerifyCode(e.target.value)}
-                  placeholder="6-digit code"
-                  className="w-32 px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
-                />
-                <button onClick={verifyWhatsapp} className="px-4 py-2 rounded-lg bg-white border border-cream-deep text-ink text-sm font-medium hover:bg-cream-deep/40 transition">
-                  Verify
-                </button>
-              </div>
+            {settings.whatsapp_connected ? (
+              <dl className="text-sm space-y-2 mb-3">
+                <div className="flex justify-between gap-4">
+                  <dt className="text-ink-soft">School's WhatsApp number</dt>
+                  <dd className="font-medium text-ink">{settings.whatsapp_business_number}</dd>
+                </div>
+                {settings.whatsapp_verified_name && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-ink-soft">Name shown to parents</dt>
+                    <dd className="font-medium text-ink text-right">{settings.whatsapp_verified_name}</dd>
+                  </div>
+                )}
+                {settings.whatsapp_connected_at && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-ink-soft">Connected on</dt>
+                    <dd className="font-medium text-ink">{new Date(settings.whatsapp_connected_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</dd>
+                  </div>
+                )}
+              </dl>
+            ) : (
+              <p className="text-sm text-ink mb-3">
+                Your school's WhatsApp number isn't connected yet, so WhatsApp messages (absence alerts, fee reminders, class notes) are not being sent.
+              </p>
             )}
+            <p className="text-xs text-ink-soft">
+              {settings.whatsapp_connected
+                ? 'All WhatsApp messages from your school go out from this number. It is set up and managed by the Waynur team — to change it, contact Waynur support.'
+                : 'The Waynur team connects your school\'s WhatsApp Business number. You will get an email at the principal\'s address as soon as it is live.'}
+            </p>
           </Card>
         </div>
 

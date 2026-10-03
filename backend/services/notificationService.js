@@ -146,13 +146,13 @@ export async function send({ triggerEvent, recipients, variables = {}, attachmen
       try {
         const paramOrder = Array.isArray(template.whatsapp_param_order) ? template.whatsapp_param_order : [];
         const params = paramOrder.map((key) => mergedVars[key] ?? '');
-        const result = await sendTemplateMessage(resolved.phone, template.whatsapp_template_name, resolved.language, params);
+        const result = await sendTemplateMessage(schoolId, resolved.phone, template.whatsapp_template_name, resolved.language, params);
         whatsappStatus = 'sent';
         whatsappMessageId = result?.messages?.[0]?.id || null;
 
         if (template.media_supported && attachments.length > 0) {
           for (const att of attachments) {
-            await sendMediaMessage(resolved.phone, att.url, mergedVars.title || '').catch((mediaErr) => {
+            await sendMediaMessage(schoolId, resolved.phone, att.url, mergedVars.title || '').catch((mediaErr) => {
               console.error(`[NotificationService] media send failed for ${triggerEvent}:`, mediaErr.message);
             });
           }

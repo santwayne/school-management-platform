@@ -81,6 +81,7 @@ router.post('/', requireAuth, requireFinance, async (req, res) => {
     const { link, student } = await createPaymentLinkRecord(school_id, student_id, amount, req.user.teacher_id);
 
     await sendTextMessage(
+      school_id,
       student.phone,
       `Fee payment due for ${student.name}: ₹${amount}. Pay securely here: ${link.razorpay_link_url}`
     ).catch((err) => console.error('Payment link WhatsApp send failed (link was still created):', err.message));

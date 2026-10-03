@@ -297,7 +297,7 @@ export async function sendEnquiryText(enquiry, body, { sentBy = 'ai' } = {}) {
   let ok = true;
   let errMsg = null;
   try {
-    await sendTextMessage(to, body);
+    await sendTextMessage(enquiry.school_id, to, body);
   } catch (err) {
     ok = false;
     errMsg = err.response?.data?.error?.message || err.message;

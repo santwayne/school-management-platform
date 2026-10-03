@@ -41,11 +41,12 @@ async function queueAddWithTimeout(name, data, opts) {
   }
 }
 
-async function sendAbsentNotificationNow({ attendanceId, parent, studentId }) {
+async function sendAbsentNotificationNow({ attendanceId, parent, studentId, schoolId }) {
   let status = 'SENT';
   let error = null;
   try {
     await sendTemplateMessage(
+      schoolId,
       parent.phone,
       ABSENCE_TEMPLATE_NAME,
       'en',
@@ -191,7 +192,7 @@ router.post('/mark', requireAuth, async (req, res) => {
         // STRICT COMPLIANCE GATE — only ever contact OPTED_IN parents,
         // enforced here at the query/insert level, not just in the UI.
         if (parent && parent.opt_in_status === 'OPTED_IN') {
-          toNotify.push({ attendanceId, parent, studentId: record.student_id });
+          toNotify.push({ attendanceId, parent, studentId: record.student_id, schoolId: school_id });
         } else {
           // Previously skipped silently: the child is absent and nobody at
           // home will hear about it. Surfaced to the operator after COMMIT.

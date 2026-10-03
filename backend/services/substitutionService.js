@@ -90,7 +90,7 @@ async function notifySubstitute({ schoolId, sub, slot, absentName, date }) {
   // "Hi {{1}}, you have a substitution today: {{2}}. Please check the Waynur app for details."
   if (teacher?.whatsapp_opt_in_status === 'OPTED_IN' && teacher.whatsapp_number) {
     try {
-      await sendTemplateMessage(String(teacher.whatsapp_number).replace(/^\+/, ''), process.env.WHATSAPP_SUBSTITUTION_TEMPLATE || 'substitution_assigned', 'en', [teacher.name, body.slice(0, 500)]);
+      await sendTemplateMessage(schoolId, String(teacher.whatsapp_number).replace(/^\+/, ''), process.env.WHATSAPP_SUBSTITUTION_TEMPLATE || 'substitution_assigned', 'en', [teacher.name, body.slice(0, 500)]);
     } catch (err) {
       console.error(`[substitution] WhatsApp to teacher ${sub.id} failed:`, err.response?.data?.error?.message || err.message);
     }

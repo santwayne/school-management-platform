@@ -3,14 +3,14 @@ import { normalizePhone } from '../utils/phone.js';
 import { consentKeyword } from '../utils/consent.js';
 import { audit } from '../services/opsService.js';
 import { requireAuth, requireOperator } from '../middleware/auth.js';
-import { handleEnquiryMessage, resolveSchoolForUnknownSender } from '../services/admissionAgent.js';
+import { handleEnquiryMessage } from '../services/admissionAgent.js';
 import { handleParentMessage } from '../services/parentAssistant.js';
 import crypto from 'crypto';
 import axios from 'axios';
 import { webhookLimiter } from '../middleware/rateLimit.js';
 import pool from '../config/db.js';
 import { generateAIHint, tagDoubtChapter, extractCashSlip, extractExpenseSlip, extractDoubtImage } from '../services/aiService.js';
-import { sendTextMessage, sendTemplateMessage, downloadMedia } from '../services/whatsappService.js';
+import { sendTextMessage, sendTemplateMessage, downloadMedia, getSchoolWhatsApp } from '../services/whatsappService.js';
 
 const router = express.Router();
 
@@ -50,23 +50,22 @@ function isValidMetaSignature(req) {
 // Staff-only: these two had no auth at all, so anyone on the internet could
 // make the school's number send messages or list its templates.
 router.get('/debug-templates', requireAuth, requireOperator, async (req, res) => {
-  const token = process.env.WHATSAPP_ACCESS_TOKEN;
-  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  if (!token || !phoneId) return res.status(500).json({ error: 'WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID not set' });
+  const creds = await getSchoolWhatsApp(req.user.school_id);
+  if (!creds) return res.status(409).json({ error: 'WhatsApp is not connected for this school yet.' });
+  const auth = { headers: { Authorization: `Bearer ${creds.accessToken}` } };
 
   try {
-    // Resolve phone number → WABA id
-    const phoneRes = await axios.get(`https://graph.facebook.com/v21.0/${phoneId}`, {
-      params: { fields: 'name,verified_name,display_phone_number,status,quality_rating', access_token: token },
+    const phoneRes = await axios.get(`https://graph.facebook.com/v21.0/${creds.phoneNumberId}`, {
+      ...auth, params: { fields: 'name,verified_name,display_phone_number,status,quality_rating' },
     });
-    // List templates via the business account associated with the token
-    const wabaRes = await axios.get(`https://graph.facebook.com/v21.0/${phoneId}/message_templates`, {
-      params: { access_token: token, limit: 50 },
-    }).catch(() => null);
+    // Templates belong to the WhatsApp Business Account, not the phone number.
+    const wabaRes = creds.wabaId
+      ? await axios.get(`https://graph.facebook.com/v21.0/${creds.wabaId}/message_templates`, { ...auth, params: { limit: 50 } }).catch(() => null)
+      : null;
 
     res.json({
       phone_number_info: phoneRes.data,
-      templates: wabaRes ? wabaRes.data : 'Could not fetch templates (token may lack whatsapp_business_management permission)',
+      templates: wabaRes ? wabaRes.data : 'Could not fetch templates (no WABA ID saved for this school, or the token lacks whatsapp_business_management permission)',
     });
   } catch (err) {
     res.status(500).json({ error: err.response?.data || err.message });
@@ -79,7 +78,7 @@ router.post('/debug-send', requireAuth, requireOperator, async (req, res) => {
   const { to } = req.body;
   if (!to) return res.status(400).json({ error: 'to is required' });
   try {
-    const result = await sendTemplateMessage(to, 'hello_world', 'en_US', []);
+    const result = await sendTemplateMessage(req.user.school_id, to, 'hello_world', 'en_US', []);
     res.json({ success: true, result });
   } catch (err) {
     res.status(500).json({ error: err.response?.data || err.message });
@@ -177,6 +176,21 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
     // forms so rows saved before normalisation existed still work.
     const fromCandidates = [...new Set([normalizePhone(fromPhone), fromPhone, `+${fromPhone}`].filter(Boolean))];
 
+    // Every school has its own WhatsApp number now, so the number that
+    // RECEIVED the message tells us which school it is for. Everything below
+    // is scoped to that school: the same parent phone can exist at two
+    // schools (siblings), and each school must only see — and reply from —
+    // its own number. A number we don't recognise is not ours to act on.
+    const inboundPhoneNumberId = change?.metadata?.phone_number_id || null;
+    const inboundSchoolRes = inboundPhoneNumberId
+      ? await pool.query('SELECT school_id FROM school_settings WHERE whatsapp_phone_number_id = $1 AND whatsapp_connected', [inboundPhoneNumberId])
+      : { rows: [] };
+    const inboundSchoolId = inboundSchoolRes.rows[0]?.school_id || null;
+    if (!inboundSchoolId) {
+      console.warn(`[WhatsApp webhook] Message for phone_number_id ${inboundPhoneNumberId} — not connected to any school, ignored.`);
+      return res.sendStatus(200);
+    }
+
     // Fee collector check runs first — a registered collector's number is
     // never also a parent number, so this branch is exclusive. The same
     // registered number also doubles as the "registered staff number" for
@@ -184,18 +198,18 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
     // "petty"/"expense" routes the photo there instead of fee cash intake,
     // reusing this one photo-intake pipeline rather than building a second.
     const collectorRes = await pool.query(
-      'SELECT id, school_id, name FROM fee_collectors WHERE whatsapp_number = ANY($1::text[])',
-      [fromCandidates]
+      'SELECT id, school_id, name FROM fee_collectors WHERE whatsapp_number = ANY($1::text[]) AND school_id = $2',
+      [fromCandidates, inboundSchoolId]
     );
     if (collectorRes.rowCount > 0) {
       const collector = collectorRes.rows[0];
       if (message.type !== 'image') {
-        await sendTextMessage(fromPhone, 'Please send a photo of the cash receipt slip (or a petty cash expense receipt, captioned "petty").');
+        await sendTextMessage(inboundSchoolId, fromPhone, 'Please send a photo of the cash receipt slip (or a petty cash expense receipt, captioned "petty").');
         return res.sendStatus(200);
       }
-      const { buffer, mimeType } = await downloadMedia(message.image.id).catch(() => ({ buffer: null, mimeType: null }));
+      const { buffer, mimeType } = await downloadMedia(inboundSchoolId, message.image.id).catch(() => ({ buffer: null, mimeType: null }));
       if (!buffer) {
-        await sendTextMessage(fromPhone, "Couldn't download that photo — please try sending it again.");
+        await sendTextMessage(inboundSchoolId, fromPhone, "Couldn't download that photo — please try sending it again.");
         return res.sendStatus(200);
       }
       const base64Image = Buffer.from(buffer).toString('base64');
@@ -209,6 +223,7 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
           [collector.school_id, collector.name, extraction.amount || 0, extraction.purpose || null, base64Image]
         );
         await sendTextMessage(
+          inboundSchoolId,
           fromPhone,
           extraction.amount
             ? `Got it — petty cash expense of ₹${extraction.amount}${extraction.purpose ? ` for ${extraction.purpose}` : ''} logged. Waiting for approval.`
@@ -226,6 +241,7 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
       );
 
       await sendTextMessage(
+        inboundSchoolId,
         fromPhone,
         extraction.amount
           ? `Got it — ₹${extraction.amount}${extraction.student_hint ? ` for ${extraction.student_hint}` : ''}. Waiting for the accountant to confirm.`
@@ -235,23 +251,23 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
     }
 
     const complianceCheck = await pool.query(
-      'SELECT id, school_id, opt_in_status FROM parents WHERE phone = ANY($1::text[])',
-      [fromCandidates]
+      'SELECT id, school_id, opt_in_status FROM parents WHERE phone = ANY($1::text[]) AND school_id = $2',
+      [fromCandidates, inboundSchoolId]
     );
     const parent = complianceCheck.rows[0];
 
     // Consent: "Anyone can reply STOP at any time" (feature guide, Trust).
     // Until now only admission enquiries honoured STOP — an existing
     // parent's STOP fell through to the parent assistant. Handle STOP /
-    // START for every parent row on this number (a parent can be linked to
-    // more than one school) before anything else touches the message.
+    // START for this parent at THIS school (the one whose number they wrote
+    // to) before anything else touches the message.
     if (parent && message.type === 'text' && message.text?.body) {
       const keyword = consentKeyword(message.text.body);
       if (keyword) {
         const newStatus = keyword === 'stop' ? 'OPTED_OUT' : 'OPTED_IN';
         const updated = await pool.query(
-          `UPDATE parents SET opt_in_status = $1 WHERE phone = ANY($2::text[]) RETURNING id, school_id`,
-          [newStatus, fromCandidates]
+          `UPDATE parents SET opt_in_status = $1 WHERE phone = ANY($2::text[]) AND school_id = $3 RETURNING id, school_id`,
+          [newStatus, fromCandidates, inboundSchoolId]
         );
         for (const row of updated.rows) {
           await audit({
@@ -261,7 +277,7 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
           }).catch(() => {});
         }
         // One confirmation reply is allowed (they messaged us inside the 24h window).
-        await sendTextMessage(fromPhone, keyword === 'stop'
+        await sendTextMessage(inboundSchoolId, fromPhone, keyword === 'stop'
           ? 'You will no longer receive WhatsApp messages from the school. Reply START any time to turn them back on.'
           : 'WhatsApp messages from the school are turned back on. Reply STOP any time to turn them off.'
         ).catch((err) => console.error('[WhatsApp] consent confirmation failed:', err.message));
@@ -274,17 +290,12 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
     // of dropping it. They wrote to us first, so replying within the 24h
     // window is allowed and they have consented to this conversation.
     if (!parent && message.type === 'text' && message.text?.body) {
-      const schoolId = await resolveSchoolForUnknownSender({ phoneNumberId: change?.metadata?.phone_number_id, text: message.text.body });
-      if (schoolId) {
-        await handleEnquiryMessage({
-          schoolId,
-          phone: normalizePhone(fromPhone) || `+${fromPhone}`,
-          text: message.text.body,
-          waMessageId: message.id,
-        }).catch((err) => console.error('[WhatsApp] admission assistant error:', err.message));
-      } else {
-        console.log(`[Admissions] Could not tell which school ${fromPhone} is enquiring about — no admission code in message and several schools are active.`);
-      }
+      await handleEnquiryMessage({
+        schoolId: inboundSchoolId,
+        phone: normalizePhone(fromPhone) || `+${fromPhone}`,
+        text: message.text.body,
+        waMessageId: message.id,
+      }).catch((err) => console.error('[WhatsApp] admission assistant error:', err.message));
       return res.sendStatus(200);
     }
 
@@ -327,7 +338,7 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
       // Previously this was a hardcoded placeholder that silently dropped
       // the content — now Claude vision reads the actual question so it
       // flows into the same doubt-solving pipeline as a typed message.
-      const { buffer, mimeType } = await downloadMedia(message.image.id).catch(() => ({ buffer: null, mimeType: null }));
+      const { buffer, mimeType } = await downloadMedia(inboundSchoolId, message.image.id).catch(() => ({ buffer: null, mimeType: null }));
       if (!buffer) {
         userMessageText = '[Could not download image]';
       } else {
@@ -382,7 +393,7 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
       [parent.school_id, parent.id, studentId, userMessageText, aiResponseHint, chapterTag]
     );
 
-    await sendTextMessage(fromPhone, aiResponseHint);
+    await sendTextMessage(inboundSchoolId, fromPhone, aiResponseHint);
 
     res.sendStatus(200);
   } catch (err) {

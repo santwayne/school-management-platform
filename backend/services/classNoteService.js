@@ -37,9 +37,9 @@ export async function sendClassNoteNow(noteId) {
 
       try {
         if (note.attachment_url) {
-          await sendMediaMessage(row.phone, note.attachment_url, formattedMessage);
+          await sendMediaMessage(note.school_id, row.phone, note.attachment_url, formattedMessage);
         } else {
-          await sendTextMessage(row.phone, formattedMessage);
+          await sendTextMessage(note.school_id, row.phone, formattedMessage);
         }
         await pool.query(`UPDATE class_note_deliveries SET status = 'SENT', sent_at = CURRENT_TIMESTAMP WHERE id = $1`, [row.delivery_id]);
         return { parentId: row.parent_id, status: 'SENT' };

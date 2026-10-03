@@ -24,7 +24,7 @@ await new Promise((r) => meta.listen(9995, r));
 const srv = spawn('node', ['server.js'], {
   cwd: new URL('..', import.meta.url).pathname,
   env: { ...process.env, DATABASE_URL: DB, JWT_SECRET: 'jwt', PORT: '5072', REDIS_URL: 'redis://127.0.0.1:6390', SEED_DEMO_DATA: 'true',
-    WHATSAPP_API_BASE: 'http://127.0.0.1:9995', WHATSAPP_ACCESS_TOKEN: 'x', WHATSAPP_PHONE_NUMBER_ID: '1' },
+    WHATSAPP_API_BASE: 'http://127.0.0.1:9995' },
   stdio: 'ignore',
 });
 for (let i = 0; i < 60; i++) { try { if ((await fetch(API + '/health')).ok) break; } catch {} await sleep(500); }
@@ -37,6 +37,15 @@ try {
   const login = await j('POST', '/api/auth/login', null, { email: 'principal@demoschool.test', password: 'changeme123' });
   const token = login.body.token || login.body.accessToken;
   const sid = (await pool.query(`SELECT school_id FROM teachers WHERE email = 'principal@demoschool.test'`)).rows[0].school_id;
+  // WhatsApp keys are per school now — give the demo school a connection
+  // (written straight to the DB: the mock Meta below rejects every call,
+  // so the Super Admin API's verify step could not be used here).
+  process.env.JWT_SECRET = 'jwt';
+  const { encryptSecret } = await import('../utils/secretBox.js');
+  await pool.query(`INSERT INTO school_settings (school_id, whatsapp_business_number, whatsapp_phone_number_id, whatsapp_connected) VALUES ($1, '+919800000001', '1', TRUE)
+    ON CONFLICT (school_id) DO UPDATE SET whatsapp_business_number = EXCLUDED.whatsapp_business_number, whatsapp_phone_number_id = '1', whatsapp_connected = TRUE`, [sid]);
+  await pool.query(`INSERT INTO school_whatsapp_credentials (school_id, access_token_enc) VALUES ($1, $2)
+    ON CONFLICT (school_id) DO UPDATE SET access_token_enc = EXCLUDED.access_token_enc`, [sid, encryptSecret('x')]);
   const cls = (await pool.query(`SELECT id FROM classes WHERE school_id = $1 LIMIT 1`, [sid])).rows[0].id;
   const p = (await pool.query(`INSERT INTO parents (school_id, name, phone, opt_in_status) VALUES ($1, 'Opted Parent', '+919999911111', 'OPTED_IN') RETURNING id`, [sid])).rows[0].id;
   const withParent = (await pool.query(`INSERT INTO students (school_id, class_id, parent_id, name) VALUES ($1, $2, $3, 'Has Parent') RETURNING id`, [sid, cls, p])).rows[0].id;
