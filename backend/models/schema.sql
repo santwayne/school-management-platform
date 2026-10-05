@@ -959,8 +959,16 @@ WHERE school_id IS NULL AND trigger_event = 'student_leave_submitted' AND whatsa
 UPDATE notification_templates
 SET channel = 'both',
     whatsapp_template_name = 'leave_status_update_alert',
-    whatsapp_param_order = '["student_name","status","from_date","to_date"]'::jsonb
+    whatsapp_param_order = '["student_name","from_date","to_date","status"]'::jsonb
 WHERE school_id IS NULL AND trigger_event = 'student_leave_status_changed' AND whatsapp_template_name IS NULL;
+
+-- Fix for databases seeded with the old order: the approved Meta template
+-- reads "leave request from {{2}} to {{3}} has been {{4}}", so status must
+-- be the last parameter, not the second.
+UPDATE notification_templates
+SET whatsapp_param_order = '["student_name","from_date","to_date","status"]'::jsonb
+WHERE whatsapp_template_name = 'leave_status_update_alert'
+  AND whatsapp_param_order = '["student_name","status","from_date","to_date"]'::jsonb;
 
 -- Seed global default templates for the two modules retrofitted first
 -- (fees + homework) to prove the pattern, per the build spec. School-level
