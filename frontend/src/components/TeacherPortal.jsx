@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck, NotebookPen, X, Users, MessageCircleQuestion, Bell, Receipt } from 'lucide-react';
+import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck, NotebookPen, X, Users, MessageCircleQuestion, Bell, Receipt, ClipboardEdit } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
@@ -243,6 +243,14 @@ export default function TeacherPortal() {
             aria-label="Lesson plans"
           >
             <NotebookPen className="w-5 h-5" />
+          </Link>
+          <Link
+            to="/marks-entry"
+            className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition"
+            aria-label="Marks entry"
+            title="Marks entry"
+          >
+            <ClipboardEdit className="w-5 h-5" />
           </Link>
           <Link
             to="/teacher/leave"
