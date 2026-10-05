@@ -2,6 +2,7 @@ import { Worker } from 'bullmq';
 import { connection } from '../config/queue.js';
 import pool from '../config/db.js';
 import { send as sendNotification } from '../services/notificationService.js';
+import { formatNotifyDate } from '../utils/notifyDate.js';
 
 // Audit candidate #3 — see schema.sql's comment for the days-before/
 // audience-scope decisions made without asking.
@@ -40,7 +41,7 @@ async function handleDailyReminders() {
         recipients: students.rows.map((s) => ({ type: 'parent', studentId: s.id })),
         variables: {
           event_title: event.title,
-          event_date: event.event_date instanceof Date ? event.event_date.toISOString().slice(0, 10) : String(event.event_date),
+          event_date: formatNotifyDate(event.event_date),
           days_before: event.days_before,
         },
       });

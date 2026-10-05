@@ -3,6 +3,7 @@ import { connection } from '../config/queue.js';
 import pool from '../config/db.js';
 import { sendTemplateMessage } from '../services/whatsappService.js';
 import { send as sendNotification } from '../services/notificationService.js';
+import { formatNotifyDate } from '../utils/notifyDate.js';
 
 // Meta requires an approved template for the first outbound message in a
 // conversation window — same reasoning as attendanceWorker/dailyGuidanceWorker.
@@ -115,7 +116,7 @@ async function handlePerStudentReminders() {
         variables: {
           book_title: row.title,
           status_label: statusLabel,
-          due_date: row.due_date instanceof Date ? row.due_date.toISOString().slice(0, 10) : String(row.due_date),
+          due_date: formatNotifyDate(row.due_date),
         },
       });
       await pool.query('UPDATE library_issues SET last_reminder_sent_at = CURRENT_TIMESTAMP WHERE id = $1', [row.id]);

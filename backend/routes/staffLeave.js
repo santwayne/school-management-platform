@@ -12,6 +12,7 @@ async function planCoverForLeave(schoolId, leave) {
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
 import { send as sendNotification } from '../services/notificationService.js';
+import { formatNotifyDate } from '../utils/notifyDate.js';
 
 const router = express.Router();
 
@@ -223,8 +224,8 @@ router.put('/requests/:id', requireAuth, requirePrincipal, async (req, res) => {
       variables: {
         status: status === 'APPROVED' ? 'approved' : 'rejected',
         leave_type: leaveReq.leave_type,
-        start_date: leaveReq.start_date instanceof Date ? leaveReq.start_date.toISOString().slice(0, 10) : String(leaveReq.start_date),
-        end_date: leaveReq.end_date instanceof Date ? leaveReq.end_date.toISOString().slice(0, 10) : String(leaveReq.end_date),
+        start_date: formatNotifyDate(leaveReq.start_date),
+        end_date: formatNotifyDate(leaveReq.end_date),
       },
     }).catch((notifyErr) => {
       console.error('staff_leave_decision notification failed:', notifyErr.message);

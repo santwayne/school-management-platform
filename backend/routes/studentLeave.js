@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth, requireStudent } from '../middleware/auth.js';
 import { send as sendNotification } from '../services/notificationService.js';
+import { formatNotifyDate } from '../utils/notifyDate.js';
 
 const router = express.Router();
 
@@ -74,7 +75,7 @@ router.post('/requests', requireAuth, requireStudent, async (req, res) => {
         triggerEvent: 'student_leave_submitted',
         schoolId: req.user.school_id,
         recipients,
-        variables: { student_name: studentRes.rows[0].name, from_date, to_date },
+        variables: { student_name: studentRes.rows[0].name, from_date: formatNotifyDate(from_date), to_date: formatNotifyDate(to_date) },
         link: '/student-leave',
       });
     } catch (notifyErr) {
@@ -181,8 +182,8 @@ router.put('/requests/:id', requireAuth, requireTeacherOrPrincipal, async (req, 
       variables: {
         status: status.toLowerCase(),
         review_note: review_note || '',
-        from_date: leaveReq.from_date,
-        to_date: leaveReq.to_date,
+        from_date: formatNotifyDate(leaveReq.from_date),
+        to_date: formatNotifyDate(leaveReq.to_date),
       },
       link: '/student/leave',
     }).catch((notifyErr) => console.error('student_leave_status_changed notification failed:', notifyErr.message));
