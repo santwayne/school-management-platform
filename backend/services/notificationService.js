@@ -1,5 +1,6 @@
 import pool from '../config/db.js';
 import { sendTemplateMessage, sendMediaMessage } from './whatsappService.js';
+import { sendWithLanguageFallback, parentTemplateLanguage } from '../utils/templateLanguage.js';
 
 // ------------------------------------------------------------------
 // Central notification service. Every module (attendance, fees, homework,
@@ -54,7 +55,7 @@ async function resolveRecipient(schoolId, recipient) {
       studentId: row.student_id,
       phone: row.phone,
       optedIn: row.opt_in_status === 'OPTED_IN',
-      language: row.preferred_language === 'pa' ? 'pa' : 'hi',
+      language: parentTemplateLanguage(row.preferred_language),
       studentName: row.student_name,
     };
   }
@@ -146,7 +147,12 @@ export async function send({ triggerEvent, recipients, variables = {}, attachmen
       try {
         const paramOrder = Array.isArray(template.whatsapp_param_order) ? template.whatsapp_param_order : [];
         const params = paramOrder.map((key) => mergedVars[key] ?? '');
-        const result = await sendTemplateMessage(schoolId, resolved.phone, template.whatsapp_template_name, resolved.language, params);
+        // Parent's language first; English if this school's WhatsApp account
+        // doesn't have the template approved in that language yet.
+        const { result } = await sendWithLanguageFallback(
+          (language) => sendTemplateMessage(schoolId, resolved.phone, template.whatsapp_template_name, language, params),
+          resolved.language
+        );
         whatsappStatus = 'sent';
         whatsappMessageId = result?.messages?.[0]?.id || null;
 
