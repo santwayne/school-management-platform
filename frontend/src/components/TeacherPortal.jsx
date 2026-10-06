@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck, NotebookPen, X, Users, MessageCircleQuestion, Bell, Receipt, ClipboardEdit } from 'lucide-react';
+import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck, NotebookPen, X, Users, MessageCircleQuestion, Bell, Receipt, ClipboardEdit, BookOpenCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
@@ -223,49 +223,6 @@ export default function TeacherPortal() {
             <div className="text-xs text-ink-soft">Teacher Portal</div>
           </div>
           <NotificationBell />
-          <Link
-            to="/optional-subjects"
-            className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition"
-            aria-label="Optional subjects"
-          >
-            <ListChecks className="w-5 h-5" />
-          </Link>
-          <Link
-            to="/student-leave"
-            className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition"
-            aria-label="Student leave requests"
-          >
-            <UserCheck className="w-5 h-5" />
-          </Link>
-          <Link
-            to="/teacher/lesson-plans"
-            className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition"
-            aria-label="Lesson plans"
-          >
-            <NotebookPen className="w-5 h-5" />
-          </Link>
-          <Link
-            to="/marks-entry"
-            className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition"
-            aria-label="Marks entry"
-            title="Marks entry"
-          >
-            <ClipboardEdit className="w-5 h-5" />
-          </Link>
-          <Link
-            to="/teacher/leave"
-            className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition"
-            aria-label="Leave requests"
-          >
-            <ClipboardList className="w-5 h-5" />
-          </Link>
-          <Link
-            to="/teacher/payslips"
-            className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition"
-            aria-label="My payslips"
-          >
-            <Receipt className="w-5 h-5" />
-          </Link>
           <button
             onClick={logout}
             className="p-2 rounded-lg text-ink-soft hover:bg-cream-deep/60 hover:text-terracotta-deep transition"
@@ -294,6 +251,8 @@ export default function TeacherPortal() {
             <div className="h-16 rounded-2xl bg-white/70 border border-cream-deep animate-pulse" />
           </div>
         ) : !active ? (
+          <>
+          <Shortcuts />
           <ClassPicker
             today={today}
             classes={classes}
@@ -305,6 +264,7 @@ export default function TeacherPortal() {
             inchargeAttendance={inchargeAttendance}
             pendingLeaveCount={pendingLeaveCount}
           />
+          </>
         ) : (
           <RollCall
             classPeriod={active}
@@ -358,6 +318,37 @@ function RecurringDoubtsCard() {
         ))}
       </div>
     </div>
+  );
+}
+
+// Everything a teacher does besides the roll call, as labelled links. These
+// used to be a row of unlabelled icons in the header: with eight of them the
+// row no longer fitted a phone screen, and an icon alone did not say what it
+// opened.
+const SHORTCUTS = [
+  { to: '/teacher/homework', label: 'Homework', icon: BookOpenCheck },
+  { to: '/marks-entry', label: 'Marks entry', icon: ClipboardEdit },
+  { to: '/teacher/lesson-plans', label: 'Lesson plans', icon: NotebookPen },
+  { to: '/student-leave', label: 'Student leave', icon: UserCheck },
+  { to: '/optional-subjects', label: 'Optional subjects', icon: ListChecks },
+  { to: '/teacher/leave', label: 'My leave', icon: ClipboardList },
+  { to: '/teacher/payslips', label: 'Payslips', icon: Receipt },
+];
+
+function Shortcuts() {
+  return (
+    <nav aria-label="Teacher tools" className="mb-5 flex flex-wrap gap-2">
+      {SHORTCUTS.map(({ to, label, icon: Icon }) => (
+        <Link
+          key={to}
+          to={to}
+          className="inline-flex items-center gap-1.5 rounded-full bg-white border border-cream-deep/70 px-3 py-1.5 text-sm text-ink hover:border-terracotta/50 hover:text-terracotta-deep transition"
+        >
+          <Icon className="w-4 h-4 text-terracotta" />
+          {label}
+        </Link>
+      ))}
+    </nav>
   );
 }
 

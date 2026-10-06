@@ -113,7 +113,19 @@ export default function ClassManager() {
     }
     try {
       await apiRequest(`/api/teachers/${teacherId}/whatsapp`, { method: 'POST', body: { whatsapp_number: normalized } });
-      setMessage('Teacher WhatsApp number saved.');
+      setMessage('WhatsApp number saved.');
+      loadBaseData();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleRemoveTeacherWhatsapp = async (teacher) => {
+    if (!window.confirm(`Remove the WhatsApp number for ${teacher.name}? They will stop getting WhatsApp messages from the school.`)) return;
+    setError('');
+    try {
+      await apiRequest(`/api/teachers/${teacher.id}/whatsapp`, { method: 'DELETE' });
+      setMessage('WhatsApp number removed.');
       loadBaseData();
     } catch (err) {
       setError(err.message);
@@ -255,24 +267,59 @@ export default function ClassManager() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="space-y-6">
           <div className="bg-white p-5 border rounded-lg shadow-sm space-y-3">
-            <h2 className="text-lg font-semibold text-ink">Teacher WhatsApp Numbers</h2>
-            <p className="text-xs text-ink-soft">Teachers log in with their own email and password — set their WhatsApp number here too so they get "what to teach today" and student notes automatically.</p>
-            {teachers.map((t) => (
-              <div key={t.id} className="flex items-center gap-2">
-                <span className="text-sm text-ink-soft w-32 truncate" title={t.name}>
-                  {t.name}
-                  {t.phone && <span className="block text-[11px] text-ink-soft/70">{t.phone}</span>}
-                </span>
-                <input
-                  type="text"
-                  placeholder="+91..."
-                  defaultValue={t.whatsapp_number || ''}
-                  onBlur={(e) => e.target.value && handleSetTeacherWhatsapp(t.id, e.target.value)}
-                  className="flex-1 p-1.5 border text-xs rounded"
-                />
-                {t.whatsapp_opt_in_status === 'OPTED_IN' && <span className="text-xs text-emerald-600">✓</span>}
-              </div>
-            ))}
+            <h2 className="text-lg font-semibold text-ink">Staff WhatsApp numbers</h2>
+            <p className="text-xs text-ink-soft">
+              Substitution notices, class reminders, payslips, leave decisions and the daily digest go to these numbers. Staff
+              without one only see notifications after they log in.
+            </p>
+            <p className="text-xs font-medium text-ink">
+              {teachers.filter((t) => t.whatsapp_number && t.whatsapp_opt_in_status === 'OPTED_IN').length} of {teachers.length} set
+            </p>
+            {teachers.map((t) => {
+              const hasNumber = Boolean(t.whatsapp_number) && t.whatsapp_opt_in_status === 'OPTED_IN';
+              const phoneUsable = !t.whatsapp_number && Boolean(normalizePhone(t.phone || ''));
+              return (
+                <div key={t.id} className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-ink-soft w-32 truncate" title={t.name}>
+                      {t.name}
+                      <span className="block text-[11px] text-ink-soft/70 capitalize">{t.role}</span>
+                    </span>
+                    <input
+                      // Remount when the saved number changes so the field shows what is stored.
+                      key={`${t.id}:${t.whatsapp_number || ''}`}
+                      type="text"
+                      inputMode="tel"
+                      placeholder="+91..."
+                      aria-label={`WhatsApp number for ${t.name}`}
+                      defaultValue={t.whatsapp_number || ''}
+                      onBlur={(e) => e.target.value && e.target.value !== (t.whatsapp_number || '') && handleSetTeacherWhatsapp(t.id, e.target.value)}
+                      className="flex-1 min-w-0 p-1.5 border text-xs rounded"
+                    />
+                    {hasNumber && <span className="text-xs text-emerald-600" title="Set">✓</span>}
+                    {t.whatsapp_number && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveTeacherWhatsapp(t)}
+                        className="text-xs text-ink-soft hover:text-destructive"
+                        aria-label={`Remove WhatsApp number for ${t.name}`}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  {phoneUsable && (
+                    <button
+                      type="button"
+                      onClick={() => handleSetTeacherWhatsapp(t.id, t.phone)}
+                      className="block text-left text-[11px] text-terracotta-deep hover:underline"
+                    >
+                      Use their phone number ({t.phone})
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <form onSubmit={handleAddClass} className="bg-white p-5 border rounded-lg shadow-sm space-y-3">
