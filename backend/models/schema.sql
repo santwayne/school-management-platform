@@ -1141,11 +1141,23 @@ WHERE NOT EXISTS (
 -- and only writes the dashboard_notifications row.
 INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
 SELECT NULL, 'student_credentials', 'both', 'Student Login Credentials Created',
-       'student_credentials_alert', '["student_name","login_id","pin"]'::jsonb,
+       'student_portal_welcome', '["student_name","login_id"]'::jsonb,
        'Login created for {{student_name}}', 'Login ID: {{login_id}} · PIN: {{pin}} — keep this safe.', FALSE
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'student_credentials'
 );
+
+-- Meta refuses any Utility template that carries a PIN/login code (it insists
+-- on the Authentication category, whose fixed OTP format cannot hold a name +
+-- login ID). The template approved on Meta is therefore `student_portal_welcome`
+-- with two parameters only: {{1}} student name, {{2}} login ID. The PIN is no
+-- longer sent over WhatsApp - the school hands it to the family. This also
+-- fixes databases seeded with the old name / three-parameter order.
+UPDATE notification_templates
+SET whatsapp_template_name = 'student_portal_welcome',
+    whatsapp_param_order = '["student_name","login_id"]'::jsonb
+WHERE trigger_event = 'student_credentials'
+  AND whatsapp_template_name = 'student_credentials_alert';
 
 -- ---------- Teacher Management additions: Optional Subjects + Student Leave ----------
 -- `classes` had no section column at all — sections aren't modeled anywhere
