@@ -196,9 +196,12 @@ router.post('/bulk-upsert', requireAuth, requirePrincipal, async (req, res) => {
         results.push({ row_number: rowNumber, status: 'created', student: { ...insertRes.rows[0], defaultPin }, warning: phoneWarning || undefined });
 
         // Parents have no web login (see schema.sql's Unified Notification
-        // Service comment) — WhatsApp is the only way they ever see their
-        // child's login_id + PIN, so send it as soon as we have a parent on
-        // file with a phone number. Best-effort: never let a WhatsApp failure
+        // Service comment) — so tell them on WhatsApp as soon as we have a
+        // parent on file with a phone number. The approved Meta template
+        // (student_portal_welcome) carries the student name + login_id only:
+        // Meta rejects a PIN in a Utility template, so the PIN is handed over
+        // by the school and `pin` below is used for the dashboard row only.
+        // Best-effort: never let a WhatsApp failure
         // block the bulk-upsert response (same defensive pattern used by
         // every other notificationService.send() call in this codebase).
         if (parentId) {
