@@ -90,8 +90,12 @@ router.post('/bulk-upsert', requireAuth, requirePrincipal, async (req, res) => {
               await pool.query('UPDATE parents SET name = $1 WHERE id = $2', [row.parent_name.trim(), parentId]);
             }
           } else {
+            // opt_in_status = OPTED_IN: same principal-vouches rule as the
+            // other add-student / add-parent paths (routes/academics.js).
+            // Without it the parent sits at the schema default OPTED_OUT and
+            // silently never receives any WhatsApp, the portal welcome included.
             const newParent = await pool.query(
-              `INSERT INTO parents (school_id, name, phone) VALUES ($1, $2, $3) RETURNING id`,
+              `INSERT INTO parents (school_id, name, phone, opt_in_status) VALUES ($1, $2, $3, 'OPTED_IN') RETURNING id`,
               [schoolId, (row.parent_name || `Parent of ${name}`).trim(), phone]
             );
             parentId = newParent.rows[0].id;

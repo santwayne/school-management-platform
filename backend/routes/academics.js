@@ -5,6 +5,7 @@ import { requireAuth, requirePrincipal, requireLibrary } from '../middleware/aut
 import { normalizePhone } from '../utils/phone.js';
 import { audit } from '../services/opsService.js';
 import { assertCapacity } from '../services/billingService.js';
+import { send as sendNotification } from '../services/notificationService.js';
 
 const router = express.Router();
 
@@ -199,6 +200,7 @@ router.post('/students/bulk', requireAuth, requirePrincipal, async (req, res) =>
     }
 
     const provisioned = [];
+    const welcomeTargets = [];
 
     for (const student of students) {
       if (!student.name || student.name.trim() === '') continue;
@@ -244,9 +246,26 @@ router.post('/students/bulk', requireAuth, requirePrincipal, async (req, res) =>
       );
 
       provisioned.push({ ...studentRes.rows[0], defaultPin });
+      if (parentId) welcomeTargets.push({ studentId: studentRes.rows[0].id, loginId, defaultPin });
     }
 
     await client.query('COMMIT');
+
+    // Tell each family their child is on the portal (same message the Bulk
+    // Upload screen sends). After COMMIT and best-effort: a WhatsApp failure
+    // must never undo or fail the student creation.
+    for (const t of welcomeTargets) {
+      try {
+        await sendNotification({
+          triggerEvent: 'student_credentials',
+          schoolId,
+          recipients: [{ type: 'parent', studentId: t.studentId }],
+          variables: { login_id: t.loginId, pin: t.defaultPin },
+        });
+      } catch (notifyErr) {
+        console.error('student_credentials notification failed:', notifyErr.message);
+      }
+    }
     res.status(201).json({ success: true, inserted_count: provisioned.length, records: provisioned });
   } catch (err) {
     await client.query('ROLLBACK');
