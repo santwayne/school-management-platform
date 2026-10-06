@@ -182,6 +182,29 @@ router.post('/teachers/:id/whatsapp', requireAuth, requirePrincipal, async (req,
   }
 });
 
+// DELETE /api/teachers/:id/whatsapp — principal removes a staff member's
+// WhatsApp number (wrong number, or they left). They stop getting WhatsApp
+// messages; notifications still reach their portal.
+router.delete('/teachers/:id/whatsapp', requireAuth, requirePrincipal, async (req, res) => {
+  if (!/^\d+$/.test(req.params.id)) {
+    return res.status(404).json({ error: 'Staff member not found for this school' });
+  }
+  try {
+    const result = await pool.query(
+      `UPDATE teachers SET whatsapp_number = NULL, whatsapp_opt_in_status = 'OPTED_OUT'
+       WHERE id = $1 AND school_id = $2
+       RETURNING id, name, whatsapp_number, whatsapp_opt_in_status`,
+      [req.params.id, req.user.school_id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Staff member not found for this school' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/teachers/whatsapp-opt-in — a teacher opts themself in/out (must originate from the user, not an admin)
 router.post('/teachers/whatsapp-opt-in', requireAuth, async (req, res) => {
   const { whatsapp_number, opt_in } = req.body;

@@ -1,6 +1,6 @@
 import pool from '../config/db.js';
 import { sendTemplateMessage } from './whatsappService.js';
-import { raiseException, audit } from './opsService.js';
+import { raiseException, autoResolve, audit } from './opsService.js';
 
 // ------------------------------------------------------------------
 // Teacher substitution planner.
@@ -72,29 +72,119 @@ async function absentTeachers(schoolId, date, { checkPunches }) {
   return absent;
 }
 
-async function notifySubstitute({ schoolId, sub, slot, absentName, date }) {
-  const t = await pool.query(`SELECT id, name, whatsapp_number, whatsapp_opt_in_status FROM teachers WHERE id = $1`, [sub.id]);
-  const teacher = t.rows[0];
+// The approved WhatsApp template reads "you have a substitution today", so
+// the WhatsApp is only ever sent on the day of the class, and not before
+// this time (a 15-minute cycle just after midnight must not wake anyone).
+const NOTIFY_FROM = /^\d{2}:\d{2}$/.test(process.env.SUBSTITUTION_NOTIFY_FROM || '') ? process.env.SUBSTITUTION_NOTIFY_FROM : '06:30';
+const NO_TIMETABLE_KEY = 'sub_no_timetable';
+
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// 'YYYY-MM-DD' -> 'Fri 9 Oct'
+export function dayLabel(date) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(date || ''));
+  if (!m) return String(date || '');
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return `${DAYS[d.getUTCDay()]} ${Number(m[3])} ${MONTHS[Number(m[2]) - 1]}`;
+}
+
+// Pure: what the substitute is told. `date` and `today` are 'YYYY-MM-DD'.
+// A substitution planned ahead (leave approved in advance) must say which
+// day it is for instead of "today".
+export function substitutionNotice({ slot, absentName, lessonPlanTitle = null, date, today }) {
+  const time = slot.start_time ? ` (${String(slot.start_time).slice(0, 5)})` : '';
+  const what = `Period ${slot.period_number}${time}, ${slot.class_label}, ${slot.subject_name || 'class'}`;
+  const body = `${what} for ${absentName}.${lessonPlanTitle ? ` Lesson plan: ${lessonPlanTitle}.` : ''}`.replace(/\s+/g, ' ');
+  const isToday = date === today;
+  return { isToday, title: isToday ? 'Substitution today' : `Substitution on ${dayLabel(date)}`, body };
+}
+
+// True once the school day's notifications may go out. Times are 'HH:MM[:SS]'.
+export function canNotifyNow(nowTime, from = NOTIFY_FROM) {
+  return String(nowTime || '').slice(0, 5) >= from;
+}
+
+const SUBSTITUTION_DETAIL_SQL = `
+  SELECT x.id, x.school_id, to_char(x.date, 'YYYY-MM-DD') AS date, x.status, x.substitute_teacher_id,
+         ts.id AS slot_id, ts.class_id, ts.subject_id, ts.period_number, ts.start_time,
+         c.name || COALESCE(' ' || c.section, '') AS class_label, s.name AS subject_name,
+         a.name AS absent_name, t.name AS substitute_name, t.whatsapp_number, t.whatsapp_opt_in_status
+  FROM substitutions x
+  JOIN timetable_slots ts ON ts.id = x.timetable_slot_id
+  JOIN classes c ON c.id = ts.class_id
+  LEFT JOIN subjects s ON s.id = ts.subject_id
+  JOIN teachers a ON a.id = x.absent_teacher_id
+  LEFT JOIN teachers t ON t.id = x.substitute_teacher_id`;
+
+async function noticeFor(row, today) {
   const plan = await pool.query(
     `SELECT title FROM lesson_plans WHERE (timetable_slot_id = $1 AND plan_date = $2) OR (class_id = $3 AND subject_id = $4 AND plan_date = $2) ORDER BY id DESC LIMIT 1`,
-    [slot.id, date, slot.class_id, slot.subject_id]
+    [row.slot_id, row.date, row.class_id, row.subject_id]
   );
-  const what = `Period ${slot.period_number}${slot.start_time ? ` (${String(slot.start_time).slice(0, 5)})` : ''}, ${slot.class_label}, ${slot.subject_name || 'class'}`;
-  const body = `${what} for ${absentName}.${plan.rows[0] ? ` Lesson plan: ${plan.rows[0].title}.` : ''}`;
+  return substitutionNotice({ slot: row, absentName: row.absent_name, lessonPlanTitle: plan.rows[0]?.title || null, date: row.date, today });
+}
+
+// Puts the assignment in the substitute's notification bell right away
+// (also for a future date), so they can see it as soon as it is planned.
+export async function announceSubstitution(subId, { today = null } = {}) {
+  const r = await pool.query(`${SUBSTITUTION_DETAIL_SQL} WHERE x.id = $1 AND x.status = 'assigned' AND x.substitute_teacher_id IS NOT NULL`, [subId]);
+  const row = r.rows[0];
+  if (!row) return null;
+  const notice = await noticeFor(row, today || (await istNow()).today);
   await pool.query(
     `INSERT INTO dashboard_notifications (school_id, trigger_event, recipient_type, recipient_id, channel_used, title, body)
-     VALUES ($1, 'substitution_assigned', 'staff', $2, 'dashboard', 'Substitution today', $3)`,
-    [schoolId, sub.id, body]
+     VALUES ($1, 'substitution_assigned', 'staff', $2, 'dashboard', $3, $4)`,
+    [row.school_id, row.substitute_teacher_id, notice.title, notice.body]
   );
-  // Template (Utility, en): substitution_assigned {{1}} teacher name, {{2}} what
-  // "Hi {{1}}, you have a substitution today: {{2}}. Please check the Waynur app for details."
-  if (teacher?.whatsapp_opt_in_status === 'OPTED_IN' && teacher.whatsapp_number) {
+  return notice;
+}
+
+// Sends the WhatsApp for today's substitutions that have not been sent yet:
+// ones planned just now, and ones planned on an earlier day for today.
+// Each row is claimed (notify_pending -> FALSE) before sending, so two
+// overlapping runs can never message the same teacher twice. A substitute
+// without a WhatsApp number stays pending and is told if one is added
+// later that day; they still have the in-app notification.
+//
+// Template (Utility, en): substitution_assigned {{1}} teacher name, {{2}} what
+// "Hi {{1}}, you have a substitution today: {{2}}. Please check the Waynur app for details."
+export async function sendDueSubstitutionAlerts(schoolId, { today = null, nowTime = null } = {}) {
+  if (!today || !nowTime) {
+    const now = await istNow();
+    today = today || now.today;
+    nowTime = nowTime || now.now_time;
+  }
+  if (!canNotifyNow(nowTime)) return { sent: 0, failed: 0 };
+
+  const due = await pool.query(
+    `${SUBSTITUTION_DETAIL_SQL}
+     WHERE x.school_id = $1 AND x.date = $2 AND x.status = 'assigned' AND x.notify_pending
+       AND t.whatsapp_opt_in_status = 'OPTED_IN' AND t.whatsapp_number IS NOT NULL
+     ORDER BY ts.period_number, x.id`,
+    [schoolId, today]
+  );
+  let sent = 0;
+  let failed = 0;
+  for (const row of due.rows) {
+    const claimed = await pool.query(`UPDATE substitutions SET notify_pending = FALSE WHERE id = $1 AND notify_pending RETURNING id`, [row.id]);
+    if (!claimed.rowCount) continue; // another run got there first
     try {
-      await sendTemplateMessage(schoolId, String(teacher.whatsapp_number).replace(/^\+/, ''), process.env.WHATSAPP_SUBSTITUTION_TEMPLATE || 'substitution_assigned', 'en', [teacher.name, body.slice(0, 500)]);
+      const notice = await noticeFor(row, today);
+      await sendTemplateMessage(
+        schoolId,
+        String(row.whatsapp_number).replace(/^\+/, ''),
+        process.env.WHATSAPP_SUBSTITUTION_TEMPLATE || 'substitution_assigned',
+        'en',
+        [row.substitute_name, notice.body.slice(0, 500)]
+      );
+      sent += 1;
     } catch (err) {
-      console.error(`[substitution] WhatsApp to teacher ${sub.id} failed:`, err.response?.data?.error?.message || err.message);
+      failed += 1;
+      console.error(`[substitution] WhatsApp to teacher ${row.substitute_teacher_id} failed:`, err.response?.data?.error?.message || err.message);
     }
   }
+  return { sent, failed };
 }
 
 // Plan (or top up) substitutions for one school and date.
@@ -123,7 +213,28 @@ export async function planSubstitutions(schoolId, date, { checkPunches = false }
      ORDER BY ts.period_number`,
     [schoolId, dow, absentIds, date]
   );
-  if (!slots.rowCount) return { assigned: 0, unfilled: 0 };
+  if (!slots.rowCount) {
+    // Nothing to cover. If that is because the school has no timetable at
+    // all, say so in the inbox: otherwise an absent teacher's classes go
+    // uncovered and nobody is told why.
+    const any = await pool.query(`SELECT 1 FROM timetable_slots WHERE school_id = $1 LIMIT 1`, [schoolId]);
+    if (any.rowCount) {
+      await autoResolve(NO_TIMETABLE_KEY, { schoolId, note: 'Timetable has been set up' });
+      return { assigned: 0, unfilled: 0 };
+    }
+    const names = await pool.query(`SELECT name FROM teachers WHERE id = ANY($1::int[]) ORDER BY name`, [absentIds]);
+    const who = names.rows.map((n) => n.name).join(', ') || 'A teacher';
+    await raiseException({
+      schoolId,
+      source: 'substitution',
+      severity: 'medium',
+      title: 'No timetable yet, so absent teachers cannot be covered automatically',
+      body: `${who} ${names.rowCount > 1 ? 'are' : 'is'} away on ${dayLabel(date)}, but this school has no timetable, so Waynur cannot tell which periods need a substitute. Build the timetable (Timetable in the menu) and cover will be planned automatically; until then, arrange it by hand.`,
+      dedupeKey: NO_TIMETABLE_KEY,
+    });
+    return { assigned: 0, unfilled: 0, noTimetable: true };
+  }
+  await autoResolve(NO_TIMETABLE_KEY, { schoolId, note: 'Timetable has been set up' });
 
   // Everyone else who teaches, with their load.
   const staff = await pool.query(
@@ -187,10 +298,10 @@ export async function planSubstitutions(schoolId, date, { checkPunches = false }
     const best = ranked[0];
     const reason = absent.get(slot.teacher_id);
     const ins = await pool.query(
-      `INSERT INTO substitutions (school_id, date, timetable_slot_id, absent_teacher_id, substitute_teacher_id, status, reason, score_detail)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO substitutions (school_id, date, timetable_slot_id, absent_teacher_id, substitute_teacher_id, status, reason, score_detail, notify_pending)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (timetable_slot_id, date) WHERE status <> 'cancelled' DO NOTHING RETURNING id`,
-      [schoolId, date, slot.id, slot.teacher_id, best?.id || null, best ? 'assigned' : 'unfilled', reason, JSON.stringify(best ? { score: best.score, why: explain(best) } : { candidates: free.length })]
+      [schoolId, date, slot.id, slot.teacher_id, best?.id || null, best ? 'assigned' : 'unfilled', reason, JSON.stringify(best ? { score: best.score, why: explain(best) } : { candidates: free.length }), Boolean(best)]
     );
     if (!ins.rowCount) continue; // another run got there first
     const subId = ins.rows[0].id;
@@ -202,7 +313,7 @@ export async function planSubstitutions(schoolId, date, { checkPunches = false }
       const original = pool_.find((c) => c.id === best.id);
       original.subsToday += 1;
       original.subsThisWeek += 1;
-      await notifySubstitute({ schoolId, sub: best, slot, absentName: slot.absent_name, date });
+      await announceSubstitution(subId);
       await audit({ schoolId, actorType: 'system', action: 'substitution.assigned', entityType: 'substitution', entityId: subId, detail: { period: slot.period_number, class: slot.class_label, to: best.name, why: explain(best) } });
     } else {
       unfilled += 1;
@@ -218,6 +329,8 @@ export async function planSubstitutions(schoolId, date, { checkPunches = false }
       });
     }
   }
+  // Same-day cover is sent now; cover for a later day goes out that morning.
+  if (assigned > 0) await sendDueSubstitutionAlerts(schoolId);
   return { assigned, unfilled };
 }
 
@@ -259,12 +372,16 @@ export async function runSubstitutionCycle() {
   let assigned = 0;
   let unfilled = 0;
   for (const s of schools.rows) {
-    if (!s.enabled) continue;
-    const checkPunches = s.method === 'biometric' && s.has_devices && String(nowTime) >= String(s.cutoff);
-    await releaseLateArrivals(s.id, today, nowTime);
-    const r = await planSubstitutions(s.id, today, { checkPunches });
-    assigned += r.assigned;
-    unfilled += r.unfilled;
+    if (s.enabled) {
+      const checkPunches = s.method === 'biometric' && s.has_devices && String(nowTime) >= String(s.cutoff);
+      await releaseLateArrivals(s.id, today, nowTime);
+      const r = await planSubstitutions(s.id, today, { checkPunches });
+      assigned += r.assigned;
+      unfilled += r.unfilled;
+    }
+    // Cover arranged on an earlier day (leave approved in advance, or set by
+    // hand with automatic planning switched off) is told on the day itself.
+    await sendDueSubstitutionAlerts(s.id, { today, nowTime });
   }
   // Unfilled periods are already inbox items; they are not a failure of
   // the automation itself, so they don't count as failed runs.

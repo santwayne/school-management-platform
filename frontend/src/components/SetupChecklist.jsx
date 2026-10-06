@@ -18,10 +18,24 @@ const STEPS = [
   { key: 'parents', label: 'Parents', tab: 'parents' },
 ];
 
-const DISMISS_KEY = 'setupChecklistDismissed';
+// Substitution cover, class reminders, daily guidance and every staff
+// WhatsApp stay silent (no error anywhere) while the thing they read from is
+// empty. These rows show the principal which of those is still missing.
+// `detail` comes from GET /api/automation-readiness.
+const AUTOMATION_STEPS = [
+  { key: 'whatsapp', label: 'School WhatsApp number', to: null },
+  { key: 'staff_whatsapp', label: 'Staff WhatsApp numbers', to: '/admin/manage?tab=classes', needs: 'Needed for every message to staff.' },
+  { key: 'timetable', label: 'Timetable', to: '/admin/timetable', needs: 'Needed for substitution cover and class reminders.' },
+  { key: 'syllabus', label: 'Syllabus calendar', to: '/syllabus', needs: 'Needed for the daily teaching guidance.' },
+];
+
+// v2: the checklist gained the automation rows above, so someone who closed
+// the earlier version sees it once more.
+const DISMISS_KEY = 'setupChecklistDismissed:v2';
 
 export default function SetupChecklist() {
   const [counts, setCounts] = useState(null);
+  const [automation, setAutomation] = useState(null);
   const [dismissed, setDismissed] = useState(() => localStorage.getItem(DISMISS_KEY) === '1');
 
   useEffect(() => {
@@ -47,9 +61,12 @@ export default function SetupChecklist() {
       // Best-effort nudge only — a failed fetch here should never block or
       // error the dashboard itself.
       .catch(() => {});
+    apiRequest('/api/automation-readiness')
+      .then((r) => setAutomation(Array.isArray(r?.items) ? r.items : []))
+      .catch(() => setAutomation([]));
   }, [dismissed]);
 
-  if (dismissed || !counts) return null;
+  if (dismissed || !counts || automation === null) return null;
 
   const done = {
     classes: counts.classes > 0,
@@ -58,7 +75,12 @@ export default function SetupChecklist() {
     students: counts.students > 0,
     parents: counts.parents > 0,
   };
-  if (Object.values(done).every(Boolean)) return null;
+  const basicsDone = Object.values(done).every(Boolean);
+  const automationRows = AUTOMATION_STEPS
+    .map((step) => ({ ...step, ...(automation.find((i) => i.key === step.key) || {}) }))
+    .filter((row) => typeof row.done === 'boolean');
+  const automationDone = automationRows.every((row) => row.done);
+  if (basicsDone && automationDone) return null;
 
   const dismiss = () => {
     localStorage.setItem(DISMISS_KEY, '1');
@@ -76,6 +98,8 @@ export default function SetupChecklist() {
           <X className="w-4 h-4" />
         </button>
       </div>
+      {!basicsDone && (
+      <>
       <p className="text-sm text-ink-soft mt-1 mb-4">
         Signup only set up your classes — a few things still need adding before the school is fully live.
       </p>
@@ -95,6 +119,43 @@ export default function SetupChecklist() {
           </Link>
         ))}
       </div>
+      </>
+      )}
+
+      {!automationDone && (
+        <div className={basicsDone ? 'mt-1' : 'mt-5'}>
+          <p className="text-sm text-ink-soft mb-3">
+            Automatic messages to staff only start once these are in place. Until then they stay silent.
+          </p>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {automationRows.map((row) => {
+              const body = (
+                <>
+                  {row.done ? (
+                    <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <Circle className="w-4 h-4 text-ink-soft shrink-0 mt-0.5" />
+                  )}
+                  <span className="min-w-0">
+                    <span className={`block ${row.done ? 'text-ink-soft line-through' : 'text-ink'}`}>{row.label}</span>
+                    {!row.done && (
+                      <span className="block text-xs text-ink-soft mt-0.5">
+                        {row.detail}{row.needs ? `. ${row.needs}` : ''}
+                      </span>
+                    )}
+                  </span>
+                </>
+              );
+              const cls = 'flex items-start gap-2 text-sm px-3 py-2 rounded-lg border border-cream-deep/70 bg-white';
+              return row.to && !row.done ? (
+                <Link key={row.key} to={row.to} className={`${cls} hover:border-terracotta/40 transition`}>{body}</Link>
+              ) : (
+                <div key={row.key} className={cls}>{body}</div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

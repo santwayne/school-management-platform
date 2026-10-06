@@ -61,6 +61,7 @@ const TeacherLeave = lazy(() => import('./components/TeacherLeave'));
 const MyPayslips = lazy(() => import('./components/MyPayslips'));
 const AdminTimetable = lazy(() => import('./components/AdminTimetable'));
 const TeacherLessonPlans = lazy(() => import('./components/TeacherLessonPlans'));
+const TeacherHomework = lazy(() => import('./components/TeacherHomework'));
 const AdminLessonPlans = lazy(() => import('./components/AdminLessonPlans'));
 const AdminEventCalendar = lazy(() => import('./components/AdminEventCalendar'));
 const AdminLibrary = lazy(() => import('./components/AdminLibrary'));
@@ -172,6 +173,7 @@ function AppRoutes() {
         <Route path="/teacher/leave" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherLeave /></ProtectedRoute>} />
         <Route path="/teacher/payslips" element={<ProtectedRoute teacherOrPrincipalOnly><MyPayslips /></ProtectedRoute>} />
         <Route path="/teacher/lesson-plans" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherLessonPlans /></ProtectedRoute>} />
+        <Route path="/teacher/homework" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherHomework /></ProtectedRoute>} />
 
         {/* Operator Control Center — operator and principal */}
         <Route path="/ops" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, OpsOverview)}</ProtectedRoute>} />

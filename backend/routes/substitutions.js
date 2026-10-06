@@ -2,7 +2,7 @@ import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth, requireOperator } from '../middleware/auth.js';
 import { audit } from '../services/opsService.js';
-import { planSubstitutions } from '../services/substitutionService.js';
+import { planSubstitutions, announceSubstitution, sendDueSubstitutionAlerts } from '../services/substitutionService.js';
 
 const router = express.Router();
 router.use(requireAuth, requireOperator);
@@ -66,17 +66,32 @@ router.patch('/:id', async (req, res) => {
   try {
     const t = await pool.query(`SELECT id, name FROM teachers WHERE id = $1 AND school_id = $2`, [teacherId, req.user.school_id]);
     if (!t.rowCount) return res.status(400).json({ error: 'Teacher not found' });
+    const before = await pool.query(
+      `SELECT substitute_teacher_id FROM substitutions WHERE id = $1 AND school_id = $2 AND status <> 'cancelled'`,
+      [req.params.id, req.user.school_id]
+    );
+    if (!before.rowCount) return res.status(404).json({ error: 'Not found' });
+    const previousId = before.rows[0].substitute_teacher_id;
+    if (previousId === teacherId) return res.json({ id: Number(req.params.id), substitute_teacher_id: teacherId, unchanged: true });
+
     const r = await pool.query(
-      `UPDATE substitutions SET substitute_teacher_id = $3, status = 'assigned', assigned_by = $4, updated_at = NOW()
+      `UPDATE substitutions SET substitute_teacher_id = $3, status = 'assigned', assigned_by = $4, notify_pending = TRUE, updated_at = NOW()
        WHERE id = $1 AND school_id = $2 AND status <> 'cancelled' RETURNING *`,
       [req.params.id, req.user.school_id, teacherId, req.user.teacher_id]
     );
     if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
-    await pool.query(
-      `INSERT INTO dashboard_notifications (school_id, trigger_event, recipient_type, recipient_id, channel_used, title, body)
-       VALUES ($1, 'substitution_assigned', 'staff', $2, 'dashboard', 'Substitution assigned', 'You have been assigned a substitution. Check Substitutions for details.')`,
-      [req.user.school_id, teacherId]
-    );
+    // The new teacher gets the same detailed notice as an automatic
+    // assignment (and the WhatsApp, on the day of the class); the teacher
+    // who was covering before is told they no longer need to.
+    await announceSubstitution(r.rows[0].id);
+    if (previousId) {
+      await pool.query(
+        `INSERT INTO dashboard_notifications (school_id, trigger_event, recipient_type, recipient_id, channel_used, title, body)
+         VALUES ($1, 'substitution_cancelled', 'staff', $2, 'dashboard', 'Substitution cancelled', 'Another teacher is covering this period now, so your substitution is no longer needed.')`,
+        [req.user.school_id, previousId]
+      );
+    }
+    await sendDueSubstitutionAlerts(req.user.school_id);
     await pool.query(`UPDATE ops_exceptions SET status = 'resolved', resolved_at = NOW(), resolved_by = $2, resolution_note = $3 WHERE dedupe_key = $1 AND status IN ('open', 'snoozed')`, [`sub_unfilled:${req.params.id}`, req.user.teacher_id, `Assigned to ${t.rows[0].name}`]);
     await audit({ schoolId: req.user.school_id, actorType: 'user', actorId: req.user.teacher_id, action: 'substitution.reassigned', entityType: 'substitution', entityId: Number(req.params.id), detail: { to: t.rows[0].name } });
     res.json(r.rows[0]);

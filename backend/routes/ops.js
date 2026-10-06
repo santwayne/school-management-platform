@@ -23,6 +23,8 @@ router.use(requireAuth, requireOperator);
 // ------------------------------------------------------------------
 const RUN_NOW_ALLOWED = new Set([
   'gps_poll',
+  // Safe to re-run: daily_guidance_log allows one nudge per teacher, chapter and day.
+  'daily_guidance',
   'teacher_attendance_rollup',
   'fee_reminder',
   'petty_cash_reminder',
