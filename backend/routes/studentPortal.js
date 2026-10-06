@@ -1,7 +1,7 @@
 import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth, requireStudent, requirePrincipal } from '../middleware/auth.js';
-import { send as sendNotification } from '../services/notificationService.js';
+import { HomeworkError, createHomework, notifyHomeworkAssigned } from '../services/homeworkService.js';
 
 const router = express.Router();
 
@@ -32,47 +32,17 @@ router.get('/homework', requireAuth, requireStudent, async (req, res) => {
   }
 });
 
-// Teacher/Principal assigns homework to a class.
+// Teacher/Principal assigns homework to a class. Kept for older clients —
+// the Teacher Portal uses POST /api/homework (routes/homework.js). Both go
+// through homeworkService, so the same checks apply: the class and subject
+// must belong to this school and a teacher must be assigned to them.
 router.post('/homework', requireAuth, async (req, res) => {
-  if (!['teacher', 'principal'].includes(req.user.role)) {
-    return res.status(403).json({ error: 'Teacher or Principal role required' });
-  }
-  const school_id = req.user.school_id;
-  const { class_id, subject_id, title, description, due_date } = req.body;
-  if (!class_id || !subject_id || !title) {
-    return res.status(400).json({ error: 'class_id, subject_id and title are required' });
-  }
   try {
-    const result = await pool.query(
-      `INSERT INTO homework (school_id, class_id, subject_id, title, description, due_date, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [school_id, class_id, subject_id, title, description || null, due_date || null, req.user.teacher_id]
-    );
-    res.status(201).json(result.rows[0]);
-
-    // Fire-and-forget: fan out to every student in the class (dashboard +
-    // WhatsApp to their parent). Runs after the response so a slow/failed
-    // notification never delays homework creation for the teacher.
-    (async () => {
-      try {
-        const studentsRes = await pool.query('SELECT id FROM students WHERE class_id = $1 AND school_id = $2', [
-          class_id, school_id,
-        ]);
-        const recipients = studentsRes.rows.flatMap((s) => ([
-          { type: 'student', studentId: s.id },
-          { type: 'parent', studentId: s.id },
-        ]));
-        await sendNotification({
-          triggerEvent: 'homework_assigned',
-          schoolId: school_id,
-          recipients,
-          variables: { subject: subject_id, title, description: description || '', due_date: due_date || 'no due date' },
-        });
-      } catch (notifyErr) {
-        console.error('homework_assigned notification fan-out failed:', notifyErr.message);
-      }
-    })();
+    const homework = await createHomework(req.user, req.body);
+    res.status(201).json(homework);
+    notifyHomeworkAssigned(homework);
   } catch (err) {
+    if (err instanceof HomeworkError) return res.status(err.status).json({ error: err.message });
     console.error('Homework create error:', err);
     res.status(500).json({ error: 'Failed to create homework' });
   }

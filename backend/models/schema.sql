@@ -2563,3 +2563,36 @@ ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_connection_emailed
 UPDATE school_settings ss SET whatsapp_connected = FALSE
  WHERE whatsapp_connected = TRUE
    AND NOT EXISTS (SELECT 1 FROM school_whatsapp_credentials c WHERE c.school_id = ss.school_id);
+
+-- ============================================================
+-- Staff automation + homework fixes (Oct 2026)
+-- ============================================================
+
+-- homework.subject_id has always been shown to students and parents as-is
+-- (the Student Portal and the WhatsApp parent assistant both print it), so
+-- it holds the subject's NAME. subject_ref_id is the real link to subjects,
+-- the same split syllabus_calendar uses (subject_id text + subject_ref_id FK).
+ALTER TABLE homework ADD COLUMN IF NOT EXISTS subject_ref_id INT REFERENCES subjects(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_homework_created_by ON homework(created_by);
+
+-- A substitution can be planned days ahead (leave approved in advance), but
+-- the approved WhatsApp template says "you have a substitution today". So
+-- the WhatsApp goes out on the day itself; notify_pending marks rows whose
+-- substitute still has to be told. Existing rows default to FALSE: they
+-- were already notified by the old plan-time send.
+ALTER TABLE substitutions ADD COLUMN IF NOT EXISTS notify_pending BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_substitutions_notify_pending ON substitutions(school_id, date) WHERE notify_pending;
+
+-- One guidance nudge per teacher, chapter and day, however many times the
+-- job runs (restart, manual "Run now"). Same insert-as-dedupe pattern as
+-- teaching_reminder_log.
+CREATE TABLE IF NOT EXISTS daily_guidance_log (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    teacher_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    syllabus_calendar_id INT NOT NULL REFERENCES syllabus_calendar(id) ON DELETE CASCADE,
+    guidance_date DATE NOT NULL,
+    notified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (teacher_id, syllabus_calendar_id, guidance_date)
+);
+CREATE INDEX IF NOT EXISTS idx_daily_guidance_log_school ON daily_guidance_log(school_id);
