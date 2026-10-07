@@ -14,6 +14,7 @@
 // nothing here changes after issuance (see PR notes for the storage
 // trade-off discussion).
 import jsPDF from 'jspdf';
+import { apiRequest } from '../api';
 
 function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -21,32 +22,64 @@ function fmtDate(d) {
 
 // student: { name, class_name, grade, login_id, parent_name, enrolled_at }
 // settings: { school_name, leaving_cert_letterhead_text, leaving_cert_signatory_name, leaving_cert_signatory_designation }
+// Optional branding (Settings -> Branding), both best-effort:
+//   settings.brand_color    '#rrggbb' theme colour
+//   settings.logo_data_url  the school logo as a PNG/JPEG data URL
+// Without them the certificate looks exactly as it always did.
 export function buildLeavingCertificatePDF(student, settings) {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const centerX = pageWidth / 2;
 
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(settings.brand_color || '');
+  const brand = m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+
+  // Logo, centred above the school name. Everything below moves down by its height.
+  let top = 0;
+  if (settings.logo_data_url) {
+    try {
+      const props = doc.getImageProperties(settings.logo_data_url);
+      const scale = Math.min(40 / props.width, 20 / props.height);
+      const w = props.width * scale;
+      const h = props.height * scale;
+      doc.addImage(settings.logo_data_url, props.fileType, centerX - w / 2, 10, w, h);
+      top = h + 4;
+    } catch {
+      top = 0; // an unreadable logo never blocks the certificate
+    }
+  }
+
   // Letterhead
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
-  doc.text(settings.school_name || 'School', centerX, 20, { align: 'center' });
+  if (brand) doc.setTextColor(...brand);
+  doc.text(settings.school_name || 'School', centerX, top + 20, { align: 'center' });
 
   if (settings.leaving_cert_letterhead_text) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.setTextColor(100);
     const lines = doc.splitTextToSize(settings.leaving_cert_letterhead_text, pageWidth - 40);
-    doc.text(lines, centerX, 28, { align: 'center' });
+    doc.text(lines, centerX, top + 28, { align: 'center' });
   }
 
-  doc.setDrawColor(180);
-  doc.line(20, 38, pageWidth - 20, 38);
+  if (brand) {
+    doc.setDrawColor(...brand);
+    doc.setLineWidth(0.5);
+  } else {
+    doc.setDrawColor(180);
+  }
+  doc.line(20, top + 38, pageWidth - 20, top + 38);
+  doc.setLineWidth(0.2);
+  doc.setDrawColor(0);
 
-  doc.setTextColor(20);
+  if (brand) doc.setTextColor(...brand);
+  else doc.setTextColor(20);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(15);
-  doc.text('SCHOOL LEAVING CERTIFICATE', centerX, 52, { align: 'center' });
+  doc.text('SCHOOL LEAVING CERTIFICATE', centerX, top + 52, { align: 'center' });
 
+  doc.setTextColor(20);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
   const bodyLines = [
@@ -61,10 +94,10 @@ export function buildLeavingCertificatePDF(student, settings) {
     'To the best of our knowledge, the conduct and character of the student have been satisfactory',
     'during the period of study at this institution.',
   ];
-  doc.text(bodyLines, 20, 68, { lineHeightFactor: 1.7 });
+  doc.text(bodyLines, 20, top + 68, { lineHeightFactor: 1.7 });
 
   // Signatory block
-  const signY = 165;
+  const signY = top + 165;
   doc.line(pageWidth - 80, signY, pageWidth - 20, signY);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
@@ -77,7 +110,16 @@ export function buildLeavingCertificatePDF(student, settings) {
   return doc;
 }
 
-export function downloadLeavingCertificate(student, settings) {
-  const doc = buildLeavingCertificatePDF(student, settings);
+// Async only because it first asks the server for the school's branding
+// (theme colour + logo). If that fails the certificate is still produced,
+// just without them.
+export async function downloadLeavingCertificate(student, settings) {
+  let branding = {};
+  try {
+    branding = (await apiRequest('/api/settings/branding')) || {};
+  } catch {
+    branding = {};
+  }
+  const doc = buildLeavingCertificatePDF(student, { ...settings, ...branding });
   doc.save(`leaving-certificate-${(student.name || 'student').replace(/\s+/g, '-').toLowerCase()}.pdf`);
 }

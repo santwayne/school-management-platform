@@ -2650,3 +2650,10 @@ CREATE TABLE IF NOT EXISTS school_razorpay_credentials (
 -- school's own webhook.
 ALTER TABLE fee_payment_links ADD COLUMN IF NOT EXISTS razorpay_account VARCHAR(10) NOT NULL DEFAULT 'platform';
 ALTER TABLE admission_payment_links ADD COLUMN IF NOT EXISTS razorpay_account VARCHAR(10) NOT NULL DEFAULT 'platform';
+
+-- ---------- School branding on its own documents (Oct 2026) ----------
+-- logo_url has been on school_settings from the start; this is the one theme
+-- colour the principal picks in Settings -> Branding ('#rrggbb'). Both are
+-- printed on the school's certificates and payslips
+-- (services/schoolBranding.js). NULL = the neutral look used before.
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS brand_color VARCHAR(7);

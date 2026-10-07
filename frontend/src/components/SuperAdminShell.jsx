@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Building2, Receipt, ShieldCheck, LogOut, Mic, Menu, X } from 'lucide-react';
 import { useAuth } from '../AuthContext';
+import WaynurMark from './WaynurMark';
 
 const NAV = [
   { label: 'Overview', icon: LayoutDashboard, to: '/super-admin' },
@@ -23,7 +24,7 @@ export default function SuperAdminShell({ children }) {
   const sidebarContent = (
     <>
       <div className="flex items-center gap-2 px-2 pb-1">
-        <div className="h-9 w-9 rounded-lg bg-ink text-cream flex items-center justify-center font-display font-semibold">W</div>
+        <WaynurMark className="h-9 w-9" />
         <div className="leading-tight">
           <div className="font-display text-lg text-ink">Waynur</div>
           <div className="text-[10px] tracking-wider text-ink-soft">WAYNE E SOLUTIONS</div>

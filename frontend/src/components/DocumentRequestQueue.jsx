@@ -82,7 +82,7 @@ export default function DocumentRequestQueue({ requestTypes, emptyLabel = 'Nothi
         return;
       }
       const data = await apiRequest(`/api/student-records/students/${r.student_id}/certificate-data`);
-      downloadLeavingCertificate(data, settings || {});
+      await downloadLeavingCertificate(data, settings || {});
     } catch (err) {
       setError(err.message);
     } finally {

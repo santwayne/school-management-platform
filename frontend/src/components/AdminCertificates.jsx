@@ -44,7 +44,7 @@ export default function AdminCertificates() {
     setError('');
     try {
       const data = await apiRequest(`/api/student-records/students/${studentId}/certificate-data`);
-      downloadLeavingCertificate(data, { ...settings, school_name: settings.school_name });
+      await downloadLeavingCertificate(data, { ...settings, school_name: settings.school_name });
     } catch (err) {
       setError(err.message);
     } finally {

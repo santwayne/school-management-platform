@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Home, Sparkles, BookOpen, TrendingUp, Trophy, Flame, Zap, NotebookPen, LogOut, Bell, GalleryHorizontal, PlaneTakeoff, FileText, CalendarCheck2, GraduationCap, Library } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
+import WaynurMark from './WaynurMark';
 
 function StudentNotificationBell() {
   const [open, setOpen] = useState(false);
@@ -103,7 +104,7 @@ export default function StudentShell({ children }) {
     <div className="min-h-screen bg-cream text-ink font-sans flex flex-col lg:flex-row">
       <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-cream-deep/60 bg-white/70 backdrop-blur px-4 py-6 gap-2 sticky top-0 h-screen">
         <div className="flex items-center gap-2 px-2 pb-4">
-          <div className="h-9 w-9 rounded-2xl bg-terracotta flex items-center justify-center text-white font-display text-lg">W</div>
+          <WaynurMark className="h-9 w-9" />
           <span className="font-display text-xl">Waynur</span>
           <span className="ml-auto text-[10px] font-semibold tracking-wider text-terracotta-deep bg-terracotta/10 px-2 py-0.5 rounded-full">STUDENT</span>
         </div>
@@ -152,7 +153,7 @@ export default function StudentShell({ children }) {
       <div className="flex-1 min-w-0 flex flex-col">
         <header className="sticky top-0 z-10 flex items-center gap-3 px-5 lg:px-8 py-3 bg-cream/85 backdrop-blur border-b border-cream-deep/60">
           <div className="lg:hidden flex items-center gap-2">
-            <div className="h-8 w-8 rounded-xl bg-terracotta flex items-center justify-center text-white font-display">W</div>
+            <WaynurMark className="h-8 w-8" />
           </div>
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <StudentNotificationBell />
