@@ -32,6 +32,8 @@ export default function AdminSettings() {
   const [schoolName, setSchoolName] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [logoPreview, setLogoPreview] = useState('');
+  // '' = no theme colour chosen (documents keep the neutral look).
+  const [brandColor, setBrandColor] = useState('');
   const [uploading, setUploading] = useState(false);
   const [limit, setLimit] = useState('5000');
   const [proximityRadius, setProximityRadius] = useState('500');
@@ -62,6 +64,7 @@ export default function AdminSettings() {
       setEventReminderDaysBefore(String(s.event_reminder_days_before ?? 2));
       setLogoUrl(s.logo_url || '');
       setLogoPreview(s.logo_url || '');
+      setBrandColor(s.brand_color || '');
       setLetterhead(s.leaving_cert_letterhead_text || '');
       setSignatoryName(s.leaving_cert_signatory_name || '');
       setSignatoryDesignation(s.leaving_cert_signatory_designation || '');
@@ -125,9 +128,11 @@ export default function AdminSettings() {
         body: {
           school_name: schoolName || undefined,
           logo_url: logoUrl || undefined,
+          brand_color: brandColor, // '' clears it
         },
       });
       setSettings(s);
+      setBrandColor(s.brand_color || '');
       flash('Branding saved.');
     } catch (err) {
       setError(err.message);
@@ -296,7 +301,7 @@ export default function AdminSettings() {
                   )}
                 </div>
                 <div className="flex flex-col gap-2">
-                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoFile} />
+                  <input ref={fileInputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleLogoFile} />
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
@@ -305,7 +310,7 @@ export default function AdminSettings() {
                   >
                     {uploading ? 'Uploading…' : logoPreview ? 'Change logo' : 'Upload logo'}
                   </button>
-                  <p className="text-xs text-ink-soft">PNG, JPG or SVG · max 2 MB</p>
+                  <p className="text-xs text-ink-soft">PNG or JPG · max 2 MB</p>
                 </div>
               </div>
             </div>
@@ -319,6 +324,34 @@ export default function AdminSettings() {
                 className="mt-1 w-full px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm"
               />
             </label>
+            <div className="mb-4">
+              <span className="block text-xs font-medium text-ink-soft mb-2">Theme colour</span>
+              <div className="flex flex-wrap items-center gap-3">
+                <input
+                  type="color"
+                  aria-label="Theme colour"
+                  value={/^#[0-9a-fA-F]{6}$/.test(brandColor) ? brandColor : '#333333'}
+                  onChange={(e) => setBrandColor(e.target.value)}
+                  className="h-10 w-14 rounded-lg border border-cream-deep bg-white p-1 cursor-pointer"
+                />
+                <input
+                  type="text"
+                  placeholder="#1F4E79"
+                  value={brandColor}
+                  onChange={(e) => setBrandColor(e.target.value.trim())}
+                  maxLength={7}
+                  className="w-28 px-3 py-2 rounded-lg border border-cream-deep bg-white text-sm font-mono"
+                />
+                {brandColor && (
+                  <button type="button" onClick={() => setBrandColor('')} className="text-xs text-ink-soft underline">
+                    Remove colour
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-ink-soft mt-2">
+                Your logo and this colour are printed on the documents your school issues: bonafide, character, fee and transfer certificates, the school leaving certificate, and staff payslips. Pick a dark colour — a very pale one is darkened so the text stays readable. Press "Save branding" to apply.
+              </p>
+            </div>
             <button
               onClick={saveBranding}
               disabled={uploading}

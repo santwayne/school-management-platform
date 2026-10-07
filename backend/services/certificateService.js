@@ -6,6 +6,7 @@ import { sendTemplateMessage, sendMediaMessage } from './whatsappService.js';
 import { raiseException, audit, autoResolve } from './opsService.js';
 import { getStudentDues } from '../utils/feeDues.js';
 import { s3, s3PublicUrl } from '../utils/s3.js';
+import { getSchoolBranding, drawCenteredLogo } from './schoolBranding.js';
 
 // Same S3 client/config as routes/profiles.js and routes/settings.js —
 // reused, not reconfigured, so a single AWS_S3_BUCKET/AWS_REGION pair backs
@@ -269,16 +270,26 @@ async function renderCertificatePdf(c) {
     leaving_certificate: `This is to certify that ${s.name}, ${child}, was a student of this school${s.admission_date ? ` from ${fmt(s.admission_date)}` : ''}, last studying in ${s.class}.${s.date_of_birth ? ` Date of birth as per school records: ${fmt(s.date_of_birth)}.` : ''} All dues have been cleared. We wish ${he === 'they' ? 'them' : he === 'she' ? 'her' : 'him'} success in the future.`,
   }[c.cert_type];
 
+  // The school's own logo and theme colour (Settings -> Branding). Without
+  // them the certificate looks exactly as it did before: no logo, dark grey.
+  const brand = await getSchoolBranding(c.school_id);
+
   const doc = new PDFDocument({ size: 'A4', margin: 60 });
   const chunks = [];
   doc.on('data', (b) => chunks.push(b));
   const done = new Promise((res) => doc.on('end', () => res(Buffer.concat(chunks))));
-  doc.rect(30, 30, doc.page.width - 60, doc.page.height - 60).lineWidth(1.5).stroke('#333');
-  doc.font('Helvetica-Bold').fontSize(20).text(data.school?.name || '', { align: 'center' });
+  doc.rect(30, 30, doc.page.width - 60, doc.page.height - 60).lineWidth(brand.hasColor ? 2 : 1.5).stroke(brand.color);
+  drawCenteredLogo(doc, brand.logo, { top: 48 });
+  doc.font('Helvetica-Bold').fontSize(20).fillColor(brand.hasColor ? brand.color : '#000').text(data.school?.name || '', { align: 'center' });
   doc.font('Helvetica').fontSize(10).fillColor('#444');
   if (data.school?.address) doc.text(data.school.address, { align: 'center' });
   if (data.school?.affiliation_number) doc.text(`${data.school.board_name ? `${data.school.board_name} ` : ''}Affiliation No. ${data.school.affiliation_number}`, { align: 'center' });
-  doc.moveDown(2).fillColor('#000').font('Helvetica-Bold').fontSize(16).text(data.title.toUpperCase(), { align: 'center', underline: true });
+  if (brand.hasColor) {
+    const ruleY = doc.y + 8;
+    doc.moveTo(60, ruleY).lineTo(doc.page.width - 60, ruleY).lineWidth(1).stroke(brand.color);
+  }
+  doc.moveDown(2).fillColor(brand.hasColor ? brand.color : '#000').font('Helvetica-Bold').fontSize(16).text(data.title.toUpperCase(), { align: 'center', underline: true });
+  doc.fillColor('#000');
   doc.moveDown().font('Helvetica').fontSize(10).text(`No. ${c.serial}`, { continued: true }).text(`Date: ${fmt(data.issued_on)}`, { align: 'right' });
   doc.moveDown(2).fontSize(12).text(body, { align: 'justify', lineGap: 6 });
   doc.moveDown(5).text(data.school?.principal_name || '', { align: 'right' }).text('Principal', { align: 'right' });

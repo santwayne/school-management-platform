@@ -7,6 +7,7 @@ import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
 import { audit } from '../services/opsService.js';
 import { s3, s3PublicUrl } from '../utils/s3.js';
+import { normalizeBrandColor, getSchoolBranding, clearBrandingCache } from '../services/schoolBranding.js';
 
 
 const router = express.Router();
@@ -16,7 +17,9 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (!file.mimetype.startsWith('image/')) return cb(new Error('Only image files are allowed'));
+    // PNG / JPG only: the logo is printed on certificates and payslips, and
+    // a PDF cannot hold an SVG, WebP or GIF.
+    if (!['image/png', 'image/jpeg'].includes(file.mimetype)) return cb(new Error('Please upload the logo as a PNG or JPG image'));
     cb(null, true);
   },
 });
@@ -43,22 +46,53 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
-// Update branding (logo + school name). Logo upload itself (S3/Cloudinary)
-// is not wired here yet — this accepts a logo_url once that's in place;
-// for now the frontend can pass a hosted URL or leave it null.
+// What the school's own documents need to look like the school's: the theme
+// colour and the logo as a data URL (read server-side from our bucket, so
+// the browser can put it into a PDF without any cross-origin trouble).
+// Any signed-in user of the school may read it — a student downloading
+// their own leaving certificate needs it too.
+router.get('/branding', requireAuth, async (req, res) => {
+  try {
+    const brand = await getSchoolBranding(req.user.school_id);
+    res.json({
+      brand_color: brand.hasColor ? brand.color : null,
+      logo_data_url: brand.logo ? `data:image/${brand.logoKind};base64,${brand.logo.toString('base64')}` : null,
+    });
+  } catch (err) {
+    console.error('Branding fetch error:', err);
+    res.status(500).json({ error: 'Failed to load branding' });
+  }
+});
+
+// Update branding: school name, logo URL (set by POST /logo below) and the
+// theme colour used on certificates and payslips. A field that is left out
+// keeps its saved value; brand_color: '' (or null) clears the colour.
 router.patch('/branding', requireAuth, requirePrincipal, async (req, res) => {
   const school_id = req.user.school_id;
-  const { logo_url, school_name } = req.body;
+  const { logo_url, school_name, brand_color } = req.body;
   try {
+    let color; // undefined = leave as it is
+    if (brand_color !== undefined) {
+      if (brand_color === null || String(brand_color).trim() === '') {
+        color = null;
+      } else {
+        color = normalizeBrandColor(brand_color);
+        if (!color) return res.status(400).json({ error: 'Theme colour must be a hex colour like #1F4E79' });
+      }
+    }
     if (school_name) {
       await pool.query('UPDATE schools SET name = $1 WHERE id = $2', [school_name, school_id]);
     }
     const result = await pool.query(
-      `INSERT INTO school_settings (school_id, logo_url) VALUES ($1, $2)
-       ON CONFLICT (school_id) DO UPDATE SET logo_url = EXCLUDED.logo_url, updated_at = CURRENT_TIMESTAMP
+      `INSERT INTO school_settings (school_id, logo_url, brand_color) VALUES ($1, $2, $3)
+       ON CONFLICT (school_id) DO UPDATE SET
+         logo_url = CASE WHEN $4 THEN EXCLUDED.logo_url ELSE school_settings.logo_url END,
+         brand_color = CASE WHEN $5 THEN EXCLUDED.brand_color ELSE school_settings.brand_color END,
+         updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
-      [school_id, logo_url || null]
+      [school_id, logo_url || null, color ?? null, logo_url !== undefined, color !== undefined]
     );
+    clearBrandingCache();
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Branding update error:', err);
@@ -358,6 +392,7 @@ router.post('/logo', requireAuth, requirePrincipal, (req, res, next) => {
       [req.user.school_id, logo_url]
     );
 
+    clearBrandingCache();
     res.json({ logo_url, settings: result.rows[0] });
   } catch (err) {
     console.error('S3 logo upload error:', err);

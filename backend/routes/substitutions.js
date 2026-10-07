@@ -3,6 +3,7 @@ import pool from '../config/db.js';
 import { requireAuth, requireOperator } from '../middleware/auth.js';
 import { audit } from '../services/opsService.js';
 import { planSubstitutions, announceSubstitution, sendDueSubstitutionAlerts } from '../services/substitutionService.js';
+import { CLASS_LABEL_SQL } from '../utils/classLabel.js';
 
 const router = express.Router();
 router.use(requireAuth, requireOperator);
@@ -19,7 +20,7 @@ router.get('/', async (req, res) => {
   try {
     const r = await pool.query(
       `SELECT x.id, x.date, x.status, x.reason, x.score_detail, ts.period_number, ts.start_time, ts.end_time,
-              c.name || COALESCE(' ' || c.section, '') AS class_label, s.name AS subject_name,
+              ${CLASS_LABEL_SQL} AS class_label, s.name AS subject_name,
               a.id AS absent_teacher_id, a.name AS absent_teacher, st.id AS substitute_teacher_id, st.name AS substitute_teacher
        FROM substitutions x JOIN timetable_slots ts ON ts.id = x.timetable_slot_id JOIN classes c ON c.id = ts.class_id
        LEFT JOIN subjects s ON s.id = ts.subject_id JOIN teachers a ON a.id = x.absent_teacher_id LEFT JOIN teachers st ON st.id = x.substitute_teacher_id

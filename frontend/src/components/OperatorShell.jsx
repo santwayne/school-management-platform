@@ -4,6 +4,7 @@ import { Gauge, Inbox, Workflow, ScrollText, Settings2, LogOut, Menu, X, UserPlu
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
 import AdminShell from './AdminShell';
+import WaynurMark from './WaynurMark';
 
 const NAV = [
   { label: 'Control Center', icon: Gauge, to: '/ops' },
@@ -47,7 +48,7 @@ function OperatorLayout({ children }) {
   const sidebar = (
     <>
       <div className="flex items-center gap-2 px-2 pb-6">
-        <div className="h-8 w-8 rounded-lg bg-terracotta flex items-center justify-center text-primary-foreground font-display font-semibold">W</div>
+        <WaynurMark className="h-9 w-9" />
         <span className="font-display text-xl text-ink">Waynur</span>
       </div>
       <nav className="flex flex-col gap-1">

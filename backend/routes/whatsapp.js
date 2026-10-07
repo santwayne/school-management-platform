@@ -3,7 +3,7 @@ import { normalizePhone } from '../utils/phone.js';
 import { consentKeyword } from '../utils/consent.js';
 import { audit } from '../services/opsService.js';
 import { requireAuth, requireOperator } from '../middleware/auth.js';
-import { handleEnquiryMessage } from '../services/admissionAgent.js';
+import { handleEnquiryMessage, parentMessageIsForAdmissions } from '../services/admissionAgent.js';
 import { handleParentMessage } from '../services/parentAssistant.js';
 import crypto from 'crypto';
 import axios from 'axios';
@@ -297,6 +297,33 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
         waMessageId: message.id,
       }).catch((err) => console.error('[WhatsApp] admission assistant error:', err.message));
       return res.sendStatus(200);
+    }
+
+    // A parent of a current student can also be a prospective parent (a
+    // younger sibling) or be replying to an admission follow-up. Those
+    // messages belong to the admission assistant, not to the parent
+    // assistant / homework-doubt tutor below. They wrote to us first, so
+    // answering is allowed whatever their opt-in for school alerts is.
+    if (parent && message.type === 'text' && message.text?.body) {
+      const enquiryRes = await pool.query(
+        `SELECT id, phone, convo_state,
+                COALESCE(last_inbound_at > NOW() - INTERVAL '30 minutes', FALSE) AS recent_inbound,
+                COALESCE(last_outbound_at > NOW() - INTERVAL '2 hours', FALSE) AS recent_outbound
+         FROM admission_enquiries
+         WHERE school_id = $1 AND phone = ANY($2::text[]) AND stage NOT IN ('admitted', 'lost')
+         ORDER BY updated_at DESC LIMIT 1`,
+        [inboundSchoolId, fromCandidates]
+      );
+      const openEnquiry = enquiryRes.rows[0] || null;
+      if (parentMessageIsForAdmissions({ text: message.text.body, enquiry: openEnquiry })) {
+        await handleEnquiryMessage({
+          schoolId: inboundSchoolId,
+          phone: openEnquiry?.phone || normalizePhone(fromPhone) || `+${fromPhone}`,
+          text: message.text.body,
+          waMessageId: message.id,
+        }).catch((err) => console.error('[WhatsApp] admission assistant error (known parent):', err.message));
+        return res.sendStatus(200);
+      }
     }
 
     // STRICT COMPLIANCE GATE at the query level, not just the UI.

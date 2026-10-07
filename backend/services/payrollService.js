@@ -2,6 +2,7 @@ import PDFDocument from 'pdfkit';
 import pool from '../config/db.js';
 import { sendTemplateMessage } from './whatsappService.js';
 import { raiseException, audit, autoResolve } from './opsService.js';
+import { getSchoolBranding } from './schoolBranding.js';
 
 // ------------------------------------------------------------------
 // Monthly payroll. The system prepares, a human approves, nothing is
@@ -236,8 +237,30 @@ export async function payslipPdf(payslipId, schoolId) {
   const done = new Promise((res) => doc.on('end', () => res(Buffer.concat(chunks))));
   // pdfkit's built-in fonts have no ₹ glyph, so amounts use "Rs."
   const money = (n) => `Rs. ${r2(n).toLocaleString('en-IN')}`;
-  doc.fontSize(18).text(p.school_name);
-  doc.fontSize(12).fillColor('#555').text(`Payslip for ${periodLabel(p.period)}`).moveDown();
+  // The school's own logo and theme colour (Settings -> Branding); without
+  // them the payslip looks as it did before.
+  const brand = await getSchoolBranding(schoolId);
+  let headerX = 50;
+  if (brand.logo) {
+    try {
+      const img = doc.openImage(brand.logo);
+      const scale = Math.min(60 / img.width, 48 / img.height);
+      doc.image(img, 50, 46, { width: img.width * scale, height: img.height * scale });
+      headerX = 50 + img.width * scale + 12;
+    } catch (logoErr) {
+      console.error('[payslip] logo could not be placed:', logoErr.message);
+    }
+  }
+  doc.fontSize(18).fillColor(brand.hasColor ? brand.color : '#000').text(p.school_name, headerX, 50);
+  doc.fontSize(12).fillColor('#555').text(`Payslip for ${periodLabel(p.period)}`, headerX);
+  if (doc.y < 100 && headerX > 50) doc.y = 100; // clear the logo
+  if (brand.hasColor) {
+    const ruleY = doc.y + 6;
+    doc.moveTo(50, ruleY).lineTo(doc.page.width - 50, ruleY).lineWidth(1.5).stroke(brand.color);
+    doc.y = ruleY + 4;
+  }
+  doc.x = 50;
+  doc.moveDown();
   doc.fillColor('#000').fontSize(11).text(`Name: ${p.teacher_name}`).text(`Role: ${p.role}`).text(`Working days: ${b.working_days}    Loss-of-pay days: ${b.lop_days}`).moveDown();
   const row = (label, amount, bold = false) => {
     const y = doc.y;

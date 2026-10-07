@@ -65,10 +65,12 @@ export default function StudentCertificateRequest() {
     }
   };
 
-  const download = () => {
+  const download = async () => {
     setBusyId('download');
     try {
-      downloadLeavingCertificate(profile, settings || {});
+      await downloadLeavingCertificate(profile, settings || {});
+    } catch (err) {
+      setError(err.message);
     } finally {
       setBusyId(null);
     }

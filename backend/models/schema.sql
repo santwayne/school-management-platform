@@ -1559,10 +1559,17 @@ CREATE INDEX IF NOT EXISTS idx_teaching_reminder_log_school ON teaching_reminder
 INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
 SELECT NULL, 'upcoming_class_reminder', 'both', 'Upcoming Class Reminder',
        'upcoming_class_alert', '["class_name","subject_name","topic"]'::jsonb,
-       'Upcoming class', '{{class_name}} — {{subject_name}} starting soon. {{topic}}', FALSE
+       'Upcoming class', '{{class_name}} — {{subject_name}} starting soon. Topic: {{topic}}.', FALSE
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'upcoming_class_reminder'
 );
+-- {{topic}} is now only what follows "Topic:" (e.g. "Fractions (covering for
+-- A. Singh)" or "not logged yet") and carries no full stop of its own, to fit
+-- the approved WhatsApp template. Bring the in-app text in line with that.
+UPDATE notification_templates
+SET dashboard_body_template = '{{class_name}} — {{subject_name}} starting soon. Topic: {{topic}}.'
+WHERE trigger_event = 'upcoming_class_reminder'
+  AND dashboard_body_template = '{{class_name}} — {{subject_name}} starting soon. {{topic}}';
 
 -- ---------- Staff-leave decision notification (audit candidate #1, built) ----------
 -- routes/staffLeave.js's PUT /requests/:id (approve/reject) sent no
@@ -2608,3 +2615,45 @@ CREATE TABLE IF NOT EXISTS daily_guidance_log (
     UNIQUE (teacher_id, syllabus_calendar_id, guidance_date)
 );
 CREATE INDEX IF NOT EXISTS idx_daily_guidance_log_school ON daily_guidance_log(school_id);
+
+-- ============================================================
+-- Per-school Razorpay account (added by Super Admin) — Oct 2026
+-- ============================================================
+-- School fee money must land in the SCHOOL's own bank account, not Waynur's.
+-- So fee payment links, fee reminders and admission application-fee links are
+-- created with the school's own Razorpay keys, and that Razorpay account posts
+-- its payment webhooks to a per-school URL
+--   /api/payment-links/webhook/school/<school_id>
+-- signed with the school's own webhook secret.
+-- Waynur's platform keys (RAZORPAY_KEY_ID / _SECRET in .env) are used ONLY for
+-- Waynur's own plan billing (subscriptions / orders) from here on.
+-- Secrets are stored encrypted (utils/secretBox.js), in their own table so
+-- they can never ride along on a `SELECT * FROM school_settings`. Only a
+-- Super Admin can write them; no API ever returns them.
+CREATE TABLE IF NOT EXISTS school_razorpay_credentials (
+    school_id INT PRIMARY KEY REFERENCES schools(id) ON DELETE CASCADE,
+    key_id VARCHAR(64) NOT NULL,
+    key_secret_enc TEXT NOT NULL,
+    secret_hint VARCHAR(20),
+    webhook_secret_enc TEXT NOT NULL,
+    webhook_hint VARCHAR(20),
+    mode VARCHAR(8) NOT NULL, -- 'live' | 'test' (from the key id prefix)
+    connected_by INT REFERENCES super_admins(id) ON DELETE SET NULL,
+    last_webhook_at TIMESTAMP, -- last correctly signed webhook from this account
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Which Razorpay account a link was created in. A link may only be marked
+-- paid by a webhook from that same account: 'platform' rows (everything
+-- created before this change) by the platform webhook, 'school' rows by that
+-- school's own webhook.
+ALTER TABLE fee_payment_links ADD COLUMN IF NOT EXISTS razorpay_account VARCHAR(10) NOT NULL DEFAULT 'platform';
+ALTER TABLE admission_payment_links ADD COLUMN IF NOT EXISTS razorpay_account VARCHAR(10) NOT NULL DEFAULT 'platform';
+
+-- ---------- School branding on its own documents (Oct 2026) ----------
+-- logo_url has been on school_settings from the start; this is the one theme
+-- colour the principal picks in Settings -> Branding ('#rrggbb'). Both are
+-- printed on the school's certificates and payslips
+-- (services/schoolBranding.js). NULL = the neutral look used before.
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS brand_color VARCHAR(7);

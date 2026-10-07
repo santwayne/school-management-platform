@@ -76,6 +76,44 @@ export function quickIntent(text) {
   return null;
 }
 
+// ---------- A known parent writing about admissions ----------
+//
+// routes/whatsapp.js sends an UNKNOWN number to this assistant and a KNOWN
+// parent to the parent assistant. But a parent of a current student is often
+// also a prospective parent (a younger sibling), and replies to our own
+// admission follow-ups ("Reply here ... to book a campus visit"). Those
+// messages used to fall through to the homework-doubt tutor, which answered
+// "I want to book a campus visit" with study-style guiding questions.
+//
+// Pure, so it is unit-tested. `enquiry` is the parent's OPEN enquiry at this
+// school (or null) with two booleans worked out in SQL: recent_inbound (they
+// wrote to the admission assistant in the last 30 min) and recent_outbound
+// (the admission side wrote to them in the last 2 h).
+const ADMISSION_WORDS = /\b(admissions?|campus\s+(visit|tour)|school\s+(visit|tour)|da?akh?il[ae]|da?akhla)\b|दाखिला|दाख़िला|दाखला|एडमिशन|ਦਾਖਲਾ|ਦਾਖ਼ਲਾ|ਐਡਮਿਸ਼ਨ/i;
+const VISIT_WORDS = /\b(visit|tour|campus)\b/i;
+
+export function parentMessageIsForAdmissions({ text, enquiry = null } = {}) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  // Says so outright — also how a parent starts a NEW enquiry for a sibling.
+  if (ADMISSION_WORDS.test(t)) return true;
+  if (!enquiry) return false;
+  // Mid-conversation with the admission assistant: they were just talking
+  // to it, or it asked something a moment ago and is waiting ("which
+  // class?", "pick a slot: 1, 2 or 3") — a bare "2" or "tomorrow" only makes
+  // sense there. A question left unanswered for hours does NOT keep the
+  // chat here, or every later message about fees or homework would too.
+  if (enquiry.recent_inbound) return true;
+  const waiting = Boolean(enquiry.convo_state?.awaiting)
+    || (Array.isArray(enquiry.convo_state?.offered_slot_ids) && enquiry.convo_state.offered_slot_ids.length > 0);
+  if (waiting && enquiry.recent_outbound) return true;
+  // Softer words count once there is an open enquiry to attach them to.
+  if (VISIT_WORDS.test(t)) return true;
+  // A short reply right after we wrote to them about their enquiry.
+  if (enquiry.recent_outbound && t.length <= 40) return true;
+  return false;
+}
+
 export function nextMissingField(e) {
   for (const f of FIELD_ORDER) {
     if (f === 'needs_transport' ? e.needs_transport === null || e.needs_transport === undefined : !e[f]) return f;

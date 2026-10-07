@@ -9,6 +9,7 @@ import {
 import { useAuth } from '../AuthContext';
 import BillingBanner from './BillingBanner';
 import { apiRequest } from '../api';
+import WaynurMark from './WaynurMark';
 
 // Backed by the generic, event-driven `dashboard_notifications` table
 // (backend/services/notificationService.js's send() + GET/PATCH
@@ -215,7 +216,7 @@ export default function AdminShell({ children }) {
   const sidebarContent = (
     <>
       <div className="flex items-center gap-2 px-2 pb-6 shrink-0">
-        <div className="h-8 w-8 rounded-lg bg-terracotta flex items-center justify-center text-primary-foreground font-display font-semibold">W</div>
+        <WaynurMark className="h-9 w-9" />
         <span className="font-display text-xl text-ink">Waynur</span>
       </div>
       <nav className="sidebar-scroll flex flex-col gap-1 flex-1 overflow-y-auto pr-1">

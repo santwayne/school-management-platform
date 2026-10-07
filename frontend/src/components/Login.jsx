@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import LandingLayout from './LandingLayout';
+import WaynurMark from './WaynurMark';
 
 const inputClass =
   'w-full px-3 py-2.5 text-sm rounded-lg bg-white border border-cream-deep focus:outline-none focus:ring-2 focus:ring-terracotta/40 focus:border-terracotta/60 placeholder:text-ink-soft/60';
@@ -263,9 +264,7 @@ export default function Login() {
         <div className="w-full max-w-[420px]">
           <div className="bg-white rounded-3xl border border-cream-deep shadow-sm px-6 sm:px-8 py-8 sm:py-10">
             <div className="flex flex-col items-center text-center">
-              <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-terracotta/15 to-amber-warm/20 border border-cream-deep flex items-center justify-center">
-                <span className="font-display text-2xl text-terracotta-deep tracking-wide">W</span>
-              </div>
+              <WaynurMark className="h-20 w-20" />
               <h1 className="font-display text-2xl sm:text-[26px] leading-tight text-ink mt-4">Waynur</h1>
               <div className="text-xs text-ink-soft mt-1">Sign in to your school</div>
             </div>

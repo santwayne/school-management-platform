@@ -3,6 +3,7 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { LayoutDashboard, Wallet, Receipt, Users, FileBarChart, Settings, Bell, LogOut, Menu, X } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
+import WaynurMark from './WaynurMark';
 
 function NotificationBell() {
   const [open, setOpen] = useState(false);
@@ -102,7 +103,7 @@ export default function AccountantShell({ children }) {
   const sidebarContent = (
     <>
       <div className="flex items-center gap-2 px-2 pb-2">
-        <div className="h-8 w-8 rounded-lg bg-terracotta flex items-center justify-center text-primary-foreground font-display font-semibold">W</div>
+        <WaynurMark className="h-9 w-9" />
         <span className="font-display text-xl text-ink">Waynur</span>
       </div>
       <div className="mx-2 mb-5 mt-1 inline-flex items-center gap-1.5 self-start px-2 py-0.5 rounded-md bg-terracotta/10 text-terracotta-deep text-[10px] font-semibold tracking-wider">
