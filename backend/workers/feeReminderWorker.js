@@ -76,6 +76,10 @@ async function handleDailyReminders() {
      JOIN fee_structures fs ON fs.school_id = s.school_id AND fs.class_id = s.class_id
      LEFT JOIN paid_this_year pty ON pty.student_id = s.id
      LEFT JOIN school_settings ss ON ss.school_id = s.school_id
+     -- A reminder carries a payment link, and a link can only be created in
+     -- the school's OWN Razorpay account. Schools without one are skipped
+     -- here (no link, no reminder) instead of failing student by student.
+     JOIN school_razorpay_credentials rz ON rz.school_id = s.school_id
      WHERE (fs.amount - COALESCE(pty.paid, 0)) > 0
        AND COALESCE(ss.notify_fees, TRUE) = TRUE
        AND s.created_at <= CURRENT_DATE - (COALESCE(ss.fee_reminder_grace_days, 7) || ' days')::interval

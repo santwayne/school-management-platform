@@ -7,7 +7,7 @@ import { normalizePhone } from '../utils/phone.js';
 import { sendTemplateMessage } from '../services/whatsappService.js';
 import { audit, registerAction, raiseException } from '../services/opsService.js';
 import { gradeKey, gradeLabel, classesForGrade, sendEnquiryText } from '../services/admissionAgent.js';
-import { razorpayClient } from './paymentLinks.js';
+import { schoolRazorpayClient, razorpayFailure } from '../services/razorpayConnection.js';
 import { assertCapacity } from '../services/billingService.js';
 
 // ------------------------------------------------------------------
@@ -198,8 +198,12 @@ router.post('/enquiries/:id/request-payment', async (req, res) => {
     }
     if (!amount || amount <= 0) return res.status(400).json({ error: 'Set an application fee amount first (Admissions settings), or pass one explicitly.' });
 
-    const referenceId = `waynur-admission-${schoolId}-${e.id}-${Date.now()}`;
-    const razorRes = await razorpayClient().post('/payment_links', {
+    // The school's OWN Razorpay account (the application fee is the school's
+    // money) — 409 with a clear message when the school has no keys yet.
+    const razorpay = await schoolRazorpayClient(schoolId);
+    // Razorpay caps reference_id at 40 characters, so keep the prefix short.
+    const referenceId = `wn-adm-${schoolId}-${e.id}-${Date.now()}`;
+    const razorRes = await razorpay.post('/payment_links', {
       amount: Math.round(amount * 100), // paise
       currency: 'INR',
       reference_id: referenceId,
@@ -211,8 +215,8 @@ router.post('/enquiries/:id/request-payment', async (req, res) => {
     const link = razorRes.data;
 
     const ins = await pool.query(
-      `INSERT INTO admission_payment_links (school_id, enquiry_id, amount, reference_id, razorpay_link_id, razorpay_link_url, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      `INSERT INTO admission_payment_links (school_id, enquiry_id, amount, reference_id, razorpay_link_id, razorpay_link_url, created_by, razorpay_account)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'school') RETURNING *`,
       [schoolId, e.id, amount, referenceId, link.id, link.short_url, req.user.teacher_id]
     );
 
@@ -220,9 +224,17 @@ router.post('/enquiries/:id/request-payment', async (req, res) => {
     await audit({ schoolId, actorType: 'user', actorId: req.user.teacher_id, action: 'admission.payment_requested', entityType: 'admission_enquiry', entityId: e.id, detail: { amount } });
     res.status(201).json(ins.rows[0]);
   } catch (err) {
+    // Razorpay failures first: an axios error carries its own `.status`
+    // (e.g. 401 for bad keys), which must never be passed straight through
+    // to the browser as if the user's own session had been rejected.
+    if (err.code === 'RAZORPAY_NOT_CONNECTED' || err.response || err.isAxiosError) {
+      console.error('Admission payment link creation error:', err.response?.data || err.message);
+      const failure = razorpayFailure(err);
+      return res.status(failure.status).json({ error: failure.message });
+    }
     if (err.status) return sendError(res, err);
-    console.error('Admission payment link creation error:', err.response?.data || err.message);
-    res.status(500).json({ error: 'Failed to create payment link — check RAZORPAY_KEY_ID/SECRET are set correctly' });
+    console.error('Admission payment link creation error:', err.message);
+    res.status(500).json({ error: 'Failed to create payment link. Please try again.' });
   }
 });
 

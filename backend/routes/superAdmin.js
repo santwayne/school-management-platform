@@ -8,6 +8,7 @@ import { normalizePhone } from '../utils/phone.js';
 import { issueRefreshToken } from '../services/refreshTokenService.js';
 import { connectSchoolWhatsApp, disconnectSchoolWhatsApp, getWhatsAppConnection, emailPrincipalWhatsAppConnected, ConnectionError } from '../services/whatsappConnection.js';
 import { sendTemplateMessage } from '../services/whatsappService.js';
+import { connectSchoolRazorpay, disconnectSchoolRazorpay, getRazorpayConnection, RazorpayConnectionError } from '../services/razorpayConnection.js';
 import { emailConfigured } from '../services/emailService.js';
 
 const router = express.Router();
@@ -46,6 +47,10 @@ router.post('/schools', requireAuth, requireSuperAdmin, async (req, res) => {
   // Optional: connect the school's WhatsApp number in the same step.
   const { whatsapp_number, whatsapp_phone_number_id, whatsapp_access_token, whatsapp_waba_id } = req.body;
   const wantsWhatsApp = Boolean(whatsapp_number || whatsapp_phone_number_id || whatsapp_access_token);
+  // Optional: connect the school's own Razorpay account in the same step
+  // (fee money settles to the school, never to Waynur).
+  const { razorpay_key_id, razorpay_key_secret, razorpay_webhook_secret } = req.body;
+  const wantsRazorpay = Boolean(razorpay_key_id || razorpay_key_secret || razorpay_webhook_secret);
 
   if (!name || !principal_name || !principal_email || !principal_phone || !principal_password) {
     return res.status(400).json({ error: 'name, principal_name, principal_email, principal_phone, principal_password are required' });
@@ -93,7 +98,20 @@ router.post('/schools', requireAuth, requireSuperAdmin, async (req, res) => {
         whatsapp = { connected: false, error: waErr instanceof ConnectionError ? waErr.message : 'Could not connect WhatsApp — add the keys from the school list.' };
       }
     }
-    res.status(201).json({ success: true, schoolId, whatsapp });
+    let razorpay = null;
+    if (wantsRazorpay) {
+      try {
+        const conn = await connectSchoolRazorpay({
+          schoolId, keyId: razorpay_key_id, keySecret: razorpay_key_secret, webhookSecret: razorpay_webhook_secret,
+          superAdminId: req.user.super_admin_id,
+        });
+        razorpay = { connected: true, mode: conn.mode, webhook_url: conn.webhook_url, webhook_events: conn.webhook_events };
+      } catch (rzErr) {
+        if (!(rzErr instanceof RazorpayConnectionError)) console.error('Razorpay connect during school creation failed:', rzErr);
+        razorpay = { connected: false, error: rzErr instanceof RazorpayConnectionError ? rzErr.message : 'Could not connect Razorpay — add the keys from the school list.' };
+      }
+    }
+    res.status(201).json({ success: true, schoolId, whatsapp, razorpay });
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
@@ -112,6 +130,7 @@ router.get('/schools', requireAuth, requireSuperAdmin, async (req, res) => {
         COALESCE((SELECT voice_tutor_enabled FROM school_settings WHERE school_id = s.id), FALSE) AS voice_tutor_enabled,
         COALESCE((SELECT whatsapp_connected FROM school_settings WHERE school_id = s.id), FALSE) AS whatsapp_connected,
         (SELECT whatsapp_business_number FROM school_settings WHERE school_id = s.id AND whatsapp_connected) AS whatsapp_number,
+        (SELECT mode FROM school_razorpay_credentials WHERE school_id = s.id) AS razorpay_mode,
         (SELECT email FROM teachers WHERE school_id = s.id AND role = 'principal' AND COALESCE(is_demo, FALSE) = FALSE ORDER BY id LIMIT 1) AS principal_email
       FROM schools s
       ORDER BY s.created_at DESC
@@ -299,6 +318,48 @@ router.delete('/schools/:id/whatsapp', requireAuth, requireSuperAdmin, async (re
     res.json({ success: true, connection: await disconnectSchoolWhatsApp({ schoolId: req.params.id, superAdminId: req.user.super_admin_id }) });
   } catch (err) {
     sendConnectionError(res, err, 'Failed to disconnect WhatsApp');
+  }
+});
+
+// ---------- A school's own Razorpay account (school fee money) ----------
+// Mirrors the WhatsApp connection above. Waynur's platform Razorpay keys
+// (.env) are only for plan billing; a school's fee links are created with
+// the keys saved here and reconciled by that account's own webhook.
+
+function sendRazorpayError(res, err, fallback) {
+  if (err instanceof RazorpayConnectionError) return res.status(err.status).json({ error: err.message });
+  console.error(fallback, err);
+  res.status(500).json({ error: fallback });
+}
+
+router.get('/schools/:id/razorpay', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    res.json(await getRazorpayConnection(req.params.id));
+  } catch (err) {
+    sendRazorpayError(res, err, 'Failed to load Razorpay connection');
+  }
+});
+
+// Add or replace the keys. They are checked with Razorpay before anything
+// is saved. key_secret / webhook_secret may be left out to keep the saved one.
+router.put('/schools/:id/razorpay', requireAuth, requireSuperAdmin, async (req, res) => {
+  const { key_id, key_secret, webhook_secret } = req.body;
+  try {
+    const connection = await connectSchoolRazorpay({
+      schoolId: req.params.id, keyId: key_id, keySecret: key_secret, webhookSecret: webhook_secret,
+      superAdminId: req.user.super_admin_id,
+    });
+    res.json({ success: true, connection });
+  } catch (err) {
+    sendRazorpayError(res, err, 'Failed to save Razorpay connection');
+  }
+});
+
+router.delete('/schools/:id/razorpay', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    res.json({ success: true, connection: await disconnectSchoolRazorpay({ schoolId: req.params.id, superAdminId: req.user.super_admin_id }) });
+  } catch (err) {
+    sendRazorpayError(res, err, 'Failed to disconnect Razorpay');
   }
 });
 

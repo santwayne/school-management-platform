@@ -194,11 +194,15 @@ function OnlinePayments() {
   const [student, setStudent] = useState(null);
   const [amount, setAmount] = useState('');
   const [sending, setSending] = useState(false);
+  // Whether this school's own Razorpay account is connected (set up by
+  // Waynur support). null = not known yet, so nothing is blocked or warned.
+  const [gateway, setGateway] = useState(null);
 
   const load = async () => {
     setLoading(true);
     setError('');
     try {
+      apiRequest('/api/payment-links/status').then(setGateway).catch(() => {});
       setLinks(await apiRequest('/api/payment-links'));
     } catch (err) {
       setError(err.message);
@@ -230,8 +234,23 @@ function OnlinePayments() {
 
   return (
     <div className="space-y-4">
+      {gateway && !gateway.connected && (
+        <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
+          <strong>Online fee payments are not set up for your school yet.</strong> Payments go straight to your school's own Razorpay account, which Waynur support connects for you. Until then, payment links and automatic fee reminders are switched off — cash and manual fee entries work as usual.
+        </div>
+      )}
+      {gateway?.connected && gateway.mode === 'test' && (
+        <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
+          Your school's Razorpay account is connected in <strong>test mode</strong> — links can be created, but no real money moves.
+        </div>
+      )}
+
       <div className="flex justify-end">
-        <button onClick={() => setShowSend(true)} className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition">
+        <button
+          onClick={() => setShowSend(true)}
+          disabled={Boolean(gateway) && !gateway.connected}
+          className="px-4 py-2 rounded-lg bg-terracotta text-primary-foreground text-sm font-medium hover:bg-terracotta-deep transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
           Send payment link
         </button>
       </div>

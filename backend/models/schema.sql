@@ -2608,3 +2608,38 @@ CREATE TABLE IF NOT EXISTS daily_guidance_log (
     UNIQUE (teacher_id, syllabus_calendar_id, guidance_date)
 );
 CREATE INDEX IF NOT EXISTS idx_daily_guidance_log_school ON daily_guidance_log(school_id);
+
+-- ============================================================
+-- Per-school Razorpay account (added by Super Admin) — Oct 2026
+-- ============================================================
+-- School fee money must land in the SCHOOL's own bank account, not Waynur's.
+-- So fee payment links, fee reminders and admission application-fee links are
+-- created with the school's own Razorpay keys, and that Razorpay account posts
+-- its payment webhooks to a per-school URL
+--   /api/payment-links/webhook/school/<school_id>
+-- signed with the school's own webhook secret.
+-- Waynur's platform keys (RAZORPAY_KEY_ID / _SECRET in .env) are used ONLY for
+-- Waynur's own plan billing (subscriptions / orders) from here on.
+-- Secrets are stored encrypted (utils/secretBox.js), in their own table so
+-- they can never ride along on a `SELECT * FROM school_settings`. Only a
+-- Super Admin can write them; no API ever returns them.
+CREATE TABLE IF NOT EXISTS school_razorpay_credentials (
+    school_id INT PRIMARY KEY REFERENCES schools(id) ON DELETE CASCADE,
+    key_id VARCHAR(64) NOT NULL,
+    key_secret_enc TEXT NOT NULL,
+    secret_hint VARCHAR(20),
+    webhook_secret_enc TEXT NOT NULL,
+    webhook_hint VARCHAR(20),
+    mode VARCHAR(8) NOT NULL, -- 'live' | 'test' (from the key id prefix)
+    connected_by INT REFERENCES super_admins(id) ON DELETE SET NULL,
+    last_webhook_at TIMESTAMP, -- last correctly signed webhook from this account
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Which Razorpay account a link was created in. A link may only be marked
+-- paid by a webhook from that same account: 'platform' rows (everything
+-- created before this change) by the platform webhook, 'school' rows by that
+-- school's own webhook.
+ALTER TABLE fee_payment_links ADD COLUMN IF NOT EXISTS razorpay_account VARCHAR(10) NOT NULL DEFAULT 'platform';
+ALTER TABLE admission_payment_links ADD COLUMN IF NOT EXISTS razorpay_account VARCHAR(10) NOT NULL DEFAULT 'platform';

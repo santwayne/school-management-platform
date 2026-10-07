@@ -1,12 +1,26 @@
 import axios from 'axios';
 import crypto from 'crypto';
 
-// Plain REST (no SDK) — same pattern as before. Needs RAZORPAY_KEY_ID /
-// RAZORPAY_KEY_SECRET; fails loudly at request time without them.
+const apiBase = () => process.env.RAZORPAY_API_BASE || 'https://api.razorpay.com/v1'; // override only for local testing
+
+// WAYNUR'S OWN Razorpay account (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET).
+// Plain REST (no SDK). Use this ONLY for Waynur's plan billing — plans,
+// subscriptions and orders a school pays Waynur for. School fee money never
+// goes through this account: see razorpayClientFor() and
+// services/razorpayConnection.js.
 export function razorpayClient() {
   return axios.create({
-    baseURL: process.env.RAZORPAY_API_BASE || 'https://api.razorpay.com/v1', // override only for local testing
+    baseURL: apiBase(),
     auth: { username: process.env.RAZORPAY_KEY_ID, password: process.env.RAZORPAY_KEY_SECRET },
+    timeout: 10000,
+  });
+}
+
+// A client for one specific Razorpay account (a school's own keys).
+export function razorpayClientFor({ keyId, keySecret }) {
+  return axios.create({
+    baseURL: apiBase(),
+    auth: { username: keyId, password: keySecret },
     timeout: 10000,
   });
 }
