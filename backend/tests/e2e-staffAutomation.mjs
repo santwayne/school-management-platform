@@ -207,7 +207,7 @@ try {
   ok(r.sent === 1 && subMsgs().length === 1, 'on the day, the substitute gets the WhatsApp');
   const subName = (await q(`SELECT name, whatsapp_number FROM teachers WHERE id = $1`, [sub.substitute_teacher_id]))[0];
   ok(subMsgs()[0]?.to === subName.whatsapp_number.replace('+', '') && subMsgs()[0]?.params[0] === subName.name
-    && subMsgs()[0]?.params[1] === `Period 1 (09:00), ${cls.name}, Maths for Demo Teacher. Lesson plan: Fractions revision.`, 'it goes to the right teacher with the right details');
+    && subMsgs()[0]?.params[1] === `Period 1 (09:00), ${cls.name}, Maths for Demo Teacher. Lesson plan: Fractions revision`, 'it goes to the right teacher with the right details (no closing full stop: the template adds it)');
   r = await sendDueSubstitutionAlerts(sid, { today: future.date, nowTime: '07:15:00' });
   ok(r.sent === 0 && subMsgs().length === 1, 'the next cycle does not send it again');
 
@@ -264,7 +264,7 @@ try {
     const logFor = async (slot) => (await q(`SELECT teacher_id FROM teaching_reminder_log WHERE timetable_slot_id = $1 AND class_date = CURRENT_DATE`, [slot])).map((x) => x.teacher_id);
     ok(JSON.stringify(await logFor(slotAbsent)) === JSON.stringify([subToday.substitute_teacher_id]), 'absent teacher\'s period: the SUBSTITUTE is reminded, not the absent teacher');
     const subBell = (await q(`SELECT body FROM dashboard_notifications WHERE trigger_event = 'upcoming_class_reminder' AND recipient_id = $1 AND body LIKE '%Maths%' ORDER BY id DESC LIMIT 1`, [subToday.substitute_teacher_id]))[0];
-    ok(/You are covering for Demo Teacher\./.test(subBell?.body || ''), `substitute's reminder says who they cover for ("${subBell?.body}")`);
+    ok(/Topic: .*\(covering for Demo Teacher\)\.$/.test(subBell?.body || '') && !/\.\./.test(subBell?.body || ''), `substitute's reminder says who they cover for, with no doubled full stop ("${subBell?.body}")`);
     ok(JSON.stringify(await logFor(slotPresent)) === JSON.stringify([T3]), 'a present teacher is reminded about their own period');
     ok((await logFor(slotUncovered)).length === 0, 'a teacher on leave with no cover is not reminded');
     ok(run1.skipped >= 1 && run1.failed === 0, `run reports the skip and no failures (${JSON.stringify(run1)})`);

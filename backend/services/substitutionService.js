@@ -1,6 +1,7 @@
 import pool from '../config/db.js';
 import { sendTemplateMessage } from './whatsappService.js';
 import { raiseException, autoResolve, audit } from './opsService.js';
+import { CLASS_LABEL_SQL } from '../utils/classLabel.js';
 
 // ------------------------------------------------------------------
 // Teacher substitution planner.
@@ -108,7 +109,7 @@ export function canNotifyNow(nowTime, from = NOTIFY_FROM) {
 const SUBSTITUTION_DETAIL_SQL = `
   SELECT x.id, x.school_id, to_char(x.date, 'YYYY-MM-DD') AS date, x.status, x.substitute_teacher_id,
          ts.id AS slot_id, ts.class_id, ts.subject_id, ts.period_number, ts.start_time,
-         c.name || COALESCE(' ' || c.section, '') AS class_label, s.name AS subject_name,
+         ${CLASS_LABEL_SQL} AS class_label, s.name AS subject_name,
          a.name AS absent_name, t.name AS substitute_name, t.whatsapp_number, t.whatsapp_opt_in_status
   FROM substitutions x
   JOIN timetable_slots ts ON ts.id = x.timetable_slot_id
@@ -176,7 +177,9 @@ export async function sendDueSubstitutionAlerts(schoolId, { today = null, nowTim
         String(row.whatsapp_number).replace(/^\+/, ''),
         process.env.WHATSAPP_SUBSTITUTION_TEMPLATE || 'substitution_assigned',
         'en',
-        [row.substitute_name, notice.body.slice(0, 500)]
+        // The approved template puts its own full stop after {{2}}, so the
+        // notice's closing one is dropped ("…for Amanpreet Singh.. The lesson…").
+        [row.substitute_name, notice.body.slice(0, 500).replace(/[.\s]+$/, '')]
       );
       sent += 1;
     } catch (err) {
@@ -203,7 +206,7 @@ export async function planSubstitutions(schoolId, date, { checkPunches = false }
 
   const slots = await pool.query(
     `SELECT ts.id, ts.class_id, ts.subject_id, ts.period_number, ts.start_time, ts.teacher_id,
-            c.name || COALESCE(' ' || c.section, '') AS class_label, s.name AS subject_name, t.name AS absent_name
+            ${CLASS_LABEL_SQL} AS class_label, s.name AS subject_name, t.name AS absent_name
      FROM timetable_slots ts
      JOIN classes c ON c.id = ts.class_id
      LEFT JOIN subjects s ON s.id = ts.subject_id

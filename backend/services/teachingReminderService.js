@@ -30,6 +30,17 @@ export function reminderRecipient({ regular_teacher_id, sub_status, substitute_t
   return regular_teacher_id ? { teacherId: regular_teacher_id, covering: false } : null;
 }
 
+// What goes after "Topic:" in the reminder. The approved WhatsApp template is
+//   "Class reminder for {{1}}: {{2}} is starting soon. Topic: {{3}}. The lesson
+//    plan is available in the teacher portal."
+// so this must read naturally right after "Topic:", and must NOT end with a
+// full stop (the template adds one — two in a row looked like a typo).
+export function reminderTopic({ planTitle = null, coveringFor = null } = {}) {
+  const title = String(planTitle || '').replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '');
+  const base = title || 'not logged yet';
+  return coveringFor ? `${base} (covering for ${String(coveringFor).trim()})` : base;
+}
+
 export async function runUpcomingClassReminders({ lookaheadMinutes = LOOKAHEAD_MINUTES } = {}) {
   // day_of_week is 1=Monday..6=Saturday, the same numbering ISODOW uses, so
   // they line up directly (no Sunday slots are ever created).
@@ -80,22 +91,34 @@ export async function runUpcomingClassReminders({ lookaheadMinutes = LOOKAHEAD_M
       if (inserted.rowCount === 0) continue;
 
       // Best-effort topic: the lesson plan the REGULAR teacher logged for
-      // this exact slot, or for this class + subject today. A substitute
-      // gets the same plan, so they know what the class was meant to cover.
-      // No match means no topic line, never an invented chapter name.
+      // this class + subject. A substitute gets the same plan, so they know
+      // what the class was meant to cover. Tried in this order:
+      //   1. a plan linked to this exact timetable slot (undated, or dated today)
+      //   2. a plan dated today
+      //   3. the newest plan saved in the last 7 days with NO date and NO
+      //      slot — the form marks both "optional", and a teacher who left
+      //      them blank still expects the plan they just wrote to show up
+      // No match means "not logged yet", never an invented chapter name.
       const planRes = await pool.query(
         `SELECT title FROM lesson_plans
          WHERE teacher_id = $1 AND class_id = $2
            AND (subject_id = $3 OR subject_id IS NULL)
-           AND (timetable_slot_id = $4 OR plan_date = CURRENT_DATE)
-         ORDER BY (timetable_slot_id = $4) DESC, created_at DESC
+           AND (
+             (timetable_slot_id = $4 AND (plan_date IS NULL OR plan_date = CURRENT_DATE))
+             OR plan_date = CURRENT_DATE
+             OR (plan_date IS NULL AND timetable_slot_id IS NULL AND created_at >= NOW() - INTERVAL '7 days')
+           )
+         ORDER BY COALESCE(timetable_slot_id = $4, FALSE) DESC,
+                  COALESCE(plan_date = CURRENT_DATE, FALSE) DESC,
+                  (subject_id IS NOT NULL) DESC,
+                  created_at DESC
          LIMIT 1`,
         [slot.regular_teacher_id, slot.class_id, slot.subject_id, slot.timetable_slot_id]
       );
-      const plan = planRes.rows[0]
-        ? `Today's plan: ${String(planRes.rows[0].title).replace(/\s+/g, ' ').trim()}`
-        : 'No lesson plan logged for this class yet.';
-      const topic = recipient.covering ? `You are covering for ${slot.regular_teacher_name}. ${plan}` : plan;
+      const topic = reminderTopic({
+        planTitle: planRes.rows[0]?.title || null,
+        coveringFor: recipient.covering ? slot.regular_teacher_name : null,
+      });
 
       const result = await sendNotification({
         triggerEvent: 'upcoming_class_reminder',

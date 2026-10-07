@@ -5,6 +5,7 @@ import { requireAuth, requireOperator } from '../middleware/auth.js';
 import { audit } from '../services/opsService.js';
 import { solveTimetable, hardViolations } from '../services/timetableSolver.js';
 import { planSubstitutions } from '../services/substitutionService.js';
+import { CLASS_LABEL_SQL } from '../utils/classLabel.js';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -68,7 +69,7 @@ router.put('/config', async (req, res) => {
 
 router.get('/requirements', async (req, res) => {
   const r = await pool.query(
-    `SELECT r.*, c.name || COALESCE(' ' || c.section, '') AS class_label, s.name AS subject_name, t.name AS teacher_name, rm.name AS room_name
+    `SELECT r.*, ${CLASS_LABEL_SQL} AS class_label, s.name AS subject_name, t.name AS teacher_name, rm.name AS room_name
      FROM timetable_requirements r JOIN classes c ON c.id = r.class_id JOIN subjects s ON s.id = r.subject_id
      LEFT JOIN teachers t ON t.id = r.teacher_id LEFT JOIN rooms rm ON rm.id = r.room_id
      WHERE r.school_id = $1 ORDER BY class_label, s.name`,

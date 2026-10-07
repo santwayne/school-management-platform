@@ -1559,10 +1559,17 @@ CREATE INDEX IF NOT EXISTS idx_teaching_reminder_log_school ON teaching_reminder
 INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
 SELECT NULL, 'upcoming_class_reminder', 'both', 'Upcoming Class Reminder',
        'upcoming_class_alert', '["class_name","subject_name","topic"]'::jsonb,
-       'Upcoming class', '{{class_name}} — {{subject_name}} starting soon. {{topic}}', FALSE
+       'Upcoming class', '{{class_name}} — {{subject_name}} starting soon. Topic: {{topic}}.', FALSE
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'upcoming_class_reminder'
 );
+-- {{topic}} is now only what follows "Topic:" (e.g. "Fractions (covering for
+-- A. Singh)" or "not logged yet") and carries no full stop of its own, to fit
+-- the approved WhatsApp template. Bring the in-app text in line with that.
+UPDATE notification_templates
+SET dashboard_body_template = '{{class_name}} — {{subject_name}} starting soon. Topic: {{topic}}.'
+WHERE trigger_event = 'upcoming_class_reminder'
+  AND dashboard_body_template = '{{class_name}} — {{subject_name}} starting soon. {{topic}}';
 
 -- ---------- Staff-leave decision notification (audit candidate #1, built) ----------
 -- routes/staffLeave.js's PUT /requests/:id (approve/reject) sent no
