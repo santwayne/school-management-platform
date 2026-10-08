@@ -99,6 +99,9 @@ export async function buildDigestFacts(schoolId) {
     alerts_sent: alerts.rows[0].sent,
     alerts_failed: alerts.rows[0].failed,
     fees_collected: Number(fees.rows[0].total),
+    // Ready-made money text for the AI line: given a bare 1 it wrote
+    // "Fees collected: 1 from 1 payment", with no rupee sign.
+    fees_collected_inr: inr(fees.rows[0].total),
     payments_count: fees.rows[0].n,
     exceptions_opened: opened.rows[0].n,
     exceptions_resolved: resolved.rows[0].n,
@@ -121,7 +124,9 @@ async function aiDigestLine(facts, lang) {
           `You write a one-line morning status report for a school's software operator. ` +
           `Use ONLY the numbers in the JSON — never invent or estimate a number. ` +
           `Write in ${lang === 'en' ? 'plain English' : 'casual Hinglish (Hindi in Latin script mixed with English)'}. ` +
-          `Mention anything failing or down first. Max 350 characters. Single line, no line breaks, no emojis, no markdown. ` +
+          `Write money exactly as given in fees_collected_inr (with the ₹ sign). ` +
+          `Mention anything failing or down first, then keep this order every day: absence alerts, fees, open issues. ` +
+          `Max 350 characters. Single line, no line breaks, no emojis, no markdown. ` +
           `Separate points with " | ". Output only the line.`,
         messages: [{ role: 'user', content: JSON.stringify(facts) }],
       },

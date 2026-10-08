@@ -1,5 +1,6 @@
 import pool from '../config/db.js';
 import { send as sendNotification } from './notificationService.js';
+import { withoutTrailingFullStop } from '../utils/messageFormat.js';
 
 // ------------------------------------------------------------------
 // Daily teaching guidance: each morning, every teacher is told which
@@ -78,7 +79,9 @@ export async function runDailyGuidance() {
           teacher_name: row.teacher_name,
           class_name: row.class_name,
           chapter_name: String(row.chapter_name || row.chapter_id).replace(/\s+/g, ' ').trim(),
-          suggestion: String(row.suggested_text || 'Review today\u2019s chapter and assign practice questions.').replace(/\s+/g, ' ').trim(),
+          // The template adds its own full stop after this ("…{{4}}. Have a great
+          // teaching day!"), so the suggestion must not end with one.
+          suggestion: withoutTrailingFullStop(row.suggested_text || 'Review today\u2019s chapter and assign practice questions'),
         },
       });
       totals.sent += result.sent + result.failed;

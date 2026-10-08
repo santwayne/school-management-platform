@@ -92,9 +92,12 @@ async function generateSummaryText(className, stats) {
   if (stats.attendance_pct !== undefined) parts.push(`attendance ${stats.attendance_pct}%`);
   if (stats.homework_completion_pct !== undefined) parts.push(`homework completion ${stats.homework_completion_pct}% (${stats.homework_assigned} assignment(s) this week)`);
   if (stats.avg_exam_score !== undefined) parts.push(`average exam score ${stats.avg_exam_score}%`);
+  // The approved template already opens with "…progress update for
+  // {{class_name}}:", so the summary must not name the class again (it read
+  // "for Class 6A: This week in Class 6A, …").
   const fallback = parts.length > 0
-    ? `This week in ${className}: ${parts.join(', ')}.`
-    : `No new attendance, homework, or exam activity recorded for ${className} this week.`;
+    ? `This week: ${parts.join(', ')}.`
+    : 'No new attendance, homework, or exam activity was recorded this week.';
 
   if (!anthropic || parts.length === 0) return fallback;
   try {
@@ -104,8 +107,9 @@ async function generateSummaryText(className, stats) {
       system:
         'You write a short, warm 2-3 sentence weekly progress summary for parents of a school class, from raw ' +
         'stats. State only the numbers given — never add a specific cause, praise, or concern the numbers don\'t ' +
-        'support. Plain text, no markdown, no emoji.',
-      messages: [{ role: 'user', content: `Class: ${className}\nThis week's stats: ${JSON.stringify(stats)}` }],
+        'support. Every score and rate is a percentage: always write it with a % sign. The message already ' +
+        'starts with the class name, so do not mention the class name. Plain text, no markdown, no emoji.',
+      messages: [{ role: 'user', content: `This week's stats: ${parts.join('; ')}` }],
     });
     const textBlock = response.content.find((b) => b.type === 'text');
     return textBlock?.text?.trim() || fallback;

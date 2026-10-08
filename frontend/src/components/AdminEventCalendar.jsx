@@ -141,9 +141,19 @@ export default function AdminEventCalendar() {
   const leadingBlanks = (firstDayOfMonth + 6) % 7; // shift so week starts Monday
   const cells = [...Array(leadingBlanks).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
 
+  // event_date arrives as a UTC timestamp ("2026-10-08T18:30:00.000Z" for
+  // 9 Oct in IST), so slicing the string put every event a day early.
+  // Read it as a date in the viewer's own timezone instead.
+  const localDateKey = (value) => {
+    if (!value) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const d = new Date(value);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+
   const eventsOn = (day) => {
     const dateStr = `${year}-${pad(month + 1)}-${pad(day)}`;
-    return (events || []).filter((e) => e.event_date.slice(0, 10) === dateStr);
+    return (events || []).filter((e) => localDateKey(e.event_date) === dateStr);
   };
 
   return (

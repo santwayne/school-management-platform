@@ -54,7 +54,10 @@ async function handleDailyDigest() {
 
   for (const schoolId of Object.keys(bySchool)) {
     const { dueSoon, overdue } = bySchool[schoolId];
-    if (dueSoon === 0 && overdue === 0) continue;
+    // Only when there is something for the librarian to chase. Books merely
+    // due today/tomorrow already got a reminder to the parent (below), and a
+    // daily "1 due soon, 0 overdue" was noise with nothing to act on.
+    if (overdue === 0) continue;
 
     const contacts = await pool.query(
       `SELECT whatsapp_number FROM library_contacts WHERE school_id = $1`,
@@ -98,6 +101,9 @@ async function handlePerStudentReminders() {
        AND li.due_date <= CURRENT_DATE + INTERVAL '1 day'
        AND (
          li.last_reminder_sent_at IS NULL
+         -- first day overdue: the last reminder said "due soon", so tell the
+         -- parent it is now overdue instead of waiting out the 3-day spacing
+         OR (li.status = 'OVERDUE' AND li.last_reminder_sent_at < li.due_date + INTERVAL '1 day')
          OR (li.status = 'OVERDUE' AND li.last_reminder_sent_at < CURRENT_DATE - ($1 || ' days')::interval)
        )`,
     [OVERDUE_RENOTIFY_DAYS]
