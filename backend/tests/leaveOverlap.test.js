@@ -23,3 +23,13 @@ test('applying checks for a clash before inserting, and ignores rejected or canc
   assert.match(post, /start_date <= \$4::date AND end_date >= \$3::date/);
   assert.match(post, /pg_advisory_xact_lock/);
 });
+
+// The day-count helper was dropped by mistake once, and applying for leave
+// then hung for everyone (a ReferenceError inside an async route).
+test('everything the apply route calls is defined in the file', () => {
+  const source = fs.readFileSync(fileURLToPath(new URL('../routes/staffLeave.js', import.meta.url)), 'utf8');
+  assert.match(source, /function countDays\(start, end\)/);
+  assert.match(source, /const days = countDays\(start_date, end_date\)/);
+  assert.match(source, /const LEAVE_LOCK_NAMESPACE = \d+/);
+  assert.match(source, /import \{ overlapMessage \} from '..\/utils\/leaveOverlap.js'/);
+});
