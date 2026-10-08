@@ -2,6 +2,7 @@ import { Worker } from 'bullmq';
 import { connection } from '../config/queue.js';
 import pool from '../config/db.js';
 import { send as sendNotification } from '../services/notificationService.js';
+import { formatCount } from '../utils/messageFormat.js';
 
 // Third finding from the "what else should be autonomous" audit: neither
 // submitting nor approving/rejecting a staff leave request sends any
@@ -47,7 +48,8 @@ async function handleDailyReminders() {
         triggerEvent: 'staff_leave_pending_reminder',
         schoolId: request.school_id,
         recipients: principals.rows.map((p) => ({ type: 'staff', teacherId: p.id })),
-        variables: { teacher_name: request.teacher_name, leave_type: request.leave_type, days_count: request.days_count },
+        // days_count is NUMERIC(…,1): "3.0" read as "3.0 day(s)". Half days stay "0.5".
+        variables: { teacher_name: request.teacher_name, leave_type: request.leave_type, days_count: formatCount(request.days_count) },
       });
 
       await pool.query(`UPDATE staff_leave_requests SET reminder_sent_at = NOW() WHERE id = $1`, [request.id]);

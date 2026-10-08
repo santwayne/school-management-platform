@@ -2,6 +2,7 @@ import { Worker } from 'bullmq';
 import { connection } from '../config/queue.js';
 import pool from '../config/db.js';
 import { send as sendNotification } from '../services/notificationService.js';
+import { formatCount } from '../utils/messageFormat.js';
 
 // Audit candidate #2 (see schema.sql's comment for the threshold/window/
 // re-notify decisions made without asking, per the new standing rule).
@@ -55,7 +56,8 @@ async function handleWeeklyCheck() {
         triggerEvent: 'low_attendance_alert',
         schoolId: row.school_id,
         recipients: [{ type: 'parent', studentId: row.student_id }],
-        variables: { attendance_percent: row.attendance_percent, window_days: row.window_days },
+        // "0.0" from ROUND(...,1) read as "0.0%" in the message; send "0", "66.7".
+        variables: { attendance_percent: formatCount(row.attendance_percent), window_days: row.window_days },
       });
       await pool.query(
         `INSERT INTO low_attendance_alert_log (school_id, student_id, attendance_percent) VALUES ($1, $2, $3)`,
