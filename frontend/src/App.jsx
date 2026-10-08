@@ -28,6 +28,7 @@ const BlogAdmin = lazy(() => import('./components/blog/BlogAdmin'));
 const TeacherWhatsAppDemo = lazy(() => import('./components/TeacherWhatsAppDemo'));
 const SuperAdminBilling = lazy(() => import('./components/SuperAdminBilling'));
 const AdminAttendance = lazy(() => import('./components/AdminAttendance'));
+const AdminStudentAttendance = lazy(() => import('./components/AdminStudentAttendance'));
 const ClassNotesComposer = lazy(() => import('./components/ClassNotesComposer'));
 const StaffBroadcast = lazy(() => import('./components/StaffBroadcast'));
 const AdminPayroll = lazy(() => import('./components/AdminPayroll'));
@@ -199,6 +200,7 @@ function AppRoutes() {
         <Route path="/syllabus" element={<ProtectedRoute principalOnly>{inShell(AdminShell, SyllabusManager)}</ProtectedRoute>} />
         <Route path="/admin/manage" element={<ProtectedRoute principalOnly>{inShell(AdminShell, ManageSchool)}</ProtectedRoute>} />
         <Route path="/admin/attendance" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminAttendance)}</ProtectedRoute>} />
+        <Route path="/admin/student-attendance" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminStudentAttendance)}</ProtectedRoute>} />
         <Route path="/staff-broadcast" element={<ProtectedRoute principalOnly>{inShell(AdminShell, StaffBroadcast)}</ProtectedRoute>} />
         <Route path="/admin/payroll" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminPayroll)}</ProtectedRoute>} />
         <Route path="/admin/transport" element={<ProtectedRoute principalOnly>{inShell(AdminShell, AdminTransport)}</ProtectedRoute>} />

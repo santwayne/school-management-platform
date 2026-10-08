@@ -5,6 +5,9 @@ import { requireAuth } from '../middleware/auth.js';
 import { sendTemplateMessage } from '../services/whatsappService.js';
 import { recordRun, raiseException, audit } from '../services/opsService.js';
 import { absenceAlertErrorSummary } from '../utils/absenceAlertSummary.js';
+import { CLASS_LABEL_SQL } from '../utils/classLabel.js';
+
+const ATTENDANCE_STATUSES = ['present', 'absent', 'late'];
 
 const router = express.Router();
 
@@ -162,6 +165,9 @@ router.post('/mark', requireAuth, async (req, res) => {
   if (!Array.isArray(records) || records.length === 0) {
     return res.status(400).json({ error: 'records array is required' });
   }
+  if (records.some((r) => !r || !r.student_id || !ATTENDANCE_STATUSES.includes(r.status))) {
+    return res.status(400).json({ error: 'Each record needs a student_id and a status of present, absent or late' });
+  }
 
   const client = await pool.connect();
   let toNotify = [];
@@ -229,6 +235,33 @@ router.post('/mark', requireAuth, async (req, res) => {
   await reportAbsenceAlertOutcome({ schoolId: school_id, notifications, unreachable, toNotify, startedAt, userId: req.user.teacher_id });
 
   res.status(200).json({ success: true, message: 'Attendance processed.', notifications });
+});
+
+// Today's attendance for every class in the school, for the principal's
+// Student Attendance page: how many are present, absent, late, and how many
+// have not been marked yet.
+router.get('/summary/today', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT c.id AS class_id, ${CLASS_LABEL_SQL} AS class_name,
+              COUNT(s.id)::int AS students,
+              COUNT(*) FILTER (WHERE a.status = 'present')::int AS present,
+              COUNT(*) FILTER (WHERE a.status = 'absent')::int AS absent,
+              COUNT(*) FILTER (WHERE a.status = 'late')::int AS late,
+              COUNT(s.id) FILTER (WHERE a.id IS NULL)::int AS unmarked
+       FROM classes c
+       LEFT JOIN students s ON s.class_id = c.id AND s.school_id = c.school_id
+       LEFT JOIN attendance a ON a.student_id = s.id AND a.date = CURRENT_DATE
+       WHERE c.school_id = $1
+       GROUP BY c.id, c.name, c.section
+       ORDER BY c.name, c.section NULLS FIRST`,
+      [req.user.school_id]
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    console.error('Attendance summary error:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 });
 
 router.get('/today/:classId', requireAuth, async (req, res) => {
