@@ -161,7 +161,8 @@ const LIBRARIAN_NAV = [
 const NAV = [
   { label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
   { label: 'Control Center', icon: Gauge, to: '/ops' },
-  { label: 'Attendance', icon: CalendarCheck2, to: '/admin/attendance' },
+  { label: 'Student Attendance', icon: CalendarCheck2, to: '/admin/student-attendance' },
+  { label: 'Staff Attendance', icon: CalendarCheck2, to: '/admin/attendance' },
   { label: 'Fees', icon: Wallet, to: '/finance' },
   { label: 'Staff & Payroll', icon: Users, to: '/admin/payroll' },
   { label: 'Staff Leave', icon: ClipboardList, to: '/admin/staff-leave' },
