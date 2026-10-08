@@ -2,7 +2,8 @@ import { Worker } from 'bullmq';
 import { connection } from '../config/queue.js';
 import pool from '../config/db.js';
 import { send as sendNotification } from '../services/notificationService.js';
-import { formatCount } from '../utils/messageFormat.js';
+import { daysLabel } from '../utils/messageFormat.js';
+import { formatNotifyDate } from '../utils/notifyDate.js';
 
 // Third finding from the "what else should be autonomous" audit: neither
 // submitting nor approving/rejecting a staff leave request sends any
@@ -25,7 +26,7 @@ const worker = new Worker(
 
 async function handleDailyReminders() {
   const pending = await pool.query(
-    `SELECT sl.id, sl.school_id, sl.leave_type, sl.days_count, t.name AS teacher_name
+    `SELECT sl.id, sl.school_id, sl.leave_type, sl.days_count, sl.start_date, sl.end_date, t.name AS teacher_name
      FROM staff_leave_requests sl
      JOIN teachers t ON t.id = sl.teacher_id
      LEFT JOIN school_settings ss ON ss.school_id = sl.school_id
@@ -48,8 +49,16 @@ async function handleDailyReminders() {
         triggerEvent: 'staff_leave_pending_reminder',
         schoolId: request.school_id,
         recipients: principals.rows.map((p) => ({ type: 'staff', teacherId: p.id })),
-        // days_count is NUMERIC(…,1): "3.0" read as "3.0 day(s)". Half days stay "0.5".
-        variables: { teacher_name: request.teacher_name, leave_type: request.leave_type, days_count: formatCount(request.days_count) },
+        // days_label carries its own unit ("3 days", "0.5 day"); the template
+        // no longer has a literal "day(s)". The dates tell the principal which
+        // days the request is for without opening the portal.
+        variables: {
+          teacher_name: request.teacher_name,
+          leave_type: request.leave_type,
+          days_label: daysLabel(request.days_count),
+          start_date: formatNotifyDate(request.start_date),
+          end_date: formatNotifyDate(request.end_date),
+        },
       });
 
       await pool.query(`UPDATE staff_leave_requests SET reminder_sent_at = NOW() WHERE id = $1`, [request.id]);

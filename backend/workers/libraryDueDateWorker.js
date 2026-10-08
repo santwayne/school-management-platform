@@ -4,10 +4,15 @@ import pool from '../config/db.js';
 import { sendTemplateMessage } from '../services/whatsappService.js';
 import { send as sendNotification } from '../services/notificationService.js';
 import { formatNotifyDate } from '../utils/notifyDate.js';
+import { DEFAULT_LIBRARY_DIGEST_TEMPLATE, libraryDigestParams } from '../utils/messageFormat.js';
+import { CLASS_LABEL_SQL } from '../utils/classLabel.js';
 
 // Meta requires an approved template for the first outbound message in a
 // conversation window — same reasoning as attendanceWorker/dailyGuidanceWorker.
-const LIBRARY_DIGEST_TEMPLATE = process.env.WHATSAPP_LIBRARY_DIGEST_TEMPLATE || 'library_due_digest';
+// Which Meta template the librarian's digest uses. The default names the
+// overdue books; see libraryDigestParams for the variables and for how the
+// earlier counts-only template can still be selected with this env var.
+const LIBRARY_DIGEST_TEMPLATE = process.env.WHATSAPP_LIBRARY_DIGEST_TEMPLATE || DEFAULT_LIBRARY_DIGEST_TEMPLATE;
 
 // Once a book is overdue, don't re-notify the same loan every single day —
 // space repeat nudges out, same spacing idea as fee_reminder_interval_days.
@@ -36,28 +41,40 @@ async function handleDailyDigest() {
   // Books due today/tomorrow (reminder window) or already overdue, per school.
   const rows = await pool.query(
     `SELECT li.school_id, li.status, li.due_date, lb.title,
-            COALESCE(s.name, t.name) AS borrower_name
+            COALESCE(s.name, t.name) AS borrower_name,
+            ${CLASS_LABEL_SQL} AS class_name,
+            (CURRENT_DATE - li.due_date) AS days_late
      FROM library_issues li
      JOIN library_books lb ON lb.id = li.book_id
      LEFT JOIN students s ON s.id = li.student_id
+     LEFT JOIN classes c ON c.id = s.class_id
      LEFT JOIN teachers t ON t.id = li.teacher_id
      WHERE li.status IN ('ISSUED', 'OVERDUE')
-       AND (li.due_date <= CURRENT_DATE + INTERVAL '1 day')`
+       AND (li.due_date <= CURRENT_DATE + INTERVAL '1 day')
+     ORDER BY li.due_date ASC, li.id ASC`
   );
 
   const bySchool = {};
   for (const row of rows.rows) {
-    if (!bySchool[row.school_id]) bySchool[row.school_id] = { dueSoon: 0, overdue: 0 };
-    if (row.status === 'OVERDUE') bySchool[row.school_id].overdue += 1;
-    else bySchool[row.school_id].dueSoon += 1;
+    if (!bySchool[row.school_id]) bySchool[row.school_id] = { dueSoon: 0, overdueItems: [] };
+    // Oldest first (see ORDER BY), so the longest-overdue books lead the list.
+    if (row.status === 'OVERDUE') {
+      bySchool[row.school_id].overdueItems.push({
+        title: row.title,
+        borrower: row.borrower_name,
+        className: row.class_name,
+        daysLate: row.days_late,
+      });
+    } else bySchool[row.school_id].dueSoon += 1;
   }
 
   for (const schoolId of Object.keys(bySchool)) {
-    const { dueSoon, overdue } = bySchool[schoolId];
+    const digest = bySchool[schoolId];
     // Only when there is something for the librarian to chase. Books merely
     // due today/tomorrow already got a reminder to the parent (below), and a
     // daily "1 due soon, 0 overdue" was noise with nothing to act on.
-    if (overdue === 0) continue;
+    if (digest.overdueItems.length === 0) continue;
+    const params = libraryDigestParams(LIBRARY_DIGEST_TEMPLATE, digest);
 
     const contacts = await pool.query(
       `SELECT whatsapp_number FROM library_contacts WHERE school_id = $1`,
@@ -66,10 +83,7 @@ async function handleDailyDigest() {
 
     for (const contact of contacts.rows) {
       try {
-        await sendTemplateMessage(schoolId, contact.whatsapp_number, LIBRARY_DIGEST_TEMPLATE, 'en', [
-          String(dueSoon),
-          String(overdue),
-        ]);
+        await sendTemplateMessage(schoolId, contact.whatsapp_number, LIBRARY_DIGEST_TEMPLATE, 'en', params);
       } catch (err) {
         console.error(`Library digest send failed for school ${schoolId}:`, err.message);
       }
