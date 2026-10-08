@@ -23,6 +23,14 @@ const LEAVE_TYPES = ['casual', 'sick', 'earned'];
 // (the second key is the teacher's id). Any fixed number unique to this use.
 const LEAVE_LOCK_NAMESPACE = 7301;
 
+// Whole days from start to end, both included.
+function countDays(start, end) {
+  const s = new Date(start);
+  const e = new Date(end);
+  const diff = Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
+  return diff > 0 ? diff : 0;
+}
+
 // GET /api/staff-leave/balances — current teacher's balances for this year
 // (principal can pass ?teacher_id= to view someone else's)
 router.get('/balances', requireAuth, async (req, res) => {
