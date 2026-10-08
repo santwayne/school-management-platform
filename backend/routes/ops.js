@@ -5,6 +5,7 @@ import { requireAuth, requireOperator } from '../middleware/auth.js';
 import { audit, registerAction, runAction, hasAction } from '../services/opsService.js';
 import { runHealthCheck } from '../workers/healthCheck.js';
 import { buildDigestFacts, fallbackDigestLine } from '../workers/dailyDigestWorker.js';
+import { digestPhoneClash } from '../utils/digestPhone.js';
 
 const router = express.Router();
 router.use(requireAuth, requireOperator);
@@ -360,6 +361,12 @@ router.put('/settings', async (req, res) => {
   if (op === undefined || pr === undefined) return res.status(400).json({ error: 'Phone numbers must be valid Indian mobile numbers (10 digits, optionally with +91)' });
   if (digest_language && !['en', 'hinglish'].includes(digest_language)) return res.status(400).json({ error: 'digest_language must be en or hinglish' });
   try {
+    // The report is sent FROM the school's WhatsApp number, and WhatsApp cannot
+    // deliver a message to the number it is sent from. A principal often types
+    // the school's own number here, and the report then failed every morning.
+    const own = await pool.query(`SELECT whatsapp_business_number FROM school_settings WHERE school_id = $1`, [req.user.school_id]);
+    const clash = digestPhoneClash({ operator: op, principal: pr, schoolNumber: own.rows[0]?.whatsapp_business_number });
+    if (clash) return res.status(400).json({ error: clash });
     await pool.query(
       `INSERT INTO school_settings (school_id, operator_digest_phone, principal_digest_phone, digest_enabled, digest_language)
        VALUES ($1, $2, $3, COALESCE($4, TRUE), COALESCE($5, 'hinglish'))

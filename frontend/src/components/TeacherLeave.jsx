@@ -71,16 +71,21 @@ export default function TeacherLeave() {
       <main className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         {balances && (
           <div className="grid grid-cols-3 gap-3">
-            {balances.map((b) => (
-              <div key={b.leave_type} className="rounded-xl bg-white border border-cream-deep/70 p-3 text-center">
-                <div className="text-xs text-ink-soft">{LEAVE_LABELS[b.leave_type]}</div>
-                <div className="font-display text-xl text-ink mt-0.5">
-                  {Number(b.total_days) - Number(b.used_days)}
-                  <span className="text-sm text-ink-soft"> / {Number(b.total_days)}</span>
+            {balances.map((b) => {
+              // Leave approved beyond the quota used to show as "-3 / 0".
+              const left = Number(b.total_days) - Number(b.used_days);
+              return (
+                <div key={b.leave_type} className="rounded-xl bg-white border border-cream-deep/70 p-3 text-center">
+                  <div className="text-xs text-ink-soft">{LEAVE_LABELS[b.leave_type]}</div>
+                  <div className="font-display text-xl text-ink mt-0.5">
+                    {Math.max(left, 0)}
+                    <span className="text-sm text-ink-soft"> / {Number(b.total_days)}</span>
+                  </div>
+                  <div className="text-[11px] text-ink-soft">days left</div>
+                  {left < 0 && <div className="text-[11px] text-destructive mt-0.5">{-left} over quota</div>}
                 </div>
-                <div className="text-[11px] text-ink-soft">days left</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

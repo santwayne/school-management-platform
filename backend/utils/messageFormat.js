@@ -20,6 +20,15 @@ export function withoutTrailingFullStop(text) {
   return String(text ?? '').replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '');
 }
 
+// Money in a message: "500.00" -> "500", "1250.50" -> "1,250.50". Whole
+// rupees drop the paise; anything else keeps two decimals.
+export function formatAmount(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '0';
+  const whole = Number.isInteger(Math.round(n * 100) / 100);
+  return n.toLocaleString('en-IN', { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 });
+}
+
 // "1 day", "3 days", "0.5 day", "2.5 days". The approved templates used to
 // carry a literal "day(s)" after the number; the unit now travels with it.
 export function daysLabel(value) {

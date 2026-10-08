@@ -2,7 +2,7 @@ import { Worker } from 'bullmq';
 import { connection } from '../config/queue.js';
 import pool from '../config/db.js';
 import { send as sendNotification } from '../services/notificationService.js';
-import { daysLabel } from '../utils/messageFormat.js';
+import { daysLabel, formatAmount } from '../utils/messageFormat.js';
 
 // Second finding from the automated-parent-notifications audit (see
 // schema.sql's comment on petty_cash.reminder_sent_at): unlike fee
@@ -51,7 +51,8 @@ async function handleDailyReminders() {
         // pending_label is the real wait ("3 days"), replacing the template's fixed "a few days".
         variables: {
           requested_by: request.requested_by,
-          amount: request.amount,
+          // NUMERIC arrives as "500.00", which read as "Rs. 500.00".
+          amount: formatAmount(request.amount),
           pending_label: daysLabel(request.days_pending),
         },
       });

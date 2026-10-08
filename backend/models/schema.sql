@@ -2709,3 +2709,13 @@ UPDATE notification_templates
 SET dashboard_body_template = '{{event_title}} is coming up on {{event_date}}, in {{days_before}} days.'
 WHERE trigger_event = 'upcoming_event_reminder'
   AND dashboard_body_template = '{{event_title}} is coming up on {{event_date}} ({{days_before}} day(s) from now).';
+
+-- ---------- Delivery reports for every WhatsApp message, not only broadcasts ----------
+-- Meta reports "failed" after it has accepted a message. Broadcasts already
+-- recorded that; notifications and absence alerts stayed "sent". The webhook
+-- now finds both by Meta's message id (routes/whatsapp.js recordDeliveryStatus).
+-- dashboard_notifications.whatsapp_status gains 'delivered' and 'read'.
+ALTER TABLE notification_log ADD COLUMN IF NOT EXISTS wa_message_id VARCHAR(100);
+ALTER TABLE notification_log ADD COLUMN IF NOT EXISTS delivery_error TEXT;
+CREATE INDEX IF NOT EXISTS idx_notification_log_wa_message_id ON notification_log(wa_message_id) WHERE wa_message_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_dashboard_notifications_wa_message_id ON dashboard_notifications(whatsapp_message_id) WHERE whatsapp_message_id IS NOT NULL;

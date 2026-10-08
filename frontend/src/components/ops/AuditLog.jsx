@@ -13,6 +13,7 @@ const FILTERS = [
 const ACTION_TEXT = {
   'whatsapp.absence_alert_sent': 'Absence alert sent to parent',
   'whatsapp.absence_alert_failed': 'Absence alert failed',
+  'whatsapp.delivery_failed': 'WhatsApp message not delivered',
   'exception.resolved': 'Inbox item resolved',
   'exception.dismissed': 'Inbox item dismissed',
   'exception.snoozed': 'Inbox item snoozed',
