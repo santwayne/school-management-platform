@@ -34,7 +34,8 @@ async function handleWeeklyCheck() {
        GROUP BY s.id, s.school_id, s.name
      )
      SELECT att.*, ROUND(100.0 * att.days_present / att.days_recorded, 1) AS attendance_percent,
-            COALESCE(ss.low_attendance_window_days, 30) AS window_days
+            COALESCE(ss.low_attendance_window_days, 30) AS window_days,
+            COALESCE(ss.low_attendance_threshold_percent, 75) AS threshold_percent
      FROM att
      LEFT JOIN school_settings ss ON ss.school_id = att.school_id
      WHERE att.days_recorded >= $1
@@ -57,7 +58,12 @@ async function handleWeeklyCheck() {
         schoolId: row.school_id,
         recipients: [{ type: 'parent', studentId: row.student_id }],
         // "0.0" from ROUND(...,1) read as "0.0%" in the message; send "0", "66.7".
-        variables: { attendance_percent: formatCount(row.attendance_percent), window_days: row.window_days },
+        // threshold_percent is the school's own minimum, so the parent sees the gap.
+        variables: {
+          attendance_percent: formatCount(row.attendance_percent),
+          window_days: row.window_days,
+          threshold_percent: row.threshold_percent,
+        },
       });
       await pool.query(
         `INSERT INTO low_attendance_alert_log (school_id, student_id, attendance_percent) VALUES ($1, $2, $3)`,

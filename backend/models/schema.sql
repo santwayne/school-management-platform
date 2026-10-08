@@ -1451,8 +1451,8 @@ ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS petty_cash_reminder_days IN
 
 INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
 SELECT NULL, 'petty_cash_pending_reminder', 'both', 'Petty Cash Pending Reminder',
-       'petty_cash_pending_reminder_alert', '["requested_by","amount"]'::jsonb,
-       'Petty cash awaiting approval', 'A ₹{{amount}} petty cash request from {{requested_by}} has been pending for a few days.', FALSE
+       'petty_cash_pending_review_alert', '["requested_by","amount","pending_label"]'::jsonb,
+       'Petty cash awaiting approval', 'A ₹{{amount}} petty cash request from {{requested_by}} has been pending for {{pending_label}}.', FALSE
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'petty_cash_pending_reminder'
 );
@@ -1503,8 +1503,8 @@ ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS staff_leave_reminder_days I
 
 INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
 SELECT NULL, 'staff_leave_pending_reminder', 'both', 'Staff Leave Pending Reminder',
-       'staff_leave_pending_reminder_alert', '["teacher_name","leave_type","days_count"]'::jsonb,
-       'Leave request awaiting approval', '{{teacher_name}}''s {{leave_type}} leave request ({{days_count}} day(s)) has been pending for a few days.', FALSE
+       'staff_leave_pending_review_alert', '["teacher_name","leave_type","days_label","start_date","end_date"]'::jsonb,
+       'Leave request awaiting approval', '{{teacher_name}}''s {{leave_type}} leave request ({{days_label}}, {{start_date}} to {{end_date}}) is pending approval.', FALSE
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'staff_leave_pending_reminder'
 );
@@ -1632,8 +1632,8 @@ CREATE INDEX IF NOT EXISTS idx_low_attendance_alert_log_student ON low_attendanc
 
 INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
 SELECT NULL, 'low_attendance_alert', 'both', 'Low Attendance Alert',
-       'low_attendance_alert', '["student_name","attendance_percent","window_days"]'::jsonb,
-       'Low attendance', '{{student_name}}''s attendance over the last {{window_days}} days is {{attendance_percent}}% — below the school''s minimum.', FALSE
+       'low_attendance_threshold_alert', '["student_name","attendance_percent","window_days","threshold_percent"]'::jsonb,
+       'Low attendance', '{{student_name}}''s attendance over the last {{window_days}} days is {{attendance_percent}}% — below the school''s minimum of {{threshold_percent}}%.', FALSE
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'low_attendance_alert'
 );
@@ -1669,7 +1669,7 @@ CREATE TABLE IF NOT EXISTS event_reminder_log (
 INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
 SELECT NULL, 'upcoming_event_reminder', 'both', 'Upcoming Event Reminder',
        'upcoming_event_reminder_alert', '["event_title","event_date","days_before"]'::jsonb,
-       'Upcoming: {{event_title}}', '{{event_title}} is coming up on {{event_date}} ({{days_before}} day(s) from now).', FALSE
+       'Upcoming: {{event_title}}', '{{event_title}} is coming up on {{event_date}}, in {{days_before}} days.', FALSE
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'upcoming_event_reminder'
 );
@@ -1776,7 +1776,7 @@ CREATE TABLE IF NOT EXISTS recurring_doubt_notification_log (
 
 INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
 SELECT NULL, 'recurring_doubt_signal', 'both', 'Recurring Doubt Signal',
-       'recurring_doubt_signal_alert', '["chapter_tag","class_name","student_count"]'::jsonb,
+       'recurring_doubt_class_update', '["chapter_tag","class_name","student_count"]'::jsonb,
        'Recurring doubt: {{chapter_tag}}', '{{student_count}} students in {{class_name}} asked about {{chapter_tag}} this week — worth a quick re-cap.', FALSE
 WHERE NOT EXISTS (
   SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'recurring_doubt_signal'
@@ -2657,3 +2657,55 @@ ALTER TABLE admission_payment_links ADD COLUMN IF NOT EXISTS razorpay_account VA
 -- printed on the school's certificates and payslips
 -- (services/schoolBranding.js). NULL = the neutral look used before.
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS brand_color VARCHAR(7);
+
+-- ---------- WhatsApp templates reworded after the 7-8 Oct template test ----------
+-- An approved Meta template cannot gain a variable or change category in
+-- place without every send failing in between (the number of values sent must
+-- equal the number of {{n}} in the template). So each reworded template is a
+-- NEW template name on Meta, and these rows move to it. Until this runs, the
+-- old names keep working untouched.
+--
+-- Each UPDATE only touches a row still on the old global template, so it runs
+-- once and leaves a school's own override alone. This file is applied on
+-- every boot: DEPLOY ONLY AFTER the five templates below are approved in
+-- WhatsApp Manager for every WhatsApp account in use, otherwise these five
+-- messages fail until they are. Exact wording: backend/docs/WhatsApp_Templates_Oct_2026.md
+--
+-- recurring_doubt_class_update: same three variables; the old template was
+-- filed under Marketing by Meta, and a category cannot be edited.
+UPDATE notification_templates
+SET whatsapp_template_name = 'recurring_doubt_class_update'
+WHERE school_id IS NULL AND trigger_event = 'recurring_doubt_signal'
+  AND whatsapp_template_name = 'recurring_doubt_signal_alert';
+
+-- staff_leave_pending_review_alert: adds the dates; "3 days" replaces "3.0 day(s)".
+UPDATE notification_templates
+SET whatsapp_template_name = 'staff_leave_pending_review_alert',
+    whatsapp_param_order = '["teacher_name","leave_type","days_label","start_date","end_date"]'::jsonb,
+    dashboard_body_template = '{{teacher_name}}''s {{leave_type}} leave request ({{days_label}}, {{start_date}} to {{end_date}}) is pending approval.'
+WHERE school_id IS NULL AND trigger_event = 'staff_leave_pending_reminder'
+  AND whatsapp_template_name = 'staff_leave_pending_reminder_alert';
+
+-- petty_cash_pending_review_alert: the real wait instead of "a few days".
+UPDATE notification_templates
+SET whatsapp_template_name = 'petty_cash_pending_review_alert',
+    whatsapp_param_order = '["requested_by","amount","pending_label"]'::jsonb,
+    dashboard_body_template = 'A ₹{{amount}} petty cash request from {{requested_by}} has been pending for {{pending_label}}.'
+WHERE school_id IS NULL AND trigger_event = 'petty_cash_pending_reminder'
+  AND whatsapp_template_name = 'petty_cash_pending_reminder_alert';
+
+-- low_attendance_threshold_alert: states the school's minimum.
+UPDATE notification_templates
+SET whatsapp_template_name = 'low_attendance_threshold_alert',
+    whatsapp_param_order = '["student_name","attendance_percent","window_days","threshold_percent"]'::jsonb,
+    dashboard_body_template = '{{student_name}}''s attendance over the last {{window_days}} days is {{attendance_percent}}% — below the school''s minimum of {{threshold_percent}}%.'
+WHERE school_id IS NULL AND trigger_event = 'low_attendance_alert'
+  AND whatsapp_template_name = 'low_attendance_alert';
+
+-- upcoming_event_reminder_alert was edited in place on Meta on 8 Oct (same
+-- three variables: "... on {{2}}, in {{3}} days."). Only the in-app text
+-- needs to follow.
+UPDATE notification_templates
+SET dashboard_body_template = '{{event_title}} is coming up on {{event_date}}, in {{days_before}} days.'
+WHERE trigger_event = 'upcoming_event_reminder'
+  AND dashboard_body_template = '{{event_title}} is coming up on {{event_date}} ({{days_before}} day(s) from now).';

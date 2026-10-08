@@ -2,6 +2,7 @@ import { Worker } from 'bullmq';
 import { connection } from '../config/queue.js';
 import pool from '../config/db.js';
 import { send as sendNotification } from '../services/notificationService.js';
+import { daysLabel } from '../utils/messageFormat.js';
 
 // Second finding from the automated-parent-notifications audit (see
 // schema.sql's comment on petty_cash.reminder_sent_at): unlike fee
@@ -24,7 +25,8 @@ const worker = new Worker(
 
 async function handleDailyReminders() {
   const pending = await pool.query(
-    `SELECT pc.id, pc.school_id, pc.requested_by, pc.amount
+    `SELECT pc.id, pc.school_id, pc.requested_by, pc.amount,
+            GREATEST(CURRENT_DATE - pc.created_at::date, 1) AS days_pending
      FROM petty_cash pc
      LEFT JOIN school_settings ss ON ss.school_id = pc.school_id
      WHERE pc.status = 'PENDING'
@@ -46,7 +48,12 @@ async function handleDailyReminders() {
         triggerEvent: 'petty_cash_pending_reminder',
         schoolId: request.school_id,
         recipients: principals.rows.map((p) => ({ type: 'staff', teacherId: p.id })),
-        variables: { requested_by: request.requested_by, amount: request.amount },
+        // pending_label is the real wait ("3 days"), replacing the template's fixed "a few days".
+        variables: {
+          requested_by: request.requested_by,
+          amount: request.amount,
+          pending_label: daysLabel(request.days_pending),
+        },
       });
 
       await pool.query(`UPDATE petty_cash SET reminder_sent_at = NOW() WHERE id = $1`, [request.id]);
