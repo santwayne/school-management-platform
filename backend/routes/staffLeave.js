@@ -13,17 +13,15 @@ import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
 import { send as sendNotification } from '../services/notificationService.js';
 import { formatNotifyDate } from '../utils/notifyDate.js';
+import { overlapMessage } from '../utils/leaveOverlap.js';
 
 const router = express.Router();
 
 const LEAVE_TYPES = ['casual', 'sick', 'earned'];
 
-function countDays(start, end) {
-  const s = new Date(start);
-  const e = new Date(end);
-  const diff = Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
-  return diff > 0 ? diff : 0;
-}
+// First key of the advisory lock taken while a teacher applies for leave
+// (the second key is the teacher's id). Any fixed number unique to this use.
+const LEAVE_LOCK_NAMESPACE = 7301;
 
 // GET /api/staff-leave/balances — current teacher's balances for this year
 // (principal can pass ?teacher_id= to view someone else's)
@@ -90,15 +88,41 @@ router.post('/requests', requireAuth, async (req, res) => {
   }
 
   const days = countDays(start_date, end_date);
+  const client = await pool.connect();
   try {
-    const { rows } = await pool.query(
+    await client.query('BEGIN');
+    // One teacher's applications are checked one at a time, so a double tap
+    // on "Apply" cannot slip two requests past the overlap check below.
+    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [LEAVE_LOCK_NAMESPACE, req.user.teacher_id]);
+
+    // The same days could be applied for twice (7 Oct test): both requests
+    // sat in the principal's queue and, once approved, the days were taken
+    // off the balance twice. A rejected or cancelled request does not block.
+    const clash = await client.query(
+      `SELECT id, leave_type, status, start_date, end_date FROM staff_leave_requests
+       WHERE school_id = $1 AND teacher_id = $2 AND status IN ('PENDING', 'APPROVED')
+         AND start_date <= $4::date AND end_date >= $3::date
+       ORDER BY start_date LIMIT 1`,
+      [req.user.school_id, req.user.teacher_id, start_date, end_date]
+    );
+    if (clash.rowCount > 0) {
+      await client.query('ROLLBACK');
+      const c = clash.rows[0];
+      return res.status(409).json({ error: overlapMessage(c), code: 'LEAVE_OVERLAP', existing_request_id: c.id });
+    }
+
+    const { rows } = await client.query(
       `INSERT INTO staff_leave_requests (school_id, teacher_id, leave_type, start_date, end_date, days_count, reason)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [req.user.school_id, req.user.teacher_id, leave_type, start_date, end_date, days, reason || null]
     );
+    await client.query('COMMIT');
     res.status(201).json(rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
