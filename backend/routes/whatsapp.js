@@ -10,6 +10,7 @@ import axios from 'axios';
 import { webhookLimiter } from '../middleware/rateLimit.js';
 import pool from '../config/db.js';
 import { generateAIHint, tagDoubtChapter, extractCashSlip, extractExpenseSlip, extractDoubtImage } from '../services/aiService.js';
+import { chaptersByClass, chapterChoices, matchChapter, studentForDoubt } from '../utils/doubtTagging.js';
 import { sendTextMessage, sendTemplateMessage, downloadMedia, getSchoolWhatsApp } from '../services/whatsappService.js';
 
 const router = express.Router();
@@ -378,41 +379,30 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
 
     const aiResponseHint = await generateAIHint(userMessageText);
 
-    // AI roadmap #2: tagDoubtChapter was always called with an empty
-    // chapter list (see this function's own header comment — it
-    // short-circuits to 'Untagged' whenever the list is empty), so every
-    // doubt was tagged 'Untagged' before this. Fixed by actually looking
-    // up the asking student's class and its currently-relevant syllabus
-    // chapters.
-    //
-    // student_doubts already had an unused student_id column (never
-    // populated by this route) — a parent can have more than one child,
-    // and this webhook has no way to ask "which of your kids is this
-    // about," so: if the parent has exactly one linked student, use that
-    // student's class to scope both the chapter list AND student_id on
-    // the row (fixing a second, related gap — doubts were never linkable
-    // to a specific child at all). If the parent has multiple children,
-    // student_id stays NULL and the chapter list stays empty (same
-    // 'Untagged' behavior as before) rather than guessing which child.
-    const studentRes = await pool.query(`SELECT id, class_id FROM students WHERE parent_id = $1`, [parent.id]);
-    let studentId = null;
-    let chapterNames = [];
-    if (studentRes.rowCount === 1) {
-      studentId = studentRes.rows[0].id;
-      // "Currently relevant" = taught in the last 60 days or starting in
-      // the next 14 — wide enough to catch a doubt about last week's
-      // chapter without pulling in the whole year's syllabus.
+    // Which chapter is this doubt about, and which child asked? See
+    // utils/doubtTagging.js for the three ways this used to end in
+    // "Untagged" (several children, undated syllabus, unchecked AI reply).
+    const studentRes = await pool.query(`SELECT id, class_id FROM students WHERE parent_id = $1 ORDER BY id`, [parent.id]);
+    const classIds = [...new Set(studentRes.rows.map((s) => s.class_id).filter(Boolean))];
+    let byClass = new Map();
+    if (classIds.length > 0) {
+      // "In window" = taught in the last 60 days or starting in the next 14:
+      // wide enough to catch a doubt about last week's chapter without
+      // offering the whole year's syllabus when the dates are there.
       const chaptersRes = await pool.query(
-        `SELECT DISTINCT chapter_name FROM syllabus_calendar
-         WHERE class_id = $1
-           AND target_end_date >= CURRENT_DATE - INTERVAL '60 days'
-           AND target_start_date <= CURRENT_DATE + INTERVAL '14 days'
-           AND chapter_name IS NOT NULL`,
-        [studentRes.rows[0].class_id]
+        `SELECT class_id, chapter_name,
+                (target_end_date >= CURRENT_DATE - INTERVAL '60 days'
+                 AND target_start_date <= CURRENT_DATE + INTERVAL '14 days') AS in_window
+         FROM syllabus_calendar
+         WHERE class_id = ANY($1::int[]) AND school_id = $2 AND chapter_name IS NOT NULL
+         ORDER BY target_start_date, id`,
+        [classIds, parent.school_id]
       );
-      chapterNames = chaptersRes.rows.map((r) => r.chapter_name);
+      byClass = chaptersByClass(chaptersRes.rows);
     }
-    const chapterTag = await tagDoubtChapter(userMessageText, chapterNames);
+    const chapterNames = chapterChoices(byClass);
+    const chapterTag = matchChapter(await tagDoubtChapter(userMessageText, chapterNames), chapterNames);
+    const studentId = studentForDoubt(studentRes.rows, byClass, chapterTag);
 
     await pool.query(
       `INSERT INTO student_doubts (school_id, parent_id, student_id, original_query, ai_response_hint, chapter_tag)
