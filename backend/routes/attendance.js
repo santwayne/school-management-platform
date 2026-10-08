@@ -44,14 +44,17 @@ async function queueAddWithTimeout(name, data, opts) {
 async function sendAbsentNotificationNow({ attendanceId, parent, studentId, schoolId }) {
   let status = 'SENT';
   let error = null;
+  let waMessageId = null;
   try {
-    await sendTemplateMessage(
+    const result = await sendTemplateMessage(
       schoolId,
       parent.phone,
       ABSENCE_TEMPLATE_NAME,
       'en',
       [parent.student_name]
     );
+    // Kept so Meta's later "failed" report can be matched to this alert.
+    waMessageId = result?.messages?.[0]?.id || null;
   } catch (err) {
     console.error(`WhatsApp send failed for attendance ${attendanceId}:`, err.message);
     status = 'FAILED';
@@ -62,9 +65,9 @@ async function sendAbsentNotificationNow({ attendanceId, parent, studentId, scho
   }
 
   const logRes = await pool.query(
-    `INSERT INTO notification_log (attendance_id, parent_id, type, status)
-     VALUES ($1, $2, 'whatsapp', $3) RETURNING id`,
-    [attendanceId, parent.id, status]
+    `INSERT INTO notification_log (attendance_id, parent_id, type, status, wa_message_id, delivery_error)
+     VALUES ($1, $2, 'whatsapp', $3, $4, $5) RETURNING id`,
+    [attendanceId, parent.id, status, waMessageId, error]
   );
   const notificationLogId = logRes.rows[0].id;
 

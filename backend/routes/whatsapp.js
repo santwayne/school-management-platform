@@ -11,9 +11,49 @@ import { webhookLimiter } from '../middleware/rateLimit.js';
 import pool from '../config/db.js';
 import { generateAIHint, tagDoubtChapter, extractCashSlip, extractExpenseSlip, extractDoubtImage } from '../services/aiService.js';
 import { chaptersByClass, chapterChoices, matchChapter, studentForDoubt } from '../utils/doubtTagging.js';
+import { deliveryOutcome, deliveryError } from '../utils/deliveryStatus.js';
 import { sendTextMessage, sendTemplateMessage, downloadMedia, getSchoolWhatsApp } from '../services/whatsappService.js';
 
 const router = express.Router();
+
+// A delivery report from Meta for a message that is not a broadcast:
+// notifications sent through NotificationService (fees, leave, reminders...)
+// and absence alerts. See utils/deliveryStatus.js.
+async function recordDeliveryStatus(s) {
+  const outcome = deliveryOutcome(s.status);
+  if (!outcome) return;
+  const reason = outcome === 'failed' ? deliveryError(s) || 'WhatsApp could not deliver this message' : null;
+
+  const n = await pool.query(
+    `UPDATE dashboard_notifications
+     SET whatsapp_status = $1, error_message = COALESCE($2, error_message)
+     WHERE whatsapp_message_id = $3
+       AND whatsapp_status IN ('sent', 'delivered') AND whatsapp_status <> $1
+     RETURNING id, school_id, trigger_event, recipient_type, recipient_id`,
+    [outcome, reason, s.id]
+  );
+
+  let absence = { rows: [] };
+  if (outcome === 'failed') {
+    // Absence alerts keep SENT until the parent replies (the reply handler
+    // looks for status = 'SENT'), so only a failure changes the row.
+    absence = await pool.query(
+      `UPDATE notification_log nl SET status = 'FAILED', delivery_error = $1
+       FROM attendance a
+       WHERE nl.wa_message_id = $2 AND nl.status = 'SENT' AND a.id = nl.attendance_id
+       RETURNING nl.id, a.school_id, a.student_id`,
+      [reason, s.id]
+    );
+    for (const row of n.rows) {
+      await audit({ schoolId: row.school_id, action: 'whatsapp.delivery_failed', entityType: 'notification', entityId: row.id,
+        detail: { trigger_event: row.trigger_event, recipient_type: row.recipient_type, recipient_id: row.recipient_id, error: `${row.trigger_event}: ${reason}` } });
+    }
+    for (const row of absence.rows) {
+      await audit({ schoolId: row.school_id, action: 'whatsapp.absence_alert_failed', entityType: 'student', entityId: row.student_id,
+        detail: { error: reason, reported: 'after sending' } });
+    }
+  }
+}
 
 // Verifies the `X-Hub-Signature-256` header Meta signs every webhook POST
 // with (HMAC-SHA256 over the exact raw request body, keyed with the Meta
@@ -129,6 +169,8 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
           : s.status === 'failed' ? 'FAILED'
           : null;
         if (!newStatus || !s.id) continue;
+        // Every other kind of message (not only broadcasts) learns its fate here.
+        await recordDeliveryStatus(s).catch((err) => console.error('WhatsApp delivery status not recorded:', err.message));
         try {
           const current = await pool.query(
             `SELECT id, broadcast_id, status FROM broadcast_recipients WHERE wa_message_id = $1`,
