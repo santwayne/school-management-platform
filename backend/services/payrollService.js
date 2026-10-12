@@ -157,6 +157,23 @@ export async function preparePayroll(schoolId, period) {
     await client.query('COMMIT');
 
     const important = anomalies.filter((a) => a.type !== 'no_bank');
+    if (count === 0) {
+      // Nobody has a salary set, so there is nothing to approve. Ask for salaries instead
+      // of an "Approve payroll: 0 staff, ₹0" item, and close any such item from an earlier run.
+      await autoResolve(`payroll:${period}`, { schoolId, note: 'No staff in this payroll run' });
+      await raiseException({
+        schoolId,
+        source: 'payslip',
+        severity: 'medium',
+        title: `Payroll for ${periodLabel(period)} is empty: no staff have a salary set`,
+        body: `Set salaries on Staff & Payroll → Salaries, then run payroll again.${anomalies.length ? `\n\n${anomalies.map((a) => `• ${a.text}`).join('\n')}` : ''}`,
+        entityType: 'payroll_run',
+        entityId: runId,
+        dedupeKey: `payroll-empty:${period}`,
+      });
+      return { run_id: runId, period, working_days: workingDays, totals, anomalies };
+    }
+    await autoResolve(`payroll-empty:${period}`, { schoolId, note: 'Salaries set' });
     await raiseException({
       schoolId,
       source: 'payslip',

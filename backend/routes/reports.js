@@ -207,6 +207,25 @@ router.get('/overview', requireAuth, async (req, res) => {
        WHERE school_id = $1 AND sent_at > CURRENT_DATE - INTERVAL '7 days'`,
       [school_id]
     );
+    // People actually reached on WhatsApp in the last 7 days, across every way the
+    // school sends: notifications (fees, leave, homework, payslips...), absence
+    // alerts and broadcasts. Failed sends are not counted.
+    const whatsappReach = await pool.query(
+      `SELECT COUNT(*) AS total FROM (
+         SELECT recipient_type || ':' || recipient_id AS who FROM dashboard_notifications
+          WHERE school_id = $1 AND whatsapp_status IN ('sent', 'delivered', 'read')
+            AND COALESCE(sent_at, created_at) > NOW() - INTERVAL '7 days'
+         UNION
+         SELECT 'parent:' || nl.parent_id FROM notification_log nl
+           JOIN attendance a ON a.id = nl.attendance_id JOIN students s ON s.id = a.student_id
+          WHERE s.school_id = $1 AND nl.type = 'whatsapp' AND nl.status <> 'FAILED' AND nl.parent_id IS NOT NULL
+            AND nl.sent_at > NOW() - INTERVAL '7 days'
+         UNION
+         SELECT 'phone:' || br.phone FROM broadcast_recipients br JOIN broadcasts b ON b.id = br.broadcast_id
+          WHERE b.school_id = $1 AND br.status <> 'FAILED' AND br.created_at > NOW() - INTERVAL '7 days'
+       ) reached`,
+      [school_id]
+    );
     const activeBuses = await pool.query('SELECT COUNT(*) FROM buses WHERE school_id = $1', [school_id]);
     const doubtsThisWeek = await pool.query(
       `SELECT COUNT(*) FROM student_doubts WHERE school_id = $1 AND created_at > CURRENT_DATE - INTERVAL '7 days'`,
@@ -232,6 +251,7 @@ router.get('/overview', requireAuth, async (req, res) => {
       attendance_today_pct: todayAttendance.rows[0].pct,
       fees_this_month: monthFees.rows[0].total,
       broadcasts_this_week: parseInt(broadcastsThisWeek.rows[0].total, 10),
+      whatsapp_reach_7d: parseInt(whatsappReach.rows[0].total, 10),
       active_buses: parseInt(activeBuses.rows[0].count, 10),
       doubts_this_week: parseInt(doubtsThisWeek.rows[0].count, 10),
       activity,
