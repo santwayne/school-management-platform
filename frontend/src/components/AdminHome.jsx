@@ -77,7 +77,7 @@ export default function AdminHome() {
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
           <StatCard label="Attendance today" value={overview.attendance_today_pct ? `${overview.attendance_today_pct}%` : '—'} icon={CalendarCheck2} />
           <StatCard label="Fees this month" value={INR(overview.fees_this_month)} icon={IndianRupee} />
-          <StatCard label="WhatsApp reach (7d)" value={overview.broadcasts_this_week} sub="recipients" icon={Send} />
+          <StatCard label="WhatsApp reach (7d)" value={overview.whatsapp_reach_7d ?? overview.broadcasts_this_week} sub="people reached" icon={Send} />
           <StatCard label="Bus routes" value={overview.active_buses} icon={Bus} />
           <StatCard label="Parent doubts (7d)" value={overview.doubts_this_week} icon={MessageSquare} />
         </div>

@@ -253,6 +253,11 @@ export default function AdminBilling() {
             {INR(data.price)}/month + GST ({INR(data.price_with_gst)})
             {data.subscription && <> · {data.subscription.billing_cycle} · {data.subscription.cancel_at_period_end ? 'ends' : 'renews'} {dateIN(data.renews_at)}</>}
           </div>
+          {!data.subscription && (
+            <p className="text-sm text-ink mt-3">
+              Activated by the Waynur team{data.renews_at ? <>, valid till {dateIN(data.renews_at)}</> : ''}. No online subscription is set up, so nothing is charged automatically.
+            </p>
+          )}
           {data.pending_plan && (
             <p className="text-sm text-ink mt-3">Switching to {data.all_plans[data.pending_plan]?.name} on {dateIN(data.renews_at)}.</p>
           )}
@@ -281,9 +286,10 @@ export default function AdminBilling() {
 
       <div className="grid md:grid-cols-3 gap-4">
         {plans.map(([key, p]) => {
-          const isCurrent = key === data.plan && data.subscription?.billing_cycle === cycle;
+          // A plan the Waynur team activated (no online subscription) is still the current plan.
+          const isCurrent = key === data.plan && (!data.subscription || data.subscription.billing_cycle === cycle);
           const available = cycle === 'yearly' ? p.yearly_online : p.monthly_online;
-          const verb = !data.subscription ? 'Subscribe' : p.rank > currentRank ? 'Upgrade' : p.rank < currentRank ? 'Downgrade' : 'Switch';
+          const verb = p.rank > currentRank ? 'Upgrade' : p.rank < currentRank ? 'Downgrade' : data.subscription ? 'Switch' : 'Subscribe';
           const price = cycle === 'yearly' ? p.yearly_price : p.price;
           return (
             <div key={key} className={`rounded-2xl border p-5 flex flex-col ${key === data.plan ? 'border-terracotta bg-terracotta/5' : 'border-cream-deep/70 bg-white'}`}>
