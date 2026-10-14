@@ -1,6 +1,7 @@
 import pool from '../config/db.js';
 import { send as sendNotification } from './notificationService.js';
 import { formatNotifyDate } from '../utils/notifyDate.js';
+import { isOwnMediaUrl } from './teachingMedia.js';
 
 // ------------------------------------------------------------------
 // Homework: a teacher (or the principal) assigns it to a class; every
@@ -40,7 +41,7 @@ export function isRealDate(value) {
 // Pure: checks and tidies what the form sent. `today` is the school's
 // calendar day as 'YYYY-MM-DD'. Throws HomeworkError(400) with a message a
 // teacher can act on.
-export function validateHomeworkInput(body, { today }) {
+export function validateHomeworkInput(body, { today, schoolId }) {
   const classId = positiveInt(body?.class_id);
   const subjectId = positiveInt(body?.subject_id);
   if (!classId) throw new HomeworkError(400, 'Choose a class.');
@@ -62,7 +63,13 @@ export function validateHomeworkInput(body, { today }) {
     dueDate = body.due_date;
   }
 
-  return { classId, subjectId, title, description: description || null, dueDate };
+  // Attachment comes from POST /api/teaching-media/upload; only our own
+  // bucket's URLs are accepted.
+  const attachmentUrl = body?.attachment_url ? String(body.attachment_url) : null;
+  if (attachmentUrl && !isOwnMediaUrl(attachmentUrl, schoolId)) throw new HomeworkError(400, 'Attach the file using the upload button.');
+  const attachmentName = attachmentUrl ? String(body?.attachment_name || 'attachment').slice(0, 255) : null;
+
+  return { classId, subjectId, title, description: description || null, dueDate, attachmentUrl, attachmentName };
 }
 
 async function schoolToday() {
@@ -93,7 +100,7 @@ export async function createHomework(user, body) {
     throw new HomeworkError(403, 'Teacher or Principal role required');
   }
   const schoolId = user.school_id;
-  const input = validateHomeworkInput(body, { today: await schoolToday() });
+  const input = validateHomeworkInput(body, { today: await schoolToday(), schoolId });
 
   const cls = await pool.query('SELECT id, name FROM classes WHERE id = $1 AND school_id = $2', [input.classId, schoolId]);
   if (!cls.rowCount) throw new HomeworkError(404, 'Class not found for this school');
@@ -120,10 +127,12 @@ export async function createHomework(user, body) {
 
   const subjectName = subject.rows[0].name;
   const { rows } = await pool.query(
-    `INSERT INTO homework (school_id, class_id, subject_id, subject_ref_id, title, description, due_date, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     RETURNING id, school_id, class_id, subject_id, subject_ref_id, title, description, to_char(due_date, 'YYYY-MM-DD') AS due_date, created_by, created_at`,
-    [schoolId, input.classId, subjectName.slice(0, 50), input.subjectId, input.title, input.description, input.dueDate, user.teacher_id]
+    `INSERT INTO homework (school_id, class_id, subject_id, subject_ref_id, title, description, due_date, created_by, attachment_url, attachment_name, source)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     RETURNING id, school_id, class_id, subject_id, subject_ref_id, title, description, to_char(due_date, 'YYYY-MM-DD') AS due_date, created_by, created_at,
+               attachment_url, attachment_name, shared_at`,
+    [schoolId, input.classId, subjectName.slice(0, 50), input.subjectId, input.title, input.description, input.dueDate, user.teacher_id,
+     input.attachmentUrl, input.attachmentName, body?.source === 'whatsapp' ? 'whatsapp' : 'portal']
   );
   return { ...rows[0], class_name: cls.rows[0].name, subject_name: subjectName };
 }
@@ -146,6 +155,7 @@ export async function notifyHomeworkAssigned(homework) {
       schoolId: homework.school_id,
       recipients,
       batchKey: `homework:${homework.id}`,
+      attachments: homework.attachment_url ? [{ url: homework.attachment_url, type: 'document' }] : [],
       variables: {
         subject: homework.subject_name || homework.subject_id,
         title: homework.title,
@@ -159,13 +169,42 @@ export async function notifyHomeworkAssigned(homework) {
   }
 }
 
+// One-time share to the whole class. The UPDATE ... WHERE shared_at IS NULL is
+// the latch: only the first caller gets a row back, so the class is messaged
+// exactly once however many times (or from however many devices) this is hit.
+// The same caller that wins the latch performs the fan-out.
+export async function shareHomework(user, id) {
+  const homeworkId = positiveInt(id);
+  if (!homeworkId) throw new HomeworkError(404, 'Homework not found');
+  const claimed = await pool.query(
+    `UPDATE homework h SET shared_at = CURRENT_TIMESTAMP
+      WHERE h.id = $1 AND h.school_id = $2 AND h.shared_at IS NULL AND ($3::boolean OR h.created_by = $4)
+      RETURNING h.id, h.school_id, h.class_id, h.subject_id, h.subject_ref_id, h.title, h.description,
+                to_char(h.due_date, 'YYYY-MM-DD') AS due_date, h.attachment_url, h.attachment_name`,
+    [homeworkId, user.school_id, user.role === 'principal', user.teacher_id]
+  );
+  if (!claimed.rowCount) {
+    const exists = await pool.query(
+      'SELECT shared_at FROM homework WHERE id = $1 AND school_id = $2 AND ($3::boolean OR created_by = $4)',
+      [homeworkId, user.school_id, user.role === 'principal', user.teacher_id]
+    );
+    if (!exists.rowCount) throw new HomeworkError(404, 'Homework not found');
+    throw new HomeworkError(409, 'This homework has already been shared with the class.');
+  }
+  const homework = { ...claimed.rows[0], subject_name: claimed.rows[0].subject_id };
+  // Fan-out runs after the caller's response (a slow WhatsApp send must not
+  // keep the teacher waiting); it never throws.
+  notifyHomeworkAssigned(homework);
+  return { shared: true };
+}
+
 // What a teacher has assigned (the principal sees the whole school), newest
 // first, with how many students have ticked it done.
 export async function listHomeworkForStaff(user) {
   const { rows } = await pool.query(
     `SELECT h.id, h.class_id, c.name AS class_name, h.subject_ref_id, h.subject_id AS subject_name,
             h.title, h.description, to_char(h.due_date, 'YYYY-MM-DD') AS due_date, h.created_at,
-            h.created_by, t.name AS created_by_name,
+            h.created_by, t.name AS created_by_name, h.attachment_url, h.attachment_name, h.shared_at,
             (SELECT COUNT(*)::int FROM students s WHERE s.class_id = h.class_id AND s.school_id = h.school_id) AS student_count,
             (SELECT COUNT(*)::int FROM homework_completions hc WHERE hc.homework_id = h.id) AS done_count
        FROM homework h

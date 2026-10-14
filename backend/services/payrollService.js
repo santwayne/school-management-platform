@@ -87,13 +87,16 @@ export async function preparePayroll(schoolId, period) {
   const esiEnabled = settings.rows[0]?.esi_enabled || false;
 
   const staff = await pool.query(
-    `SELECT t.id, t.name, t.role, t.bank_account_number, t.bank_ifsc, s.monthly_amount
-     FROM teachers t LEFT JOIN teacher_salary s ON s.teacher_id = t.id
+    `SELECT t.id, t.name, t.role, t.bank_account_number, t.bank_ifsc,
+            COALESCE(s.monthly_amount, rs.monthly_amount) AS monthly_amount
+     FROM teachers t
+     LEFT JOIN teacher_salary s ON s.teacher_id = t.id
+     LEFT JOIN role_salary_structures rs ON rs.school_id = t.school_id AND rs.role = t.role
      WHERE t.school_id = $1 AND t.role IN ('teacher', 'accountant', 'librarian', 'operator', 'principal') AND COALESCE(t.is_demo, FALSE) = FALSE
      ORDER BY t.name`,
     [schoolId]
   );
-  const comps = await pool.query(`SELECT teacher_id, name, kind, calc, value FROM salary_components WHERE school_id = $1 AND active`, [schoolId]);
+  const comps = await pool.query(`SELECT teacher_id, role, name, kind, calc, value FROM salary_components WHERE school_id = $1 AND active`, [schoolId]);
   const tracked = await pool.query(
     `SELECT COUNT(*)::int AS n FROM teacher_attendance_daily WHERE school_id = $1 AND date >= $2::date AND date < ($2::date + INTERVAL '1 month')`,
     [schoolId, start]
@@ -137,7 +140,7 @@ export async function preparePayroll(schoolId, period) {
         anomalies.push({ type: 'no_salary', teacher_id: s.id, text: `${s.name}: no salary set, not included.` });
         continue;
       }
-      const components = comps.rows.filter((c) => c.teacher_id == null || c.teacher_id === s.id);
+      const components = comps.rows.filter((c) => c.teacher_id === s.id || (c.teacher_id == null && (c.role == null || c.role === s.role)));
       const lopDays = attendanceTracked ? lopMap.get(s.id) || 0 : 0;
       const pay = computePay({ base: s.monthly_amount, workingDays, lopDays, components, pfEnabled, esiEnabled });
       if (pay.negative) anomalies.push({ type: 'negative', teacher_id: s.id, text: `${s.name}: deductions exceed pay; net set to ₹0.` });
@@ -305,7 +308,10 @@ export async function runMonthlyPayrollPreparation() {
   let ok = 0;
   let failed = 0;
   for (const s of schools.rows) {
-    const hasSalaries = await pool.query('SELECT 1 FROM teacher_salary WHERE school_id = $1 LIMIT 1', [s.id]);
+    const hasSalaries = await pool.query(
+      `SELECT 1 FROM teacher_salary WHERE school_id = $1 UNION ALL SELECT 1 FROM role_salary_structures WHERE school_id = $1 LIMIT 1`,
+      [s.id]
+    );
     if (!hasSalaries.rowCount) continue;
     try {
       await preparePayroll(s.id, period);

@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BookOpenCheck, Trash2 } from 'lucide-react';
+import { ArrowLeft, BookOpenCheck, Paperclip, Send, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
+import AttachmentField from './AttachmentField';
 
 const EMPTY_FORM = { class_id: '', subject_id: '', title: '', description: '', due_date: '' };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -24,6 +25,8 @@ export default function TeacherHomework() {
   const [options, setOptions] = useState([]);
   const [items, setItems] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [attachment, setAttachment] = useState(null);
+  const [shareNow, setShareNow] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -71,15 +74,35 @@ export default function TeacherHomework() {
           title: form.title,
           description: form.description,
           due_date: form.due_date || null,
+          attachment_url: attachment?.url || undefined,
+          attachment_name: attachment?.name || undefined,
+          share: shareNow,
         },
       });
       setForm(EMPTY_FORM);
-      setMessage(`Homework assigned to ${created.class_name}. Students can see it now and parents are being messaged.`);
+      setAttachment(null);
+      setMessage(shareNow
+        ? `Homework assigned to ${created.class_name}. Students can see it now and parents are being messaged.`
+        : `Homework saved as a draft for ${created.class_name}. Use "Share with class" when you are ready — it can be sent once.`);
       load();
     } catch (err) {
       setError(err.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleShare = async (h) => {
+    if (!window.confirm(`Share "${h.title}" with every student and parent in ${h.class_name}? This can only be done once.`)) return;
+    setError('');
+    setMessage('');
+    try {
+      await apiRequest(`/api/homework/${h.id}/share`, { method: 'POST' });
+      setMessage('Shared. Students can see it now and parents are being messaged.');
+      load();
+    } catch (err) {
+      setError(err.message);
+      load();
     }
   };
 
@@ -186,15 +209,23 @@ export default function TeacherHomework() {
               />
             </label>
 
+            <AttachmentField value={attachment} onChange={setAttachment} />
+
+            <label className="flex items-start gap-2 text-sm text-ink-soft">
+              <input type="checkbox" checked={shareNow} onChange={(e) => setShareNow(e.target.checked)} className="mt-0.5" />
+              <span>Share with the whole class now. Untick to save a draft and share later — sharing is one time only.</span>
+            </label>
+
             <button
               disabled={submitting}
               className="w-full py-2 bg-terracotta hover:bg-terracotta-deep text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50"
             >
-              {submitting ? 'Assigning…' : 'Assign homework'}
+              {submitting ? 'Saving…' : shareNow ? 'Assign & share homework' : 'Save draft'}
             </button>
             <p className="text-xs text-ink-soft">
-              Every student in the class sees it in their portal, and each parent gets a WhatsApp message with the subject, what
-              to do and the due date.
+              Once shared, every student in the class sees it in their portal, and each parent gets a WhatsApp message with the
+              subject, what to do and the due date (plus your attachment). You can also create homework by WhatsApp:
+              send "HOMEWORK 7A Maths: title" (with a photo or document if needed), then reply "SHARE HW &lt;number&gt;".
             </p>
           </form>
         )}
@@ -216,11 +247,26 @@ export default function TeacherHomework() {
                       {user?.role === 'principal' && h.created_by_name ? `, by ${h.created_by_name}` : ''}
                     </div>
                     {h.description && <p className="text-sm text-ink-soft leading-relaxed whitespace-pre-line break-words">{h.description}</p>}
+                    {h.attachment_url && (
+                      <a href={h.attachment_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-terracotta-deep font-medium hover:underline">
+                        <Paperclip className="w-3 h-3" /> {h.attachment_name || 'Attachment'}
+                      </a>
+                    )}
                     <div className="text-xs text-ink-soft flex flex-wrap gap-x-4 gap-y-1 pt-0.5">
+                      {!h.shared_at && <span className="font-medium text-amber-700">Draft — not shared yet</span>}
                       <span>{h.due_date ? `Due ${shortDate(h.due_date)}` : 'No due date'}</span>
                       <span>{h.done_count} of {h.student_count} students marked it done</span>
                     </div>
                   </div>
+                  {!h.shared_at && (
+                    <button
+                      type="button"
+                      onClick={() => handleShare(h)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-terracotta text-primary-foreground text-xs font-medium hover:bg-terracotta-deep shrink-0"
+                    >
+                      <Send className="w-3.5 h-3.5" /> Share with class
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleDelete(h)}

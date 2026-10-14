@@ -24,6 +24,10 @@ import reportsRoutes from './routes/reports.js';
 import gradingRoutes from './routes/grading.js';
 import studentPortalRoutes from './routes/studentPortal.js';
 import homeworkRoutes from './routes/homework.js';
+import teachingMediaRoutes from './routes/teachingMedia.js';
+import examPlanRoutes from './routes/examPlans.js';
+import assistantRoutes from './routes/assistant.js';
+import { startReflectionLoop } from './services/assistantReflection.js';
 import automationReadinessRoutes from './routes/automationReadiness.js';
 import feeCollectorsRoutes from './routes/feeCollectors.js';
 import libraryContactsRoutes from './routes/libraryContacts.js';
@@ -95,6 +99,9 @@ app.use(cors());
 // body has already been parsed to JSON and the original bytes are gone
 // unless captured here). Limit bumped from 5mb to 8mb to fit base64-encoded
 // cash-slip photos from the WhatsApp intake flow alongside the JSON body.
+// Answer-sheet photos arrive base64-encoded (+33%), so the grading routes need
+// a larger body limit than the 8mb default or phone photos get a 413.
+app.use('/api/grading', express.json({ limit: '14mb' }));
 app.use(express.json({ limit: '8mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
@@ -120,6 +127,9 @@ app.use('/api/billing', billingRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/grading', gradingRoutes);
 app.use('/api/student', studentPortalRoutes);
+app.use('/api/teaching-media', teachingMediaRoutes);
+app.use('/api/exam-plans', examPlanRoutes);
+app.use('/api/assistant', assistantRoutes);
 app.use('/api/homework', homeworkRoutes);
 app.use('/api/automation-readiness', automationReadinessRoutes);
 app.use('/api/fee-collectors', feeCollectorsRoutes);
@@ -279,6 +289,7 @@ async function start() {
     }
     instrumentWorkers();
     startHealthCheckLoop();
+    startReflectionLoop();
   });
 }
 

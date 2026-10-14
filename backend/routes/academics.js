@@ -5,6 +5,7 @@ import { requireAuth, requirePrincipal, requireLibrary } from '../middleware/aut
 import { normalizePhone } from '../utils/phone.js';
 import { audit } from '../services/opsService.js';
 import { assertCapacity } from '../services/billingService.js';
+import { MAX_STAFF_IMPORT_ROWS, generateTempPassword, validateStaffRows } from '../utils/staffImport.js';
 import { send as sendNotification } from '../services/notificationService.js';
 
 const router = express.Router();
@@ -590,6 +591,70 @@ router.post('/teachers', requireAuth, requirePrincipal, async (req, res) => {
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'A staff member with this email already exists' });
     res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/academics/teachers/bulk — import many staff at once, each with the
+// role given in the file (teacher | accountant | librarian | operator; blank =
+// teacher; principal is never created here). body: { rows: [{ name, email,
+// phone, role, password? }], dry_run? }. Rows are checked and created one by
+// one, so a bad row never blocks the rest. A row with no password gets a
+// generated temporary one, returned ONCE in the response for the principal to
+// hand out — it is not stored anywhere in readable form.
+router.post('/teachers/bulk', requireAuth, requirePrincipal, async (req, res) => {
+  const rows = req.body?.rows;
+  if (!Array.isArray(rows) || rows.length === 0) return res.status(400).json({ error: 'rows must be a non-empty array' });
+  if (rows.length > MAX_STAFF_IMPORT_ROWS) return res.status(400).json({ error: `Import at most ${MAX_STAFF_IMPORT_ROWS} staff at a time.` });
+
+  try {
+    const emails = rows.map((r) => String(r?.email ?? '').trim().toLowerCase()).filter(Boolean);
+    const existing = await pool.query('SELECT LOWER(email) AS email FROM teachers WHERE LOWER(email) = ANY($1::text[])', [emails]);
+    const checked = validateStaffRows(rows.map((r, i) => ({ ...r, row_number: r?.row_number ?? i + 2 })), new Set(existing.rows.map((e) => e.email)));
+
+    if (req.body?.dry_run) {
+      return res.json({
+        dry_run: true,
+        summary: { valid: checked.filter((c) => c.ok).length, failed: checked.filter((c) => !c.ok).length },
+        results: checked.map((c) => (c.ok ? { row_number: c.row_number, status: 'ok', name: c.data.name, email: c.data.email, role: c.data.role } : { row_number: c.row_number, status: 'error', error: c.error, name: c.input.name, email: c.input.email })),
+      });
+    }
+
+    const results = [];
+    for (const c of checked) {
+      if (!c.ok) {
+        results.push({ row_number: c.row_number, status: 'error', error: c.error, name: c.input.name, email: c.input.email });
+        continue;
+      }
+      const { name, email, phone, role, password } = c.data;
+      const tempPassword = password ? null : generateTempPassword();
+      try {
+        const hash = await bcrypt.hash(password || tempPassword, 10);
+        const ins = await pool.query(
+          `INSERT INTO teachers (school_id, name, email, phone, password_hash, role) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+          [req.user.school_id, name, email, phone, hash, role]
+        );
+        results.push({ row_number: c.row_number, status: 'created', id: ins.rows[0].id, name, email, role, temp_password: tempPassword });
+      } catch (err) {
+        results.push({
+          row_number: c.row_number,
+          status: 'error',
+          error: err.code === '23505' ? 'A staff member with this email already exists.' : 'Could not be saved.',
+          name,
+          email,
+        });
+      }
+    }
+    const created = results.filter((r) => r.status === 'created');
+    if (created.length) {
+      await audit({
+        schoolId: req.user.school_id, actorType: 'user', actorId: req.user.teacher_id, action: 'staff.bulk_imported', entityType: 'teacher',
+        detail: { created: created.length, failed: results.length - created.length, roles: [...new Set(created.map((r) => r.role))] },
+      });
+    }
+    res.status(created.length ? 201 : 200).json({ summary: { created: created.length, failed: results.length - created.length }, results });
+  } catch (err) {
+    console.error('Bulk staff import error:', err);
+    res.status(500).json({ error: 'Bulk import failed' });
   }
 });
 

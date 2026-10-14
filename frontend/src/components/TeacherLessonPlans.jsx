@@ -1,15 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, NotebookPen, Paperclip } from 'lucide-react';
+import { ArrowLeft, NotebookPen, Paperclip, Send } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiRequest } from '../api';
+import AttachmentField from './AttachmentField';
 
-const EMPTY_FORM = { class_id: '', subject_id: '', title: '', content: '', attachment_url: '', timetable_slot_id: '', plan_date: '' };
+const EMPTY_FORM = { class_id: '', subject_id: '', title: '', content: '', timetable_slot_id: '', plan_date: '' };
 
 export default function TeacherLessonPlans() {
   const [myClasses, setMyClasses] = useState([]);
   const [plans, setPlans] = useState(null);
   const [slots, setSlots] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [attachment, setAttachment] = useState(null);
   const [filterClassId, setFilterClassId] = useState('');
   const [filterSubjectId, setFilterSubjectId] = useState('');
   const [error, setError] = useState('');
@@ -72,9 +74,12 @@ export default function TeacherLessonPlans() {
           subject_id: form.subject_id || null,
           timetable_slot_id: form.timetable_slot_id || null,
           plan_date: form.plan_date || null,
+          attachment_url: attachment?.url || undefined,
+          attachment_name: attachment?.name || undefined,
         },
       });
       setForm(EMPTY_FORM);
+      setAttachment(null);
       setMessage('Lesson plan saved.');
       load();
     } catch (err) {
@@ -82,6 +87,19 @@ export default function TeacherLessonPlans() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleShare = async (p) => {
+    if (!window.confirm(`Share "${p.title}" with every student and parent in ${p.class_name}? This can only be done once.`)) return;
+    setError('');
+    setMessage('');
+    try {
+      await apiRequest(`/api/lesson-plans/${p.id}/share`, { method: 'POST' });
+      setMessage('Lesson plan shared with the class.');
+    } catch (err) {
+      setError(err.message);
+    }
+    load();
   };
 
   const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -154,16 +172,7 @@ export default function TeacherLessonPlans() {
             />
           </label>
 
-          <label className="text-sm text-ink-soft space-y-1 block">
-            Attachment URL (optional)
-            <input
-              type="text"
-              placeholder="e.g. PDF or slides link"
-              value={form.attachment_url}
-              onChange={(e) => setForm({ ...form, attachment_url: e.target.value })}
-              className="w-full rounded-lg border border-cream-deep/70 px-3 py-2 text-ink"
-            />
-          </label>
+          <AttachmentField value={attachment} onChange={setAttachment} />
 
           <div className="grid grid-cols-2 gap-3">
             <label className="text-sm text-ink-soft space-y-1">
@@ -251,9 +260,22 @@ export default function TeacherLessonPlans() {
                       rel="noreferrer"
                       className="inline-flex items-center gap-1 text-xs text-terracotta-deep font-medium hover:underline"
                     >
-                      <Paperclip className="w-3 h-3" /> Attachment
+                      <Paperclip className="w-3 h-3" /> {p.attachment_name || 'Attachment'}
                     </a>
                   )}
+                  <div className="pt-1">
+                    {p.shared_at ? (
+                      <span className="text-xs text-ink-soft">Shared with the class on {new Date(p.shared_at).toLocaleDateString('en-IN')}</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleShare(p)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-terracotta text-primary-foreground text-xs font-medium hover:bg-terracotta-deep"
+                      >
+                        <Send className="w-3.5 h-3.5" /> Share with class
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

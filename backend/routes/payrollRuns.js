@@ -26,6 +26,25 @@ router.post('/prepare', guard, async (req, res) => {
   }
 });
 
+// MUST be registered before '/:id' below — otherwise Express matches
+// "my-payslips" as an :id, the manager-only guard answers 403, and teachers
+// never see their payslips.
+// A staff member's own payslip history across every approved run — the
+// list view "my-payslips" that was missing alongside the existing
+// per-payslip PDF download. Draft (unapproved) runs are excluded: a
+// staff member shouldn't see a number that could still change before
+// the principal approves it.
+router.get('/my-payslips', async (req, res) => {
+  const r = await pool.query(
+    `SELECT p.id, r.period, r.status, p.gross, p.deductions, p.net_pay, p.notified_at
+     FROM payslips p JOIN payroll_runs r ON r.id = p.payroll_run_id
+     WHERE p.teacher_id = $1 AND p.school_id = $2 AND r.status = 'approved'
+     ORDER BY r.period DESC`,
+    [req.user.teacher_id, req.user.school_id]
+  );
+  res.json(r.rows);
+});
+
 router.get('/:id', guard, async (req, res) => {
   const run = await pool.query(`SELECT * FROM payroll_runs WHERE id = $1 AND school_id = $2`, [req.params.id, req.user.school_id]);
   if (!run.rowCount) return res.status(404).json({ error: 'Not found' });
@@ -61,22 +80,6 @@ router.get('/:id/bank.csv', guard, async (req, res) => {
   res.send(lines.join('\n'));
 });
 
-// A staff member's own payslip history across every approved run — the
-// list view "my-payslips" that was missing alongside the existing
-// per-payslip PDF download. Draft (unapproved) runs are excluded: a
-// staff member shouldn't see a number that could still change before
-// the principal approves it.
-router.get('/my-payslips', async (req, res) => {
-  const r = await pool.query(
-    `SELECT p.id, r.period, r.status, p.gross, p.deductions, p.net_pay, p.notified_at
-     FROM payslips p JOIN payroll_runs r ON r.id = p.payroll_run_id
-     WHERE p.teacher_id = $1 AND p.school_id = $2 AND r.status = 'approved'
-     ORDER BY r.period DESC`,
-    [req.user.teacher_id, req.user.school_id]
-  );
-  res.json(r.rows);
-});
-
 // A staff member can download their own payslip; managers can download any.
 router.get('/payslips/:id/pdf', async (req, res) => {
   try {
@@ -99,14 +102,16 @@ router.get('/config/components', guard, async (req, res) => {
   res.json(r.rows);
 });
 router.post('/config/components', guard, async (req, res) => {
-  const { name, kind, calc, value, teacher_id } = req.body || {};
+  const { name, kind, calc, value, teacher_id, role } = req.body || {};
   if (!name || !['earning', 'deduction'].includes(kind) || !['fixed', 'percent_of_base'].includes(calc) || !(Number(value) >= 0)) {
     return res.status(400).json({ error: 'name, kind (earning|deduction), calc (fixed|percent_of_base) and a non-negative value are required' });
   }
   if (calc === 'percent_of_base' && Number(value) > 100) return res.status(400).json({ error: 'Percentage cannot exceed 100' });
+  if (role && !['teacher', 'accountant', 'librarian', 'operator', 'principal'].includes(role)) return res.status(400).json({ error: 'Unknown role' });
+  if (role && teacher_id) return res.status(400).json({ error: 'Apply a component to one person or to a role, not both' });
   const r = await pool.query(
-    `INSERT INTO salary_components (school_id, teacher_id, name, kind, calc, value) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [req.user.school_id, teacher_id || null, String(name).slice(0, 60), kind, calc, value]
+    `INSERT INTO salary_components (school_id, teacher_id, role, name, kind, calc, value) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [req.user.school_id, teacher_id || null, role || null, String(name).slice(0, 60), kind, calc, value]
   );
   res.status(201).json(r.rows[0]);
 });

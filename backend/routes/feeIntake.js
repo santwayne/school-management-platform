@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth, requireFinance } from '../middleware/auth.js';
+import { searchStudents, withDues } from '../services/studentMatch.js';
 
 const router = express.Router();
 
@@ -9,19 +10,41 @@ router.get('/pending', requireAuth, requireFinance, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT w.id, w.photo_base64, w.ai_extracted_amount, w.ai_extracted_student_hint,
-              w.matched_student_id, s.name AS matched_student_name, w.received_at,
+              w.matched_student_id, s.name AS matched_student_name, s.login_id AS matched_login_id,
+              s.admission_number AS matched_admission_number, c.name AS matched_class_name, w.received_at,
               fc.name AS collector_name
        FROM whatsapp_cash_intake w
        JOIN fee_collectors fc ON fc.id = w.fee_collector_id
        LEFT JOIN students s ON s.id = w.matched_student_id
+       LEFT JOIN classes c ON c.id = s.class_id
        WHERE w.school_id = $1 AND w.status = 'PENDING'
        ORDER BY w.received_at DESC`,
       [req.user.school_id]
     );
-    res.json(result.rows);
+    // Attach what the matched student actually owes so the reviewer can sanity
+    // check the slip amount against the fee structure.
+    const rows = await Promise.all(
+      result.rows.map(async (r) => {
+        if (!r.matched_student_id) return r;
+        const d = await withDues({ id: r.matched_student_id });
+        return { ...r, matched_fee_due: d.fee_due, matched_fee_configured: d.fee_configured };
+      })
+    );
+    res.json(rows);
   } catch (err) {
     console.error('Fee intake pending list error:', err);
     res.status(500).json({ error: 'Failed to load pending cash entries' });
+  }
+});
+
+// Student lookup for the review queue (name / login ID / admission no.), with dues.
+router.get('/students/search', requireAuth, requireFinance, async (req, res) => {
+  try {
+    const students = await searchStudents(req.user.school_id, req.query.q);
+    res.json(await Promise.all(students.map(withDues)));
+  } catch (err) {
+    console.error('Fee intake student search error:', err);
+    res.status(500).json({ error: 'Failed to search students' });
   }
 });
 
@@ -104,7 +127,7 @@ router.patch('/:id/confirm', requireAuth, requireFinance, async (req, res) => {
     await client.query('COMMIT');
     res.json({ success: true, paymentId: paymentRes.rows[0].id });
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => {});
     console.error('Fee intake confirm error:', err);
     res.status(500).json({ error: 'Failed to confirm entry' });
   } finally {

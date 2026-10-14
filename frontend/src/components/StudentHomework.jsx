@@ -80,6 +80,11 @@ export default function StudentHomework() {
                 <div className="flex-1 min-w-0">
                   <div className={`font-medium ${h.done ? 'line-through text-ink-soft' : 'text-ink'}`}>{h.title}</div>
                   {h.description && <p className="text-sm text-ink-soft mt-0.5">{h.description}</p>}
+                  {h.attachment_url && (
+                    <a href={h.attachment_url} target="_blank" rel="noreferrer" className="inline-block mt-1 text-xs text-terracotta-deep font-medium hover:underline">
+                      📎 {h.attachment_name || 'Attachment'}
+                    </a>
+                  )}
                   <div className="text-xs text-ink-soft mt-1 flex gap-3">
                     <span className="uppercase tracking-wide">{h.subject_id}</span>
                     {h.due_date && <span>Due {new Date(h.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>}

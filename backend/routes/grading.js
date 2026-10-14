@@ -123,7 +123,7 @@ router.post('/submit', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'No rubric found for this test/question — cannot grade automatically.' });
     }
     const maxMarks = Number(rubricRes.rows[0].max_marks) || 10;
-    const questionText = (testCheck.rows[0].questions || []).find((q) => q.q_num === question_num)?.question;
+    const questionText = (testCheck.rows[0].questions || []).find((q) => Number(q.q_num) === Number(question_num))?.question;
 
     const evaluation = await gradeAnswerSheetImage({
       imageBase64: image_base64,

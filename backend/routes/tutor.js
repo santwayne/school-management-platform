@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth, requireStudent } from '../middleware/auth.js';
 import { askTutor } from '../services/tutorService.js';
+import { reviewSessionIfDue, tutorContextFor } from '../services/studentMemory.js';
 
 const router = express.Router();
 
@@ -44,7 +45,9 @@ router.post('/ask', requireAuth, requireStudent, async (req, res) => {
     const history = session.conversation_history || [];
     let reply;
     try {
-      reply = await askTutor(history, message, session.subject, session.grade);
+      // What the tutor has learned about this student so far (never blocks the chat).
+      const context = await tutorContextFor(school_id, student_id).catch(() => '');
+      reply = await askTutor(history, message, session.subject, session.grade, context);
     } catch (tutorErr) {
       // Genuine AI integration failure (e.g. missing/invalid ANTHROPIC_API_KEY,
       // model error, rate limit). Log the real cause and tell the caller this
@@ -69,6 +72,9 @@ router.post('/ask', requireAuth, requireStudent, async (req, res) => {
     );
 
     res.status(200).json({ success: true, session_id: session.id, reply, conversation_history: updatedHistory });
+
+    // After the reply is sent: fold what this session showed into the student's learning profile.
+    reviewSessionIfDue(school_id, student_id, session.id).catch((e) => console.error('Student memory review failed:', e.message));
   } catch (err) {
     console.error('Tutor route error:', err.message);
     res.status(500).json({ error: 'Failed to process tutor request' });
