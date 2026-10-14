@@ -1,3 +1,5 @@
+import { matchStudentFromHint } from '../services/studentMatch.js';
+import { handleTeacherMessage } from '../services/teacherWhatsapp.js';
 import express from 'express';
 import { normalizePhone } from '../utils/phone.js';
 import { consentKeyword } from '../utils/consent.js';
@@ -234,6 +236,16 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
       return res.sendStatus(200);
     }
 
+    // A registered teacher's "HOMEWORK ..." / "LESSON PLAN ..." / "SHARE ..."
+    // message creates or shares class material. Anything else from them falls
+    // through to the normal handling below.
+    if (await handleTeacherMessage({ schoolId: inboundSchoolId, fromCandidates, fromPhone, message }).catch((err) => {
+      console.error('[WhatsApp webhook] teacher message handling failed:', err.message);
+      return false;
+    })) {
+      return res.sendStatus(200);
+    }
+
     // Fee collector check runs first — a registered collector's number is
     // never also a parent number, so this branch is exclusive. The same
     // registered number also doubles as the "registered staff number" for
@@ -277,10 +289,14 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
 
       const extraction = await extractCashSlip(base64Image, mimeType || 'image/jpeg');
 
+      // Pre-select the student only when the hint identifies exactly one;
+      // a human still confirms before any payment is recorded.
+      const matchedStudentId = await matchStudentFromHint(collector.school_id, extraction.student_hint).catch(() => null);
+
       await pool.query(
-        `INSERT INTO whatsapp_cash_intake (school_id, fee_collector_id, photo_base64, ai_extracted_amount, ai_extracted_student_hint)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [collector.school_id, collector.id, base64Image, extraction.amount, extraction.student_hint]
+        `INSERT INTO whatsapp_cash_intake (school_id, fee_collector_id, photo_base64, ai_extracted_amount, ai_extracted_student_hint, matched_student_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [collector.school_id, collector.id, base64Image, extraction.amount, extraction.student_hint, matchedStudentId]
       );
 
       await sendTextMessage(

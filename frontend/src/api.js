@@ -155,4 +155,25 @@ export async function apiDownload(path, filename, _retried = false) {
   URL.revokeObjectURL(url);
 }
 
+// Opens an authenticated file (e.g. a student's ID document) in a new tab. A
+// plain link can't send the Bearer token, so fetch it as a blob first. The tab
+// is opened synchronously (inside the click) so pop-up blockers allow it.
+export async function apiOpenFile(path, _retried = false) {
+  const tab = _retried ? null : window.open('', '_blank');
+  const res = await fetch(`${API_URL}${path}`, { headers: { ...authHeaders() } });
+  if (res.status === 401 && !_retried && (await refreshAccessToken())) {
+    tab?.close();
+    return apiOpenFile(path, true);
+  }
+  if (!res.ok) {
+    tab?.close();
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Could not open file (${res.status})`);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  if (tab) tab.location.href = url;
+  else window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export { API_URL };

@@ -32,14 +32,64 @@ router.post('/salary', requireAuth, requireFinance, async (req, res) => {
 router.get('/salary', requireAuth, requireFinance, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT t.id AS teacher_id, t.name, ts.monthly_amount
+      `SELECT t.id AS teacher_id, t.name, t.role, ts.monthly_amount AS own_amount, rs.monthly_amount AS role_amount,
+              COALESCE(ts.monthly_amount, rs.monthly_amount) AS monthly_amount,
+              (ts.monthly_amount IS NULL AND rs.monthly_amount IS NOT NULL) AS from_role
        FROM teachers t
        LEFT JOIN teacher_salary ts ON ts.teacher_id = t.id
+       LEFT JOIN role_salary_structures rs ON rs.school_id = t.school_id AND rs.role = t.role
        WHERE t.school_id = $1 AND t.role != 'principal'
        ORDER BY t.name ASC`,
       [req.user.school_id]
     );
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+export const SALARY_ROLES = ['teacher', 'accountant', 'librarian', 'operator', 'principal'];
+
+// GET /api/payroll/role-structure — the base monthly salary set for each staff
+// role, with how many staff are in the role.
+router.get('/role-structure', requireAuth, requireFinance, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT r.role, rs.monthly_amount,
+              (SELECT COUNT(*)::int FROM teachers t WHERE t.school_id = $1 AND t.role = r.role) AS staff_count
+         FROM unnest($2::text[]) AS r(role)
+         LEFT JOIN role_salary_structures rs ON rs.school_id = $1 AND rs.role = r.role`,
+      [req.user.school_id, SALARY_ROLES]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/payroll/role-structure — body { role, monthly_amount }. A blank /
+// null amount removes the role's structure. Staff with their own salary on the
+// Salaries tab keep it; everyone else in the role gets this amount.
+router.put('/role-structure', requireAuth, requireFinance, async (req, res) => {
+  const { role, monthly_amount } = req.body || {};
+  if (!SALARY_ROLES.includes(role)) return res.status(400).json({ error: `role must be one of: ${SALARY_ROLES.join(', ')}` });
+  const clearing = monthly_amount === null || monthly_amount === '' || monthly_amount === undefined;
+  const amount = Number(monthly_amount);
+  if (!clearing && (!Number.isFinite(amount) || amount < 0 || amount > 10000000)) {
+    return res.status(400).json({ error: 'monthly_amount must be a non-negative number' });
+  }
+  try {
+    if (clearing) {
+      await pool.query('DELETE FROM role_salary_structures WHERE school_id = $1 AND role = $2', [req.user.school_id, role]);
+    } else {
+      await pool.query(
+        `INSERT INTO role_salary_structures (school_id, role, monthly_amount) VALUES ($1, $2, $3)
+         ON CONFLICT (school_id, role) DO UPDATE SET monthly_amount = EXCLUDED.monthly_amount, updated_at = CURRENT_TIMESTAMP`,
+        [req.user.school_id, role, amount]
+      );
+    }
+    await audit({ schoolId: req.user.school_id, actorType: 'user', actorId: req.user.teacher_id, action: 'payroll.role_structure', entityType: 'role_salary_structures', detail: { role, monthly_amount: clearing ? null : amount } });
+    res.json({ role, monthly_amount: clearing ? null : amount });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -59,11 +109,14 @@ router.post('/run', requireAuth, requireFinance, async (req, res) => {
   try {
     const result = await pool.query(
       `INSERT INTO teacher_salary_history (school_id, teacher_id, period, amount_paid, status)
-       SELECT ts.school_id, ts.teacher_id, $1::varchar, ts.monthly_amount, 'PENDING'
-       FROM teacher_salary ts
-       WHERE ts.school_id = $2
+       SELECT t.school_id, t.id, $1::varchar, eff.amount, 'PENDING'
+       FROM teachers t
+       LEFT JOIN teacher_salary ts ON ts.teacher_id = t.id
+       LEFT JOIN role_salary_structures rs ON rs.school_id = t.school_id AND rs.role = t.role
+       CROSS JOIN LATERAL (SELECT COALESCE(ts.monthly_amount, rs.monthly_amount) AS amount) eff
+       WHERE t.school_id = $2 AND eff.amount IS NOT NULL
          AND NOT EXISTS (
-           SELECT 1 FROM teacher_salary_history h WHERE h.teacher_id = ts.teacher_id AND h.period = $1::varchar
+           SELECT 1 FROM teacher_salary_history h WHERE h.teacher_id = t.id AND h.period = $1::varchar
          )
        RETURNING *`,
       [period, schoolId]
@@ -73,10 +126,13 @@ router.post('/run', requireAuth, requireFinance, async (req, res) => {
     // stayed at the old snapshot forever. PAID rows are never touched.
     const refreshed = await pool.query(
       `UPDATE teacher_salary_history h
-       SET amount_paid = ts.monthly_amount
-       FROM teacher_salary ts
-       WHERE ts.teacher_id = h.teacher_id AND h.school_id = $2 AND h.period = $1::varchar
-         AND h.status = 'PENDING' AND h.amount_paid IS DISTINCT FROM ts.monthly_amount
+       SET amount_paid = eff.amount
+       FROM teachers t
+       LEFT JOIN teacher_salary ts ON ts.teacher_id = t.id
+       LEFT JOIN role_salary_structures rs ON rs.school_id = t.school_id AND rs.role = t.role
+       CROSS JOIN LATERAL (SELECT COALESCE(ts.monthly_amount, rs.monthly_amount) AS amount) eff
+       WHERE t.id = h.teacher_id AND h.school_id = $2 AND h.period = $1::varchar
+         AND h.status = 'PENDING' AND eff.amount IS NOT NULL AND h.amount_paid IS DISTINCT FROM eff.amount
        RETURNING h.id, h.teacher_id, h.amount_paid`,
       [period, schoolId]
     );

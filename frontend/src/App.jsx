@@ -57,6 +57,8 @@ const AutomationsList = lazy(() => import('./components/ops/Automations').then((
 const AutomationDetail = lazy(() => import('./components/ops/Automations').then((m) => ({ default: m.AutomationDetail })));
 const AuditLog = lazy(() => import('./components/ops/AuditLog'));
 const OpsSettings = lazy(() => import('./components/ops/OpsSettings'));
+const Assistant = lazy(() => import('./components/assistant/Assistant'));
+const AssistantBrain = lazy(() => import('./components/assistant/AssistantBrain'));
 const AdminStaffLeave = lazy(() => import('./components/AdminStaffLeave'));
 const TeacherLeave = lazy(() => import('./components/TeacherLeave'));
 const MyPayslips = lazy(() => import('./components/MyPayslips'));
@@ -88,6 +90,7 @@ const AdminCertificates = lazy(() => import('./components/AdminCertificates'));
 const AdminDocumentRequests = lazy(() => import('./components/AdminDocumentRequests'));
 const StudentCertificateRequest = lazy(() => import('./components/StudentCertificateRequest'));
 const MarksEntry = lazy(() => import('./components/MarksEntry'));
+const ExamPlanner = lazy(() => import('./components/ExamPlanner'));
 const ReportCards = lazy(() => import('./components/ReportCards'));
 const StudentAttendance = lazy(() => import('./components/StudentAttendance'));
 
@@ -178,6 +181,8 @@ function AppRoutes() {
 
         {/* Operator Control Center — operator and principal */}
         <Route path="/ops" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, OpsOverview)}</ProtectedRoute>} />
+        <Route path="/ops/assistant" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, Assistant)}</ProtectedRoute>} />
+        <Route path="/ops/assistant/brain" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, AssistantBrain)}</ProtectedRoute>} />
         <Route path="/ops/inbox" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, ExceptionInbox)}</ProtectedRoute>} />
         <Route path="/ops/automations" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, AutomationsList)}</ProtectedRoute>} />
         <Route path="/ops/automations/:key" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, AutomationDetail)}</ProtectedRoute>} />
@@ -226,6 +231,7 @@ function AppRoutes() {
         <Route path="/grading" element={<ProtectedRoute>{inShell(AdminShell, AIGrading)}</ProtectedRoute>} />
         <Route path="/class-notes" element={<ProtectedRoute teacherOrPrincipalOnly>{inShell(AdminShell, ClassNotesComposer)}</ProtectedRoute>} />
         <Route path="/marks-entry" element={<ProtectedRoute teacherOrPrincipalOnly>{inShell(AdminShell, MarksEntry)}</ProtectedRoute>} />
+        <Route path="/exam-planner" element={<ProtectedRoute teacherOrPrincipalOnly>{inShell(AdminShell, ExamPlanner)}</ProtectedRoute>} />
         <Route path="/report-cards" element={<ProtectedRoute teacherOrPrincipalOnly>{inShell(AdminShell, ReportCards)}</ProtectedRoute>} />
 
         <Route path="/accountant" element={<ProtectedRoute accountantOnly>{inShell(AccountantShell, AccountantHome)}</ProtectedRoute>} />

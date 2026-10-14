@@ -6,7 +6,7 @@ import {
   deleteHomework,
   homeworkOptions,
   listHomeworkForStaff,
-  notifyHomeworkAssigned,
+  shareHomework,
 } from '../services/homeworkService.js';
 
 // Staff side of homework (the student side lives in routes/studentPortal.js).
@@ -45,15 +45,26 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/homework — assign homework to a class and tell students + parents.
+// POST /api/homework — assign homework to a class. By default it is shared
+// with students + parents straight away (one time); pass share: false to save
+// it as a draft and share later with POST /api/homework/:id/share.
 router.post('/', async (req, res) => {
   try {
     const homework = await createHomework(req.user, req.body);
-    res.status(201).json(homework);
-    // After the response, so a slow WhatsApp send never keeps the teacher waiting.
-    notifyHomeworkAssigned(homework);
+    if (req.body?.share === false) return res.status(201).json(homework);
+    await shareHomework(req.user, homework.id);
+    res.status(201).json({ ...homework, shared_at: new Date().toISOString() });
   } catch (err) {
     fail(res, err, 'Failed to create homework');
+  }
+});
+
+// POST /api/homework/:id/share — one-time share of a saved homework with the class.
+router.post('/:id/share', async (req, res) => {
+  try {
+    res.json(await shareHomework(req.user, req.params.id));
+  } catch (err) {
+    fail(res, err, 'Failed to share homework');
   }
 });
 

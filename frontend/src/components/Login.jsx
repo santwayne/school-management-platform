@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import LandingLayout from './LandingLayout';
 import WaynurMark from './WaynurMark';
@@ -34,34 +34,37 @@ function SubmitButton({ disabled, children }) {
   );
 }
 
-// Admin, Accountant, and Teacher tabs all hit the same real endpoint
-// (teachers table, distinguished by role) — where we navigate after
-// success depends on the role the server returns, not which tab was
-// clicked.
-function goToRoleHome(navigate, role) {
-  if (role === 'principal') navigate('/dashboard');
-  else if (role === 'accountant') navigate('/accountant');
-  else if (role === 'operator') navigate('/ops');
-  else if (role === 'librarian') navigate('/admin/library');
-  else navigate('/teacher');
+// Where we navigate after success depends on the role the server returns —
+// the login page itself never asks the user to pick a role.
+export function homeForRole(role) {
+  if (role === 'student') return '/student';
+  if (role === 'super_admin') return '/super-admin';
+  if (role === 'principal') return '/dashboard';
+  if (role === 'accountant') return '/accountant';
+  if (role === 'operator') return '/ops';
+  if (role === 'librarian') return '/admin/library';
+  return '/teacher';
 }
 
-function AdminForm() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+// One form for everyone. An identifier containing "@" is a staff email
+// (password); anything else is a student Login ID (4-digit PIN).
+function LoginForm() {
+  const [identifier, setIdentifier] = useState('');
+  const [secret, setSecret] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, studentLogin } = useAuth();
   const navigate = useNavigate();
-  const disabled = !email.trim() || !password.trim() || loading;
+  const disabled = !identifier.trim() || !secret.trim() || loading;
 
   const submit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const user = await login(email.trim(), password);
-      goToRoleHome(navigate, user.role);
+      const id = identifier.trim();
+      const user = id.includes('@') ? await login(id, secret) : await studentLogin(id, secret.trim());
+      navigate(homeForRole(user.role), { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -72,191 +75,35 @@ function AdminForm() {
   return (
     <form onSubmit={submit} className="space-y-4">
       <ErrorBanner message={error} />
-      <Field label="Email">
-        <input
-          type="email"
-          autoComplete="email"
-          placeholder="principal@school.edu.in"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className={inputClass}
-        />
-      </Field>
-      <Field label="Password">
-        <input
-          type="password"
-          autoComplete="current-password"
-          placeholder="••••••••"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className={inputClass}
-        />
-      </Field>
-      <SubmitButton disabled={disabled}>{loading ? 'Signing in…' : 'Sign in'}</SubmitButton>
-    </form>
-  );
-}
-
-function TeacherForm() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
-  const navigate = useNavigate();
-  const disabled = !email.trim() || !password.trim() || loading;
-
-  const submit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      const user = await login(email.trim(), password);
-      goToRoleHome(navigate, user.role);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <form onSubmit={submit} className="space-y-4">
-      <ErrorBanner message={error} />
-      <Field label="Email" hint="Issued by your school administrator">
-        <input
-          type="email"
-          autoComplete="username"
-          placeholder="teacher@school.edu.in"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className={inputClass}
-        />
-      </Field>
-      <Field label="Password">
-        <input
-          type="password"
-          autoComplete="current-password"
-          placeholder="••••••••"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className={inputClass}
-        />
-      </Field>
-      <SubmitButton disabled={disabled}>{loading ? 'Signing in…' : 'Sign in'}</SubmitButton>
-    </form>
-  );
-}
-
-function StudentForm() {
-  const [loginId, setLoginId] = useState('');
-  const [pin, setPin] = useState(['', '', '', '']);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const refs = [useRef(null), useRef(null), useRef(null), useRef(null)];
-  const { studentLogin } = useAuth();
-  const navigate = useNavigate();
-  const disabled = !loginId.trim() || pin.some((d) => d === '') || loading;
-
-  const setDigit = (i, v) => {
-    const digit = v.replace(/\D/g, '').slice(-1);
-    setPin((prev) => {
-      const next = [...prev];
-      next[i] = digit;
-      return next;
-    });
-    if (digit && i < 3) refs[i + 1].current?.focus();
-  };
-
-  const onKey = (i, e) => {
-    if (e.key === 'Backspace' && !pin[i] && i > 0) refs[i - 1].current?.focus();
-  };
-
-  const submit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      await studentLogin(loginId.trim(), pin.join(''));
-      navigate('/tutor');
-    } catch (err) {
-      setError(err.message);
-      setPin(['', '', '', '']);
-      refs[0].current?.focus();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <form onSubmit={submit} className="space-y-4">
-      <ErrorBanner message={error} />
-      <Field label="Login ID" hint="Ask your teacher if you don't have your Login ID">
+      <Field label="Email or Login ID" hint="Staff use the email issued by the school; students use their Login ID">
         <input
           type="text"
           autoComplete="username"
-          placeholder="STD-1-A1B2"
-          value={loginId}
-          onChange={(e) => setLoginId(e.target.value)}
+          placeholder="you@school.edu.in"
+          value={identifier}
+          onChange={(e) => setIdentifier(e.target.value)}
           className={inputClass}
         />
       </Field>
-      <Field label="4-digit PIN">
-        <div className="flex gap-2">
-          {pin.map((d, i) => (
-            <input
-              key={i}
-              ref={refs[i]}
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={1}
-              value={d}
-              onChange={(e) => setDigit(i, e.target.value)}
-              onKeyDown={(e) => onKey(i, e)}
-              className="w-full aspect-square text-center text-xl font-semibold rounded-lg bg-white border border-cream-deep focus:outline-none focus:ring-2 focus:ring-terracotta/40 focus:border-terracotta/60"
-            />
-          ))}
-        </div>
+      <Field label="Password or PIN">
+        <input
+          type="password"
+          autoComplete="current-password"
+          placeholder="••••••••"
+          value={secret}
+          onChange={(e) => setSecret(e.target.value)}
+          className={inputClass}
+        />
       </Field>
       <SubmitButton disabled={disabled}>{loading ? 'Signing in…' : 'Sign in'}</SubmitButton>
     </form>
-  );
-}
-
-function RoleTabs({ value, onChange }) {
-  const tabs = [
-    { key: 'admin', label: 'Admin' },
-    { key: 'accountant', label: 'Accountant' },
-    { key: 'teacher', label: 'Teacher' },
-    // AL-1: librarians had no tab of their own — the only way in was
-    // guessing to use the Teacher tab, since librarian is a role on the
-    // same teachers table/login endpoint, not a separate account type.
-    { key: 'librarian', label: 'Librarian' },
-    { key: 'student', label: 'Student' },
-  ];
-  return (
-    <div className="grid grid-cols-5 p-1 bg-cream-deep/50 rounded-xl">
-      {tabs.map((t) => {
-        const active = value === t.key;
-        return (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => onChange(t.key)}
-            className={`py-2 text-xs sm:text-sm rounded-lg transition ${
-              active ? 'bg-white text-ink shadow-sm font-medium' : 'text-ink-soft hover:text-ink'
-            }`}
-          >
-            {t.label}
-          </button>
-        );
-      })}
-    </div>
   );
 }
 
 export default function Login() {
-  const [role, setRole] = useState('admin');
+  const { user } = useAuth();
+  // Already signed in: skip the login page and go straight to the dashboard.
+  if (user) return <Navigate to={homeForRole(user.role)} replace />;
 
   return (
     <LandingLayout>
@@ -270,15 +117,7 @@ export default function Login() {
             </div>
 
             <div className="mt-8">
-              <RoleTabs value={role} onChange={setRole} />
-            </div>
-
-            <div className="mt-6">
-              {role === 'admin' && <AdminForm key="admin" />}
-              {role === 'accountant' && <AdminForm key="accountant" />}
-              {role === 'teacher' && <TeacherForm key="teacher" />}
-              {role === 'librarian' && <TeacherForm key="librarian" />}
-              {role === 'student' && <StudentForm key="student" />}
+              <LoginForm />
             </div>
           </div>
 

@@ -22,7 +22,7 @@ const SENSITIVE_PARENT_FIELDS = ['phone', 'email'];
  * Allowed: super_admin, principal, that student's class teacher, or the
  * student/parent viewing their own record.
  */
-async function canViewSensitiveStudentData(schoolId, studentId, viewer) {
+export async function canViewSensitiveStudentData(schoolId, studentId, viewer) {
   if (!viewer) return false;
   if (viewer.role === 'super_admin' || viewer.role === 'principal') return true;
   if (viewer.role === 'student' && String(viewer.student_id) === String(studentId)) return true;
@@ -41,6 +41,14 @@ async function canViewSensitiveStudentData(schoolId, studentId, viewer) {
   return false;
 }
 
+// Who may change a student's profile or documents: school staff who may see
+// the sensitive data (principal, super admin, the student's class teacher) —
+// never the student/parent themselves.
+export async function canEditStudentProfile(schoolId, studentId, viewer) {
+  if (!viewer || viewer.role === 'student') return false;
+  return canViewSensitiveStudentData(schoolId, studentId, viewer);
+}
+
 function stripSensitive(row, fields) {
   if (!row) return row;
   const clone = { ...row };
@@ -55,6 +63,7 @@ function stripSensitive(row, fields) {
 export async function getStudentProfile(schoolId, studentId, viewer) {
   const studentRes = await pool.query(
     `SELECT st.id AS student_id, st.name, st.grade, st.class_id, c.name AS class_name,
+            st.admission_number, st.login_id,
             sp.id AS profile_id, sp.photo_url, sp.date_of_birth, sp.gender, sp.blood_group,
             sp.address, sp.emergency_contact_phone, sp.medical_notes, sp.admission_date
        FROM students st
