@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth, requirePrincipal } from '../middleware/auth.js';
 import { send as sendNotification } from '../services/notificationService.js';
+import { isIsoDate } from '../utils/studyPlan.js';
 
 const router = express.Router();
 
@@ -57,7 +58,8 @@ router.get('/', requireAuth, async (req, res) => {
     }
 
     const result = await pool.query(
-      `SELECT e.id, e.name, e.term, e.class_id, c.name AS class_name, e.created_at, e.result_published_at
+      `SELECT e.id, e.name, e.term, e.class_id, c.name AS class_name, e.created_at, e.result_published_at,
+              to_char(e.exam_date, 'YYYY-MM-DD') AS exam_date
        FROM exams e JOIN classes c ON c.id = e.class_id
        WHERE ${where} ${teacherScope}
        ORDER BY e.created_at DESC`,
@@ -75,19 +77,20 @@ router.get('/', requireAuth, async (req, res) => {
 // exams the principal has already set up).
 router.post('/', requireAuth, requirePrincipal, async (req, res) => {
   const schoolId = req.user.school_id;
-  const { name, term, class_id } = req.body;
+  const { name, term, class_id, exam_date } = req.body;
 
   if (!name || !name.trim() || !class_id) {
     return res.status(400).json({ error: 'name and class_id are required' });
   }
+  if (exam_date && !isIsoDate(exam_date)) return res.status(400).json({ error: 'exam_date must be a valid date (YYYY-MM-DD)' });
 
   try {
     const classCheck = await pool.query('SELECT id FROM classes WHERE id = $1 AND school_id = $2', [class_id, schoolId]);
     if (classCheck.rowCount === 0) return res.status(404).json({ error: 'Class not found for this school' });
 
     const result = await pool.query(
-      `INSERT INTO exams (school_id, name, term, class_id) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [schoolId, name.trim(), term || null, class_id]
+      `INSERT INTO exams (school_id, name, term, class_id, exam_date) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [schoolId, name.trim(), term || null, class_id, exam_date || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {

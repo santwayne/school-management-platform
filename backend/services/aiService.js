@@ -60,7 +60,16 @@ export async function extractCashSlip(base64Image, mimeType) {
     const textBlock = response.content.find((block) => block.type === 'text');
     if (!textBlock) return { amount: null, student_hint: null, confidence: 'low' };
     try {
-      return JSON.parse(textBlock.text);
+      const text = textBlock.text;
+      const parsed = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
+      // Models sometimes answer "₹1,500" or "1500/-" — a string here used to
+      // blow up the NUMERIC insert or store a wrong amount in the queue.
+      const amount = typeof parsed.amount === 'string' ? parseFloat(parsed.amount.replace(/[^0-9.]/g, '')) : parsed.amount;
+      return {
+        amount: Number.isFinite(amount) && amount > 0 ? amount : null,
+        student_hint: parsed.student_hint ? String(parsed.student_hint).slice(0, 255) : null,
+        confidence: parsed.confidence || 'low',
+      };
     } catch {
       return { amount: null, student_hint: null, confidence: 'low' };
     }

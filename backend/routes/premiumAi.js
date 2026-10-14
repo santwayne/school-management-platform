@@ -1,12 +1,10 @@
 import express from 'express';
 import pool from '../config/db.js';
 import { gradeAnswerSheetWithAI, generateTestWithRubric } from '../services/ocrGradingService.js';
-import Anthropic from '@anthropic-ai/sdk';
 import { requireAuth } from '../middleware/auth.js';
 import { sendStudentNoteNow } from '../services/studentNoteService.js';
 
 const router = express.Router();
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // AI test generator — produces a question paper from topic + difficulty,
 // and now also generates + stores the grading rubric (correct answer per
@@ -53,9 +51,9 @@ router.post('/test/generate', requireAuth, async (req, res) => {
 
     res.status(200).json({ success: true, testId, questions });
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => {});
     console.error('Test generation error:', err.message);
-    res.status(500).json({ error: 'Failed to generate test' });
+    res.status(500).json({ error: `Failed to generate test: ${err.message}` });
   } finally {
     client.release();
   }

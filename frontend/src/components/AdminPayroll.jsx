@@ -19,6 +19,85 @@ const TABS = [
   { key: 'components', label: 'Salary Components' },
 ];
 
+const ROLE_OPTIONS = [
+  { value: 'teacher', label: 'Teacher' },
+  { value: 'accountant', label: 'Accountant' },
+  { value: 'librarian', label: 'Librarian' },
+  { value: 'operator', label: 'Operator' },
+  { value: 'principal', label: 'Principal' },
+];
+
+// Base monthly salary per staff role. Anyone without a personal salary (below)
+// is paid their role's amount; a personal salary overrides it.
+function RoleStructureCard({ onChanged }) {
+  const [rows, setRows] = useState(null);
+  const [drafts, setDrafts] = useState({});
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState('');
+
+  const load = () =>
+    apiRequest('/api/payroll/role-structure')
+      .then((r) => {
+        setRows(r);
+        setDrafts(Object.fromEntries(r.map((x) => [x.role, x.monthly_amount ?? ''])));
+      })
+      .catch((e) => setError(e.message));
+  useEffect(() => { load(); }, []);
+
+  const save = async (role) => {
+    setError('');
+    setSaved('');
+    try {
+      await apiRequest('/api/payroll/role-structure', { method: 'PUT', body: { role, monthly_amount: drafts[role] === '' ? null : Number(drafts[role]) } });
+      setSaved(`${ROLE_OPTIONS.find((r) => r.value === role)?.label} salary saved.`);
+      await load();
+      onChanged?.();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl bg-white border border-cream-deep/70 p-4 space-y-3">
+      <div>
+        <div className="font-display text-base text-ink">Salary structure by role</div>
+        <p className="text-xs text-ink-soft mt-0.5">
+          Set one monthly salary for each role. Everyone in that role is paid it from the next payroll run, unless you give a
+          person their own salary below. Role-wide allowances and deductions are added on the Salary Components tab.
+        </p>
+      </div>
+      {error && <div className="rounded-lg bg-destructive/10 text-destructive text-xs px-3 py-2">{error}</div>}
+      {saved && <div className="rounded-lg bg-green-100 text-green-700 text-xs px-3 py-2">{saved}</div>}
+      <div className="divide-y divide-cream-deep/60 border border-cream-deep/70 rounded-xl overflow-hidden">
+        {(rows || []).map((r) => (
+          <div key={r.role} className="flex items-center gap-3 px-3 py-2.5 flex-wrap">
+            <div className="w-28 text-sm font-medium text-ink capitalize">{r.role}</div>
+            <div className="text-xs text-ink-soft w-20">{r.staff_count} staff</div>
+            <div className="flex items-center gap-1 ml-auto">
+              <span className="text-sm text-ink-soft">₹</span>
+              <input
+                type="number"
+                min="0"
+                placeholder="Not set"
+                value={drafts[r.role] ?? ''}
+                onChange={(e) => setDrafts({ ...drafts, [r.role]: e.target.value })}
+                className="w-32 px-2 py-1 text-sm rounded-lg bg-white border border-cream-deep focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+              />
+              <button
+                onClick={() => save(r.role)}
+                disabled={String(drafts[r.role] ?? '') === String(r.monthly_amount ?? '')}
+                className="text-xs font-medium px-2.5 py-1 rounded-lg bg-terracotta text-primary-foreground disabled:opacity-40"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Th({ children, className = '', ...rest }) {
   return <th className={`text-left font-medium text-xs uppercase tracking-wider text-ink-soft px-4 py-3 bg-cream-deep/40 ${className}`} {...rest}>{children}</th>;
 }
@@ -307,7 +386,12 @@ function SalaryComponentsTab() {
     try {
       await apiRequest('/api/payroll-runs/config/components', {
         method: 'POST',
-        body: { name: form.name.trim(), kind: form.kind, calc: form.calc, value: Number(form.value), teacher_id: form.teacher_id || null },
+        body: {
+          name: form.name.trim(), kind: form.kind, calc: form.calc, value: Number(form.value),
+          // "Applies to" is either one person or a whole role ("role:teacher").
+          teacher_id: form.teacher_id && !form.teacher_id.startsWith('role:') ? form.teacher_id : null,
+          role: form.teacher_id.startsWith('role:') ? form.teacher_id.slice(5) : null,
+        },
       });
       setForm({ name: '', kind: 'earning', calc: 'fixed', value: '', teacher_id: '' });
       load();
@@ -359,7 +443,12 @@ function SalaryComponentsTab() {
         <FormField label="Applies to">
           <select value={form.teacher_id} onChange={(e) => setForm({ ...form, teacher_id: e.target.value })} className="px-3 py-2 text-sm rounded-lg border border-cream-deep">
             <option value="">Everyone</option>
-            {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            <optgroup label="A whole role">
+              {ROLE_OPTIONS.map((r) => <option key={r.value} value={`role:${r.value}`}>All {r.label.toLowerCase()}s</option>)}
+            </optgroup>
+            <optgroup label="One person">
+              {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </optgroup>
           </select>
         </FormField>
         <button className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep">
@@ -379,7 +468,7 @@ function SalaryComponentsTab() {
                   <Td className="font-medium">{c.name}</Td>
                   <Td className="capitalize">{c.kind}</Td>
                   <Td>{c.calc === 'percent_of_base' ? `${c.value}%` : INR(c.value)}</Td>
-                  <Td>{c.teacher_name || 'Everyone'}</Td>
+                  <Td>{c.teacher_name || (c.role ? `All ${c.role}s` : 'Everyone')}</Td>
                   <Td className="text-right"><button onClick={() => remove(c.id)} className="text-ink-soft hover:text-destructive"><Trash2 className="w-4 h-4" /></button></Td>
                 </tr>
               ))}
@@ -631,8 +720,9 @@ function SalariesTab() {
 
   return (
     <div className="space-y-4">
+      <RoleStructureCard onChanged={load} />
       <p className="text-xs text-ink-soft inline-flex items-center gap-1">
-        <Info className="w-3 h-3" /> Salary edits are effective from the next payroll run.
+        <Info className="w-3 h-3" /> Salary edits are effective from the next payroll run. A salary set here overrides the role salary for that person.
       </p>
       {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
       <div className="rounded-2xl bg-white border border-cream-deep/70 overflow-hidden">
@@ -640,13 +730,14 @@ function SalariesTab() {
           <table className="w-full text-sm">
             <thead>
               <tr>
-                <Th>Teacher</Th><Th>Current salary</Th><Th className="text-right">Edit</Th>
+                <Th>Staff</Th><Th>Role</Th><Th>Current salary</Th><Th className="text-right">Edit</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-cream-deep/60">
               {rows.map((r) => (
                 <tr key={r.teacher_id} className="hover:bg-cream-deep/20">
                   <Td className="font-medium">{r.name}</Td>
+                  <Td className="capitalize text-ink-soft">{r.role}</Td>
                   <Td>
                     {editing === r.teacher_id ? (
                       <div className="flex items-center gap-2">
@@ -660,7 +751,10 @@ function SalariesTab() {
                         <button onClick={() => setEditing(null)} className="text-xs px-2 py-1 rounded-lg text-ink-soft hover:bg-cream-deep/60">Cancel</button>
                       </div>
                     ) : (
-                      <span>{r.monthly_amount ? INR(r.monthly_amount) : <span className="text-ink-soft">Not set</span>}</span>
+                      <span>
+                        {r.monthly_amount ? INR(r.monthly_amount) : <span className="text-ink-soft">Not set</span>}
+                        {r.from_role && <span className="ml-1.5 text-xs text-ink-soft">(role salary)</span>}
+                      </span>
                     )}
                   </Td>
                   <Td className="text-right">

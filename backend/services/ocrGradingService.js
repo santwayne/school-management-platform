@@ -2,6 +2,22 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Pull the JSON payload out of a model reply even when it is wrapped in
+// ```json fences or surrounded by prose — a strict JSON.parse of the raw text
+// was the main reason grading/test generation intermittently failed.
+function parseModelJson(raw, open = '{', close = '}') {
+  const text = String(raw || '').trim();
+  const start = text.indexOf(open);
+  const end = text.lastIndexOf(close);
+  if (start === -1 || end <= start) throw new Error('Model reply contained no JSON');
+  return JSON.parse(text.slice(start, end + 1));
+}
+
+function toScore(value, maxMarks) {
+  const n = typeof value === 'string' ? parseFloat(value) : value;
+  return Number.isFinite(n) ? Math.max(0, Math.min(maxMarks, n)) : 0;
+}
+
 // Production path: send the actual answer-sheet photo to Claude directly
 // rather than running a separate OCR step first. Claude reads handwriting
 // well enough that a two-stage OCR-then-grade pipeline just adds a second
@@ -27,7 +43,7 @@ Rules:
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-5',
-      max_tokens: 500,
+      max_tokens: 1000,
       system: systemPrompt,
       messages: [
         {
@@ -41,13 +57,11 @@ Rules:
     });
 
     const textBlock = response.content.find((b) => b.type === 'text');
-    const raw = textBlock ? textBlock.text.trim() : '{}';
-    const cleaned = raw.replace(/^```json\s*|\s*```$/g, '');
-    const parsed = JSON.parse(cleaned);
+    const parsed = parseModelJson(textBlock?.text);
 
     return {
       extractedText: parsed.extracted_text || '',
-      score: typeof parsed.score === 'number' ? Math.max(0, Math.min(maxMarks, parsed.score)) : 0,
+      score: toScore(parsed.score, maxMarks),
       maxMarks,
       justification: parsed.justification || 'Could not evaluate this answer automatically.',
       confidence: ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'low',
@@ -82,18 +96,16 @@ Rules:
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-5',
-      max_tokens: 300,
+      max_tokens: 600,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     });
 
     const textBlock = response.content.find((block) => block.type === 'text');
-    const raw = textBlock ? textBlock.text.trim() : '{}';
-    const cleaned = raw.replace(/^```json\s*|\s*```$/g, '');
-    const parsed = JSON.parse(cleaned);
+    const parsed = parseModelJson(textBlock?.text);
 
     return {
-      score: typeof parsed.score === 'number' ? Math.max(0, Math.min(maxMarks, parsed.score)) : 0,
+      score: toScore(parsed.score, maxMarks),
       justification: parsed.justification || 'Could not evaluate this answer automatically.',
     };
   } catch (err) {
@@ -114,7 +126,7 @@ export async function generateTestWithRubric({ subject, chapter, difficulty, que
 
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-5',
-    max_tokens: 1200,
+    max_tokens: Math.min(8000, 400 + Number(questionCount) * 450),
     system: systemPrompt,
     messages: [
       {
@@ -125,6 +137,13 @@ export async function generateTestWithRubric({ subject, chapter, difficulty, que
   });
 
   const textBlock = response.content.find((b) => b.type === 'text');
-  const cleaned = (textBlock?.text || '[]').trim().replace(/^```json\s*|\s*```$/g, '');
-  return JSON.parse(cleaned);
+  const questions = parseModelJson(textBlock?.text, '[', ']');
+  if (!Array.isArray(questions) || questions.length === 0) throw new Error('Model returned no questions');
+  // Normalise so downstream inserts/lookups never see string q_num/marks.
+  return questions.map((q, i) => ({
+    q_num: Number(q.q_num) || i + 1,
+    question: String(q.question || ''),
+    marks: Number(q.marks) > 0 ? Number(q.marks) : 10,
+    correct_answer: String(q.correct_answer || ''),
+  }));
 }

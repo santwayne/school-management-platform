@@ -1,7 +1,7 @@
 import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth, requireStudent, requirePrincipal } from '../middleware/auth.js';
-import { HomeworkError, createHomework, notifyHomeworkAssigned } from '../services/homeworkService.js';
+import { HomeworkError, createHomework, shareHomework } from '../services/homeworkService.js';
 
 const router = express.Router();
 
@@ -18,10 +18,11 @@ router.get('/homework', requireAuth, requireStudent, async (req, res) => {
 
     const result = await pool.query(
       `SELECT h.id, h.subject_id, h.title, h.description, h.due_date, h.created_at,
+              h.attachment_url, h.attachment_name,
               (hc.id IS NOT NULL) AS done
        FROM homework h
        LEFT JOIN homework_completions hc ON hc.homework_id = h.id AND hc.student_id = $2
-       WHERE h.class_id = $1
+       WHERE h.class_id = $1 AND h.shared_at IS NOT NULL
        ORDER BY h.due_date NULLS LAST, h.created_at DESC`,
       [classId, req.user.student_id]
     );
@@ -39,8 +40,8 @@ router.get('/homework', requireAuth, requireStudent, async (req, res) => {
 router.post('/homework', requireAuth, async (req, res) => {
   try {
     const homework = await createHomework(req.user, req.body);
-    res.status(201).json(homework);
-    notifyHomeworkAssigned(homework);
+    await shareHomework(req.user, homework.id);
+    res.status(201).json({ ...homework });
   } catch (err) {
     if (err instanceof HomeworkError) return res.status(err.status).json({ error: err.message });
     console.error('Homework create error:', err);
