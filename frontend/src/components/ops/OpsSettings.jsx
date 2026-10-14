@@ -70,6 +70,8 @@ export default function OpsSettings() {
         </div>
       </form>
 
+      <AiAutomationSwitches />
+
       {preview && (
         <section className="space-y-2">
           <h2 className="font-display text-lg text-ink">Tomorrow's report would say</h2>
@@ -78,5 +80,47 @@ export default function OpsSettings() {
         </section>
       )}
     </div>
+  );
+}
+
+// AI automations that only reach staff (no parent ever gets these), so they
+// are on by default. Parent notes have their own screen with consent.
+function AiAutomationSwitches() {
+  const [form, setForm] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    apiRequest('/api/ai-automation/settings').then(setForm).catch((e) => setError(e.message));
+  }, []);
+  if (!form) return error ? <ErrorBanner message={error} /> : null;
+  const toggle = (key) => async (e) => {
+    const next = { ...form, [key]: e.target.checked };
+    setForm(next);
+    try {
+      await apiRequest('/api/ai-automation/settings', { method: 'PUT', body: { [key]: e.target.checked } });
+      setError('');
+    } catch (err) {
+      setError(err.message);
+      setForm(form);
+    }
+  };
+  return (
+    <section className="bg-white rounded-2xl border border-cream-deep/70 p-5 space-y-3 text-sm">
+      <h2 className="font-display text-lg text-ink">AI helpers</h2>
+      <ErrorBanner message={error} />
+      <label className="flex items-start gap-2 text-ink">
+        <input type="checkbox" checked={form.daily_plan_enabled} onChange={toggle('daily_plan_enabled')} className="w-4 h-4 mt-0.5 accent-terracotta" />
+        <span>
+          Today's plan at 7:30 AM (Mon–Sat)
+          <span className="block text-xs text-ink-soft">The three things most worth doing today, on the Control Center and on WhatsApp to the numbers above (template <code>principal_daily_plan</code>).</span>
+        </span>
+      </label>
+      <label className="flex items-start gap-2 text-ink">
+        <input type="checkbox" checked={form.early_warning_enabled} onChange={toggle('early_warning_enabled')} className="w-4 h-4 mt-0.5 accent-terracotta" />
+        <span>
+          Weekly "needs attention" list (Sunday night)
+          <span className="block text-xs text-ink-soft">Students whose attendance, marks, homework or tutor sessions point to a problem, with the evidence and a first step. Staff only.</span>
+        </span>
+      </label>
+    </section>
   );
 }

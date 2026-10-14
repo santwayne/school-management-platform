@@ -59,6 +59,10 @@ const AuditLog = lazy(() => import('./components/ops/AuditLog'));
 const OpsSettings = lazy(() => import('./components/ops/OpsSettings'));
 const Assistant = lazy(() => import('./components/assistant/Assistant'));
 const AssistantBrain = lazy(() => import('./components/assistant/AssistantBrain'));
+const NeedsAttention = lazy(() => import('./components/ops/NeedsAttention'));
+const TeacherNeedsAttention = lazy(() => import('./components/ops/NeedsAttention').then((m) => ({ default: m.TeacherNeedsAttention })));
+const ProgressNotes = lazy(() => import('./components/ops/ProgressNotes'));
+const TeacherProgressNotes = lazy(() => import('./components/ops/ProgressNotes').then((m) => ({ default: m.TeacherProgressNotes })));
 const AdminStaffLeave = lazy(() => import('./components/AdminStaffLeave'));
 const TeacherLeave = lazy(() => import('./components/TeacherLeave'));
 const MyPayslips = lazy(() => import('./components/MyPayslips'));
@@ -178,12 +182,16 @@ function AppRoutes() {
         <Route path="/teacher/payslips" element={<ProtectedRoute teacherOrPrincipalOnly><MyPayslips /></ProtectedRoute>} />
         <Route path="/teacher/lesson-plans" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherLessonPlans /></ProtectedRoute>} />
         <Route path="/teacher/homework" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherHomework /></ProtectedRoute>} />
+        <Route path="/teacher/attention" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherNeedsAttention /></ProtectedRoute>} />
+        <Route path="/teacher/progress-notes" element={<ProtectedRoute teacherOrPrincipalOnly><TeacherProgressNotes /></ProtectedRoute>} />
 
         {/* Operator Control Center — operator and principal */}
         <Route path="/ops" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, OpsOverview)}</ProtectedRoute>} />
         <Route path="/ops/assistant" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, Assistant)}</ProtectedRoute>} />
         <Route path="/ops/assistant/brain" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, AssistantBrain)}</ProtectedRoute>} />
         <Route path="/ops/inbox" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, ExceptionInbox)}</ProtectedRoute>} />
+        <Route path="/ops/attention" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, NeedsAttention)}</ProtectedRoute>} />
+        <Route path="/ops/progress-notes" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, ProgressNotes)}</ProtectedRoute>} />
         <Route path="/ops/automations" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, AutomationsList)}</ProtectedRoute>} />
         <Route path="/ops/automations/:key" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, AutomationDetail)}</ProtectedRoute>} />
         <Route path="/ops/audit" element={<ProtectedRoute operatorOnly>{inShell(OperatorShell, AuditLog)}</ProtectedRoute>} />

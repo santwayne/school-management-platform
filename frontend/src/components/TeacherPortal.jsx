@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck, NotebookPen, X, Users, MessageCircleQuestion, Bell, Receipt, ClipboardEdit, BookOpenCheck, CalendarRange } from 'lucide-react';
+import { ArrowLeft, Check, CalendarCheck2, ClipboardList, LogOut, ChevronRight, BookOpen, ListChecks, UserCheck, NotebookPen, X, Users, MessageCircleQuestion, Bell, Receipt, ClipboardEdit, BookOpenCheck, CalendarRange, HeartHandshake, NotebookText } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiRequest } from '../api';
 import { useAuth } from '../AuthContext';
@@ -327,6 +327,8 @@ function RecurringDoubtsCard() {
 // opened.
 const SHORTCUTS = [
   { to: '/teacher/homework', label: 'Homework', icon: BookOpenCheck },
+  { to: '/teacher/attention', label: 'Needs attention', icon: HeartHandshake },
+  { to: '/teacher/progress-notes', label: 'Parent notes', icon: NotebookText },
   { to: '/marks-entry', label: 'Marks entry', icon: ClipboardEdit },
   { to: '/exam-planner', label: 'Exam planner', icon: CalendarRange },
   { to: '/teacher/lesson-plans', label: 'Lesson plans', icon: NotebookPen },
