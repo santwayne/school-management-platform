@@ -1,4 +1,4 @@
-import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue, weeklyProgressSummaryQueue, recurringDoubtQueue, opsDigestQueue, admissionFollowupQueue, substitutionQueue, payrollQueue, certificateQueue } from '../config/queue.js';
+import { guidanceQueue, teacherAttendanceQueue, gpsPollQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, teachingReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue, weeklyProgressSummaryQueue, recurringDoubtQueue, opsDigestQueue, admissionFollowupQueue, substitutionQueue, payrollQueue, certificateQueue, aiAutomationQueue } from '../config/queue.js';
 
 // Every clock-time job runs on India time regardless of the server's own
 // timezone (EC2 defaults to UTC, which made the "7 AM" teacher nudge fire
@@ -11,7 +11,7 @@ const CRON_TZ = process.env.CRON_TZ || 'Asia/Kolkata';
 // timezone before the schedule*() functions re-register them. Idempotent:
 // after the first run there is nothing left to remove.
 export async function purgeTimezonelessRepeatables() {
-  const queues = [guidanceQueue, teacherAttendanceQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue, weeklyProgressSummaryQueue, recurringDoubtQueue];
+  const queues = [guidanceQueue, teacherAttendanceQueue, libraryQueue, feeReminderQueue, pettyCashReminderQueue, staffLeaveReminderQueue, lowAttendanceAlertQueue, eventReminderQueue, performanceDriftQueue, weeklyProgressSummaryQueue, recurringDoubtQueue, aiAutomationQueue];
   let removed = 0;
   for (const q of queues) {
     const jobs = await q.getRepeatableJobs();
@@ -264,4 +264,22 @@ export async function schedulePayroll() {
 export async function scheduleCertificates() {
   await certificateQueue.add('processCertificates', {}, { repeat: { every: 10 * 60 * 1000 }, removeOnComplete: true, jobId: 'certificate-issuing' });
   console.log('Certificate issuing scheduled (every 10 min).');
+}
+
+// AI automation roadmap, phases 1–2. Early-warning and note drafts run
+// Sunday night after the week's data is in (and after the 8 PM drift / 8:30 PM
+// class summary jobs); the principal's plan lands at 7:30 AM Monday–Saturday,
+// before the 8 AM digest; approved parent notes are sent every 30 minutes
+// (the sender itself only sends between 8 AM and 8 PM India time).
+export async function scheduleAiAutomations() {
+  const jobs = [
+    ['weeklyEarlyWarning', { pattern: process.env.EARLY_WARNING_CRON || '0 21 * * 0', tz: CRON_TZ }, 'ai-weekly-early-warning'],
+    ['dailyPrincipalPlan', { pattern: process.env.DAILY_PLAN_CRON || '30 7 * * 1-6', tz: CRON_TZ }, 'ai-daily-principal-plan'],
+    ['draftProgressNotes', { pattern: process.env.PROGRESS_NOTES_CRON || '30 21 * * 0', tz: CRON_TZ }, 'ai-draft-progress-notes'],
+    ['sendProgressNotes', { every: 30 * 60 * 1000 }, 'ai-send-progress-notes'],
+  ];
+  for (const [name, repeat, jobId] of jobs) {
+    await aiAutomationQueue.add(name, {}, { repeat, removeOnComplete: true, jobId });
+  }
+  console.log('AI automations scheduled (early-warning, daily plan, parent notes).');
 }

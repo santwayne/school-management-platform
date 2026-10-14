@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import { apiRequest } from '../../api';
 import { timeAgo, Light, SeverityChip, integrationLight, INTEGRATION_NAMES, ErrorBanner } from './opsUi';
+import TodayPlan from './TodayPlan';
 
 const CATEGORY_NAMES = {
   attendance: 'Attendance',
@@ -82,6 +83,8 @@ export default function OpsOverview() {
           </button>
         </div>
       </section>
+
+      <TodayPlan />
 
       <Link to="/ops/assistant" className="flex items-center gap-3 rounded-2xl bg-white border border-terracotta/30 px-5 py-4 hover:border-terracotta transition">
         <span className="w-10 h-10 rounded-full bg-terracotta/10 flex items-center justify-center shrink-0"><Sparkles className="w-5 h-5 text-terracotta" /></span>

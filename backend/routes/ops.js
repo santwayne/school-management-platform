@@ -2,7 +2,7 @@ import express from 'express';
 import pool from '../config/db.js';
 import * as queues from '../config/queue.js';
 import { requireAuth, requireOperator } from '../middleware/auth.js';
-import { audit, registerAction, runAction, hasAction } from '../services/opsService.js';
+import { audit, registerAction, runAction, hasAction, RUN_NOW_ALLOWED } from '../services/opsService.js';
 import { runHealthCheck } from '../workers/healthCheck.js';
 import { buildDigestFacts, fallbackDigestLine } from '../workers/dailyDigestWorker.js';
 import { digestPhoneClash } from '../utils/digestPhone.js';
@@ -10,37 +10,12 @@ import { digestPhoneClash } from '../utils/digestPhone.js';
 const router = express.Router();
 router.use(requireAuth, requireOperator);
 
-// ------------------------------------------------------------------
-// "Run now" is only offered for automations that are safe to re-run —
-// ones that dedupe via their own *_log table / reminder_sent_at column,
-// or have no side effects. daily_guidance and library_digest would
-// re-send the same WhatsApp to every teacher/contact, and
-// performance_drift's "3 consecutive weekly runs" logic would be skewed
-// by an extra run, so they are excluded.
+// "Run now" is only offered for automations that are safe to re-run — the
+// list (and why) lives in services/opsService.js as RUN_NOW_ALLOWED.
 //
 // Note: these workers are platform-wide (one job loops over every
 // school), so a run triggered here runs for all schools. The cooldown
 // stops one school's operator from hammering a shared job.
-// ------------------------------------------------------------------
-const RUN_NOW_ALLOWED = new Set([
-  'gps_poll',
-  // Safe to re-run: daily_guidance_log allows one nudge per teacher, chapter and day.
-  'daily_guidance',
-  'teacher_attendance_rollup',
-  'fee_reminder',
-  'petty_cash_reminder',
-  'staff_leave_reminder',
-  'teaching_reminder',
-  'low_attendance_alert',
-  'event_reminder',
-  'weekly_progress_summary',
-  'recurring_doubt',
-  'ops_health_check',
-  'ops_daily_digest',
-  'admission_followup',
-  'substitution',
-  'certificates',
-]);
 const RUN_NOW_COOLDOWN_MINUTES = 10;
 
 const queueByName = new Map(

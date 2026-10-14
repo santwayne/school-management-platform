@@ -27,6 +27,7 @@ import homeworkRoutes from './routes/homework.js';
 import teachingMediaRoutes from './routes/teachingMedia.js';
 import examPlanRoutes from './routes/examPlans.js';
 import assistantRoutes from './routes/assistant.js';
+import aiAutomationRoutes from './routes/aiAutomation.js';
 import { startReflectionLoop } from './services/assistantReflection.js';
 import automationReadinessRoutes from './routes/automationReadiness.js';
 import feeCollectorsRoutes from './routes/feeCollectors.js';
@@ -78,7 +79,7 @@ import { startBillingSweeper } from './workers/billingWorker.js';
 import admissionFollowupWorker from './workers/admissionFollowupWorker.js';
 import { instrumentWorkers } from './workers/instrumentation.js';
 import { startHealthCheckLoop } from './workers/healthCheck.js';
-import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest, scheduleFeeReminders, schedulePettyCashReminders, scheduleStaffLeaveReminders, scheduleTeachingReminders, scheduleLowAttendanceAlerts, scheduleEventReminders, schedulePerformanceDrift, scheduleWeeklyProgressSummaries, scheduleRecurringDoubtCheck, scheduleOpsDailyDigest, scheduleAdmissionFollowups, scheduleSubstitutions, schedulePayroll, scheduleCertificates, purgeTimezonelessRepeatables } from './workers/scheduler.js';
+import { scheduleDailyGuidance, scheduleTeacherAttendanceAggregation, scheduleGpsPolling, scheduleLibraryDigest, scheduleFeeReminders, schedulePettyCashReminders, scheduleStaffLeaveReminders, scheduleTeachingReminders, scheduleLowAttendanceAlerts, scheduleEventReminders, schedulePerformanceDrift, scheduleWeeklyProgressSummaries, scheduleRecurringDoubtCheck, scheduleOpsDailyDigest, scheduleAdmissionFollowups, scheduleSubstitutions, schedulePayroll, scheduleCertificates, scheduleAiAutomations, purgeTimezonelessRepeatables } from './workers/scheduler.js';
 import { runBootstrap } from './scripts/autoBootstrap.js';
 
 dotenv.config();
@@ -130,6 +131,7 @@ app.use('/api/student', studentPortalRoutes);
 app.use('/api/teaching-media', teachingMediaRoutes);
 app.use('/api/exam-plans', examPlanRoutes);
 app.use('/api/assistant', assistantRoutes);
+app.use('/api/ai-automation', aiAutomationRoutes);
 app.use('/api/homework', homeworkRoutes);
 app.use('/api/automation-readiness', automationReadinessRoutes);
 app.use('/api/fee-collectors', feeCollectorsRoutes);
@@ -286,6 +288,11 @@ async function start() {
       await scheduleCertificates();
     } catch (err) {
       console.error('Failed to schedule certificate issuing (is Redis running?):', err.message);
+    }
+    try {
+      await scheduleAiAutomations();
+    } catch (err) {
+      console.error('Failed to schedule AI automations (is Redis running?):', err.message);
     }
     instrumentWorkers();
     startHealthCheckLoop();

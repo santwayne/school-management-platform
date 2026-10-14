@@ -241,6 +241,39 @@ export async function audit({ schoolId, actorType = 'system', actorId = null, ac
   }
 }
 
+// ---------- "Run now" ----------
+// Only automations that are safe to re-run — ones that dedupe via their own
+// *_log table / reminder_sent_at column / unique key, or have no side
+// effects. library_digest would re-send the same WhatsApp to every contact,
+// and performance_drift's "3 consecutive weekly runs" logic would be skewed
+// by an extra run, so they are excluded. Used by the Control Center's Run
+// now button and by the principal's daily plan.
+export const RUN_NOW_ALLOWED = new Set([
+  'gps_poll',
+  // Safe to re-run: daily_guidance_log allows one nudge per teacher, chapter and day.
+  'daily_guidance',
+  'teacher_attendance_rollup',
+  'fee_reminder',
+  'petty_cash_reminder',
+  'staff_leave_reminder',
+  'teaching_reminder',
+  'low_attendance_alert',
+  'event_reminder',
+  'weekly_progress_summary',
+  'recurring_doubt',
+  'ops_health_check',
+  'ops_daily_digest',
+  'admission_followup',
+  'substitution',
+  'certificates',
+  // AI automation roadmap: all keyed by (student, week) / (school, day), so
+  // a second run updates in place instead of duplicating or re-sending.
+  'student_early_warning',
+  'principal_daily_plan',
+  'progress_notes_draft',
+  'progress_notes_send',
+]);
+
 // ---------- One-click actions from the inbox ----------
 // Later phases register their own (certificate.approve, payment.match, ...).
 // Only registered keys can ever be executed from a suggested_action — the

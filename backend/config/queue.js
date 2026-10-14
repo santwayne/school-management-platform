@@ -84,6 +84,10 @@ export const payrollQueue = new Queue('PayrollQueue', { connection });
 // Certificate issuing (every 10 min).
 export const certificateQueue = new Queue('CertificateQueue', { connection });
 
+// AI automation roadmap (phases 1–2): student early-warning, principal's
+// daily plan, parent progress notes — see workers/aiAutomationWorker.js.
+export const aiAutomationQueue = new Queue('AiAutomationQueue', { connection });
+
 // Plan billing: Razorpay subscription/order webhook events are stored in
 // billing_events and acked instantly; this queue does the real work. If
 // Redis is down the webhook processes inline instead and the in-process

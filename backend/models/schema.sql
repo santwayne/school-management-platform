@@ -2924,3 +2924,107 @@ CREATE TABLE IF NOT EXISTS student_learning_profiles (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ALTER TABLE tutor_sessions ADD COLUMN IF NOT EXISTS memory_reviewed_len INT NOT NULL DEFAULT 0;
+
+-- ============================================================
+-- AI automation roadmap, phases 1–2 (Oct 2026)
+--   A1 student early-warning, B1 principal's daily plan,
+--   A2 parent weekly progress notes.
+-- Rules for all three: facts come from SQL, the AI only phrases and
+-- prioritises; anything that messages a parent needs a person's approval;
+-- children's data stays learning-related. All additive and re-runnable.
+-- ============================================================
+
+-- ---------- A1: weekly "needs attention" list ----------
+-- One row per student per ISO week when the combined signals cross the
+-- threshold. signals holds the evidence that was used (shown to staff).
+CREATE TABLE IF NOT EXISTS student_attention_flags (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    class_id INT REFERENCES classes(id) ON DELETE SET NULL,
+    period VARCHAR(20) NOT NULL, -- ISO week, e.g. '2026-W42'
+    score INT NOT NULL,
+    signals JSONB NOT NULL DEFAULT '[]'::jsonb, -- [{key, label, evidence, weight, principal_only}]
+    reason TEXT NOT NULL,      -- plain-English why
+    first_step TEXT,           -- suggested first thing to try
+    status VARCHAR(20) NOT NULL DEFAULT 'open', -- 'open' | 'acted' | 'false_alarm' | 'dismissed'
+    action_note TEXT,
+    decided_by INT REFERENCES teachers(id),
+    decided_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (student_id, period)
+);
+CREATE INDEX IF NOT EXISTS idx_attention_flags_school ON student_attention_flags(school_id, period, status);
+
+-- ---------- B1: principal's daily plan ----------
+-- items: [{key, title, why, evidence, link, action_id, feedback}]
+CREATE TABLE IF NOT EXISTS principal_daily_plans (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    plan_date DATE NOT NULL,
+    items JSONB NOT NULL DEFAULT '[]'::jsonb,
+    summary TEXT,
+    generated_by VARCHAR(10) NOT NULL DEFAULT 'rules', -- 'ai' | 'rules'
+    whatsapp_sent INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (school_id, plan_date)
+);
+
+-- Where an approval request came from, so the plan's approval rate can be
+-- measured even after a plan is rebuilt.
+ALTER TABLE assistant_actions ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'assistant'; -- 'assistant' | 'daily_plan'
+
+-- ---------- A2: parent weekly progress notes ----------
+-- Consent for AI-written learning notes, separate from WhatsApp opt-in.
+-- 'unknown' until the school records the parent's answer.
+ALTER TABLE parents ADD COLUMN IF NOT EXISTS ai_notes_consent VARCHAR(10) NOT NULL DEFAULT 'unknown'; -- 'unknown' | 'granted' | 'declined'
+ALTER TABLE parents ADD COLUMN IF NOT EXISTS ai_notes_consent_at TIMESTAMP;
+ALTER TABLE parents ADD COLUMN IF NOT EXISTS ai_notes_consent_by INT REFERENCES teachers(id) ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS parent_progress_notes (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    class_id INT REFERENCES classes(id) ON DELETE SET NULL,
+    parent_id INT REFERENCES parents(id) ON DELETE SET NULL,
+    period VARCHAR(20) NOT NULL,
+    language VARCHAR(10) NOT NULL DEFAULT 'en', -- 'en' | 'hi' | 'pa' | 'hinglish'
+    note TEXT NOT NULL,
+    facts JSONB NOT NULL DEFAULT '{}'::jsonb, -- exactly what the note was written from
+    generated_by VARCHAR(10) NOT NULL DEFAULT 'rules', -- 'ai' | 'rules'
+    edited BOOLEAN NOT NULL DEFAULT FALSE,
+    status VARCHAR(12) NOT NULL DEFAULT 'draft', -- 'draft' | 'approved' | 'rejected' | 'sending' | 'sent' | 'failed' | 'expired'
+    approved_by INT REFERENCES teachers(id),
+    approved_at TIMESTAMP,
+    sent_at TIMESTAMP,
+    send_started_at TIMESTAMP, -- set when a sender claims it; guards against double sends
+    error TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (student_id, period)
+);
+CREATE INDEX IF NOT EXISTS idx_progress_notes_school ON parent_progress_notes(school_id, period, status);
+
+-- Per-school switches. Notes are OFF until the school turns them on (they
+-- need a Meta template and a consent decision first).
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS early_warning_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS daily_plan_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS progress_notes_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS progress_notes_consent_mode VARCHAR(12) NOT NULL DEFAULT 'explicit'; -- 'explicit' (only granted) | 'opt_out' (all except declined)
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS progress_notes_approver VARCHAR(16) NOT NULL DEFAULT 'class_teacher'; -- 'class_teacher' | 'principal'
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS progress_notes_language VARCHAR(10) NOT NULL DEFAULT 'parent'; -- 'parent' | 'en' | 'hinglish'
+
+-- Template to create and get approved in Meta (Utility, language en; add hi/pa later):
+--   name: student_progress_note
+--   body: "Weekly note about {{1}} from school: {{2}} Reply STOP to stop school messages."
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, whatsapp_template_name, whatsapp_param_order, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'parent_progress_note', 'both', 'Parent Weekly Progress Note',
+       'student_progress_note', '["student_name","note"]'::jsonb,
+       'Weekly note about {{student_name}}', '{{note}}', FALSE
+WHERE NOT EXISTS (SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'parent_progress_note');
+
+INSERT INTO automation_registry (automation_key, display_name, category, expected_interval_minutes, critical, queue_name, job_name, record_every_minutes) VALUES
+  ('student_early_warning',  'Weekly student early-warning (AI)',      'ai', 10080, false, 'AiAutomationQueue', 'weeklyEarlyWarning', NULL),
+  ('principal_daily_plan',   'Principal''s daily plan (AI)',           'ai', 1440,  false, 'AiAutomationQueue', 'dailyPrincipalPlan', NULL),
+  ('progress_notes_draft',   'Parent progress notes: weekly drafts (AI)', 'ai', 10080, false, 'AiAutomationQueue', 'draftProgressNotes', NULL),
+  ('progress_notes_send',    'Parent progress notes: send approved',   'communication', 30, false, 'AiAutomationQueue', 'sendProgressNotes', 180)
+ON CONFLICT (automation_key) DO NOTHING;

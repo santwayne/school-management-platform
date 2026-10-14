@@ -19,6 +19,7 @@ import admissionFollowupWorker from './admissionFollowupWorker.js';
 import substitutionWorker from './substitutionWorker.js';
 import payrollWorker from './payrollWorker.js';
 import certificateWorker from './certificateWorker.js';
+import aiAutomationWorker, { AI_AUTOMATION_JOBS } from './aiAutomationWorker.js';
 
 // ------------------------------------------------------------------
 // Every existing worker already `export default`s its Worker instance, so
@@ -51,6 +52,7 @@ const WORKERS = [
   { worker: substitutionWorker, keyFor: () => 'substitution' },
   { worker: payrollWorker, keyFor: () => 'payroll_prepare' },
   { worker: certificateWorker, keyFor: () => 'certificates' },
+  { worker: aiAutomationWorker, keyFor: (job) => AI_AUTOMATION_JOBS[job?.name] || 'student_early_warning' },
 ];
 
 let registryCache = { at: 0, rows: new Map() };

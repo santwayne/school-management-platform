@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import pool from '../config/db.js';
-import { TOOLS, PROPOSABLE, runTool } from './assistantTools.js';
+import { TOOLS, PROPOSABLE, APPROVABLE, runTool } from './assistantTools.js';
 import { hasAction, audit } from './opsService.js';
 
 const MODEL = process.env.ASSISTANT_MODEL || 'claude-sonnet-5';
@@ -147,7 +147,7 @@ export async function decideAction({ user, actionId, approve }) {
   const a = claimed.rows[0];
   if (!approve) return { status: 'rejected' };
   try {
-    if (!PROPOSABLE.has(a.action_key)) throw new Error('Action not allowed');
+    if (!APPROVABLE.has(a.action_key)) throw new Error('Action not allowed');
     const out = await runAction(a.action_key, { params: a.params, user });
     const result = typeof out === 'string' ? out : JSON.stringify(out ?? { ok: true }).slice(0, 500);
     await pool.query('UPDATE assistant_actions SET result = $2 WHERE id = $1', [actionId, result]);

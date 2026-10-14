@@ -126,7 +126,10 @@ async function handleWeeklySummaries() {
     `SELECT c.id AS class_id, c.name AS class_name, c.school_id
      FROM classes c
      LEFT JOIN school_settings ss ON ss.school_id = c.school_id
-     WHERE COALESCE(ss.notify_weekly_summary, TRUE) = TRUE`
+     WHERE COALESCE(ss.notify_weekly_summary, TRUE) = TRUE
+       -- Schools that switched on personal parent notes (A2) get those
+       -- instead, so parents don't receive two weekly messages.
+       AND COALESCE(ss.progress_notes_enabled, FALSE) = FALSE`
   );
 
   let sent = 0;

@@ -289,6 +289,11 @@ const handlers = {
 // one). Deliberately narrow: nothing that messages parents or moves money.
 export const PROPOSABLE = new Set(['automation.run_now', 'admission.pause_ai']);
 
+// What a person may approve from the Ask AI panel or by replying APPROVE n on
+// WhatsApp: everything the assistant can propose, plus actions the principal's
+// daily plan proposes. Still staff-only and money-free.
+export const APPROVABLE = new Set([...PROPOSABLE, 'attention.notify_teachers']);
+
 export async function runTool(name, ctx, input) {
   const fn = handlers[name];
   if (!fn) return { error: `Unknown tool ${name}` };
