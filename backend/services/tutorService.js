@@ -6,7 +6,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // hint generator. This one runs as a real multi-turn session so the model
 // can see the student's prior attempts in this session and judge when
 // they're genuinely stuck vs. just starting.
-function buildSystemPrompt(subject, grade) {
+export function buildSystemPrompt(subject, grade, studentContext = '') {
   return `You are a patient, encouraging home tutor helping a student in grade/class "${grade || 'unspecified'}" with a ${subject || 'general'} homework question.
 
 Rules you must always follow:
@@ -17,12 +17,15 @@ Rules you must always follow:
 - Only give the direct final answer if the student explicitly says something like "just tell me the answer." Even then, give the answer AND explain the reasoning after — don't just state it bare.
 - Adjust your vocabulary, sentence length, and examples to grade "${grade || 'unspecified'}" — simpler and more concrete for younger students, more technical for older ones.
 - Encourage the student when they get closer to the answer. Keep responses short (2-5 sentences) — this is a back-and-forth chat, not an essay.
-- Respond in the same language the student writes in (English, Hindi, Punjabi, or a mix).`;
+- Respond in the same language the student writes in (English, Hindi, Punjabi, or a mix).${studentContext ? `
+
+What you already know about this student from earlier sessions (use it like a teacher who knows them well: build on strengths, go gently where they struggle, use their interests in examples; never recite this list back to them or mention that you keep notes):
+${studentContext}` : ''}`;
 }
 
 // conversationHistory: array of { role: 'user' | 'assistant', content: string }
 // newMessage: the student's latest message (not yet in conversationHistory)
-export async function askTutor(conversationHistory, newMessage, subject, grade) {
+export async function askTutor(conversationHistory, newMessage, subject, grade, studentContext = '') {
   if (!process.env.ANTHROPIC_API_KEY) {
     // Fail loudly and immediately rather than letting the SDK call fail deep
     // inside the try/catch below with a less obvious auth error.
@@ -44,7 +47,7 @@ export async function askTutor(conversationHistory, newMessage, subject, grade) 
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-5',
     max_tokens: 500,
-    system: buildSystemPrompt(subject, grade),
+    system: buildSystemPrompt(subject, grade, studentContext),
     messages,
   });
 

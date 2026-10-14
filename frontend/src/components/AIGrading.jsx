@@ -8,11 +8,27 @@ const CONFIDENCE_STYLE = {
   low: 'bg-terracotta/15 text-terracotta-deep',
 };
 
+// Phone photos are often 4-8MB; downscale to <=1800px JPEG before upload so the
+// request stays well under the server body limit and grading is faster.
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(',')[1]);
     reader.onerror = reject;
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      const fallback = () => resolve({ data: dataUrl.split(',')[1], mediaType: file.type || 'image/jpeg' });
+      const img = new Image();
+      img.onerror = fallback;
+      img.onload = () => {
+        const scale = Math.min(1, 1800 / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve({ data: canvas.toDataURL('image/jpeg', 0.85).split(',')[1], mediaType: 'image/jpeg' });
+      };
+      img.src = dataUrl;
+    };
     reader.readAsDataURL(file);
   });
 }
@@ -166,7 +182,7 @@ function SubmitAnswerPanel({ test, onClose, onSubmitted }) {
     setSubmitting(true);
     setError('');
     try {
-      const base64 = await fileToBase64(file);
+      const { data: base64, mediaType } = await fileToBase64(file);
       const data = await apiRequest('/api/grading/submit', {
         method: 'POST',
         body: {
@@ -174,7 +190,7 @@ function SubmitAnswerPanel({ test, onClose, onSubmitted }) {
           test_id: test.id,
           question_num: Number(questionNum),
           image_base64: base64,
-          media_type: file.type || 'image/jpeg',
+          media_type: mediaType,
         },
       });
       setResult(data.evaluation);

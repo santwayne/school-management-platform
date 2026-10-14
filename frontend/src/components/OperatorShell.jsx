@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Gauge, Inbox, Workflow, ScrollText, Settings2, LogOut, Menu, X, UserPlus2, MessagesSquare, Repeat, Award } from 'lucide-react';
+import { Gauge, Inbox, Workflow, ScrollText, Settings2, LogOut, Menu, X, UserPlus2, MessagesSquare, Repeat, Award, Sparkles } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { apiRequest } from '../api';
 import AdminShell from './AdminShell';
@@ -8,6 +8,7 @@ import WaynurMark from './WaynurMark';
 
 const NAV = [
   { label: 'Control Center', icon: Gauge, to: '/ops' },
+  { label: 'Ask AI', icon: Sparkles, to: '/ops/assistant' },
   { label: 'Inbox', icon: Inbox, to: '/ops/inbox', badge: true },
   { label: 'Admissions', icon: UserPlus2, to: '/ops/admissions' },
   { label: 'Parent messages', icon: MessagesSquare, to: '/ops/parents' },

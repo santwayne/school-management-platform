@@ -1,6 +1,8 @@
 import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth } from '../middleware/auth.js';
+import { shareLessonPlan } from '../services/lessonPlanService.js';
+import { isOwnMediaUrl } from '../services/teachingMedia.js';
 
 const router = express.Router();
 
@@ -17,7 +19,7 @@ function teacherOrPrincipalOnly(req, res, next) {
 // POST /api/lesson-plans — a teacher creates a lesson plan for a class/subject
 // they're assigned to; a principal can create one for any class in the school.
 router.post('/lesson-plans', requireAuth, teacherOrPrincipalOnly, async (req, res) => {
-  const { class_id, subject_id, title, content, attachment_url, timetable_slot_id, plan_date } = req.body;
+  const { class_id, subject_id, title, content, attachment_url, attachment_name, timetable_slot_id, plan_date, source } = req.body;
   const schoolId = req.user.school_id;
   const teacherId = req.user.teacher_id;
 
@@ -26,6 +28,10 @@ router.post('/lesson-plans', requireAuth, teacherOrPrincipalOnly, async (req, re
   }
   if (!teacherId) {
     return res.status(403).json({ error: 'Teacher or principal login required' });
+  }
+
+  if (attachment_url && !isOwnMediaUrl(attachment_url, schoolId)) {
+    return res.status(400).json({ error: 'Attach the file using the upload button.' });
   }
 
   try {
@@ -69,9 +75,11 @@ router.post('/lesson-plans', requireAuth, teacherOrPrincipalOnly, async (req, re
     }
 
     const { rows } = await pool.query(
-      `INSERT INTO lesson_plans (school_id, class_id, subject_id, teacher_id, title, content, attachment_url, timetable_slot_id, plan_date)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [schoolId, class_id, subject_id || null, teacherId, title, content || null, attachment_url || null, slotId, plan_date || null]
+      `INSERT INTO lesson_plans (school_id, class_id, subject_id, teacher_id, title, content, attachment_url, attachment_name, timetable_slot_id, plan_date, source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+      [schoolId, class_id, subject_id || null, teacherId, title, content || null, attachment_url || null,
+       attachment_url ? String(attachment_name || 'attachment').slice(0, 255) : null, slotId, plan_date || null,
+       source === 'whatsapp' ? 'whatsapp' : 'portal']
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -119,6 +127,17 @@ router.get('/lesson-plans', requireAuth, teacherOrPrincipalOnly, async (req, res
       params
     );
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/lesson-plans/:id/share — one-time share of a lesson plan (and its
+// attachment) with every student in the class; see shareLessonPlan.
+router.post('/lesson-plans/:id/share', requireAuth, teacherOrPrincipalOnly, async (req, res) => {
+  try {
+    const out = await shareLessonPlan(req.user, req.params.id);
+    res.status(out.status).json(out.body);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

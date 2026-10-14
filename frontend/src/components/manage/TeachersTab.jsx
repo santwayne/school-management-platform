@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Plus, Pencil, Trash2, X } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, X, UploadCloud } from 'lucide-react';
 import { apiRequest } from '../../api';
 import { normalizePhone } from '../../lib/phone';
+import StaffImportModal from './StaffImportModal';
 
 export default function TeachersTab() {
   const [teachers, setTeachers] = useState([]);
@@ -9,6 +10,7 @@ export default function TeachersTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [modal, setModal] = useState(null); // null | 'add' | teacher object being edited
+  const [importOpen, setImportOpen] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', role: 'teacher' });
 
   const load = async () => {
@@ -79,7 +81,10 @@ export default function TeachersTab() {
             className="w-full pl-9 pr-3 py-2 text-sm rounded-lg bg-white border border-cream-deep focus:outline-none focus:ring-2 focus:ring-terracotta/40"
           />
         </div>
-        <button onClick={openAdd} className="ml-auto inline-flex items-center gap-1.5 text-sm font-medium px-3.5 py-2 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep transition">
+        <button onClick={() => setImportOpen(true)} className="ml-auto inline-flex items-center gap-1.5 text-sm font-medium px-3.5 py-2 rounded-lg border border-cream-deep text-ink hover:bg-cream-deep/40 transition">
+          <UploadCloud className="w-4 h-4" /> Import staff
+        </button>
+        <button onClick={openAdd} className="inline-flex items-center gap-1.5 text-sm font-medium px-3.5 py-2 rounded-lg bg-terracotta text-primary-foreground hover:bg-terracotta-deep transition">
           <Plus className="w-4 h-4" /> Add staff
         </button>
       </div>
@@ -161,6 +166,7 @@ export default function TeachersTab() {
           </div>
         </div>
       )}
+      {importOpen && <StaffImportModal onClose={() => setImportOpen(false)} onDone={load} />}
     </div>
   );
 }

@@ -2719,3 +2719,208 @@ ALTER TABLE notification_log ADD COLUMN IF NOT EXISTS wa_message_id VARCHAR(100)
 ALTER TABLE notification_log ADD COLUMN IF NOT EXISTS delivery_error TEXT;
 CREATE INDEX IF NOT EXISTS idx_notification_log_wa_message_id ON notification_log(wa_message_id) WHERE wa_message_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_dashboard_notifications_wa_message_id ON dashboard_notifications(whatsapp_message_id) WHERE whatsapp_message_id IS NOT NULL;
+
+-- ---------- Homework & lesson plans: media attachments + one-time class share (Oct 2026) ----------
+-- A teacher can attach an image/document and share the item to the whole class
+-- exactly once. shared_at is the one-time latch: the share endpoints claim it
+-- with "UPDATE ... WHERE shared_at IS NULL", so a double-tap, a retry or a
+-- second device can never message the class twice.
+-- Homework used to notify the class the moment it was created, so rows that
+-- already exist are marked as shared (only on the run that adds the column).
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'homework' AND column_name = 'shared_at') THEN
+    ALTER TABLE homework ADD COLUMN shared_at TIMESTAMP;
+    UPDATE homework SET shared_at = created_at;
+  END IF;
+END $$;
+ALTER TABLE homework ADD COLUMN IF NOT EXISTS attachment_url TEXT;
+ALTER TABLE homework ADD COLUMN IF NOT EXISTS attachment_name VARCHAR(255);
+ALTER TABLE homework ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'portal'; -- 'portal' | 'whatsapp'
+ALTER TABLE lesson_plans ADD COLUMN IF NOT EXISTS attachment_name VARCHAR(255);
+ALTER TABLE lesson_plans ADD COLUMN IF NOT EXISTS shared_at TIMESTAMP;
+ALTER TABLE lesson_plans ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'portal';
+
+-- Homework photos/PDFs go out as WhatsApp media after the template message.
+UPDATE notification_templates SET media_supported = TRUE
+WHERE trigger_event = 'homework_assigned' AND media_supported = FALSE;
+
+-- Lesson plan shared with a class. Dashboard (Student Portal) only until a
+-- WhatsApp template is approved on Meta — set whatsapp_template_name and
+-- whatsapp_param_order on this row to switch WhatsApp on.
+INSERT INTO notification_templates (school_id, trigger_event, channel, name, dashboard_title_template, dashboard_body_template, media_supported)
+SELECT NULL, 'lesson_plan_shared', 'both', 'Lesson Plan Shared',
+       'Lesson plan: {{title}}', '{{subject}} — {{description}}', TRUE
+WHERE NOT EXISTS (SELECT 1 FROM notification_templates nt WHERE nt.school_id IS NULL AND nt.trigger_event = 'lesson_plan_shared');
+
+-- ---------- Exam syllabus + study plan (Oct 2026) ----------
+-- Each exam can carry its own syllabus (chapters per subject). The planner
+-- (utils/studyPlan.js) splits it across the days before the exam into lesson
+-- plans, homework, chapter tests and revision; plan rows can be turned into
+-- draft homework / lesson plans with one click.
+CREATE TABLE IF NOT EXISTS exam_syllabus_items (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    exam_id INT NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+    subject_id INT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    chapter_name VARCHAR(255) NOT NULL,
+    topics TEXT,
+    weight INT NOT NULL DEFAULT 1,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_exam_syllabus_exam ON exam_syllabus_items(exam_id);
+
+CREATE TABLE IF NOT EXISTS exam_plan_items (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    exam_id INT NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+    subject_id INT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    chapter_name VARCHAR(255) NOT NULL,
+    activity_type VARCHAR(20) NOT NULL, -- 'lesson_plan' | 'homework' | 'test' | 'revision'
+    title VARCHAR(255) NOT NULL,
+    planned_date DATE NOT NULL,
+    sort_order INT NOT NULL DEFAULT 0,
+    homework_id INT REFERENCES homework(id) ON DELETE SET NULL,
+    lesson_plan_id INT REFERENCES lesson_plans(id) ON DELETE SET NULL,
+    created_by INT REFERENCES teachers(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_exam_plan_exam ON exam_plan_items(exam_id, planned_date);
+ALTER TABLE exams ADD COLUMN IF NOT EXISTS exam_date DATE;
+
+-- ---------- Student supporting documents (Oct 2026) ----------
+-- Photos, certificates, ID proofs shown on the complete student profile.
+-- The file lives under a private S3 key and is only served through
+-- GET /api/profiles/students/:id/documents/:docId/file (authorised).
+CREATE TABLE IF NOT EXISTS student_documents (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    doc_type VARCHAR(30) NOT NULL, -- photo | birth_certificate | id_proof | transfer_certificate | marksheet | medical | address_proof | other
+    title VARCHAR(255) NOT NULL,
+    file_key TEXT NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    mime_type VARCHAR(100) NOT NULL,
+    size_bytes INT NOT NULL,
+    uploaded_by INT REFERENCES teachers(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_student_documents_student ON student_documents(student_id);
+
+-- ---------- Role-based salary structure (Oct 2026) ----------
+-- One monthly base salary per staff ROLE (teacher, accountant, ...). A staff
+-- member's own teacher_salary row, when present, overrides it; otherwise they
+-- get their role's amount. salary_components.role scopes an allowance/deduction
+-- to one role (NULL = everyone, as before).
+CREATE TABLE IF NOT EXISTS role_salary_structures (
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL,
+    monthly_amount NUMERIC(10,2) NOT NULL CHECK (monthly_amount >= 0),
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (school_id, role)
+);
+ALTER TABLE salary_components ADD COLUMN IF NOT EXISTS role VARCHAR(20);
+
+-- ---------- AI Assistant for principal / operator (Oct 2026) ----------
+-- A conversational assistant that answers from the school's own records
+-- (read-only tools, always scoped to the caller's school), drafts documents,
+-- and can only PROPOSE changes: every proposed action waits in
+-- assistant_actions for a human click. assistant_memory is its "brain" — what
+-- it has been told to remember or has learned; the user can review and delete.
+CREATE TABLE IF NOT EXISTS assistant_conversations (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    user_id INT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    title VARCHAR(200),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_assistant_conv_user ON assistant_conversations(school_id, user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS assistant_messages (
+    id BIGSERIAL PRIMARY KEY,
+    conversation_id INT NOT NULL REFERENCES assistant_conversations(id) ON DELETE CASCADE,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    role VARCHAR(10) NOT NULL, -- 'user' | 'assistant'
+    content JSONB NOT NULL,    -- Anthropic content blocks, replayed to the model
+    text TEXT,                 -- what the person sees
+    tools_used JSONB,          -- names of tools called for this answer
+    rating SMALLINT,           -- 1 = helpful, -1 = not helpful
+    feedback TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_assistant_msgs_conv ON assistant_messages(conversation_id, id);
+
+CREATE TABLE IF NOT EXISTS assistant_memory (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    kind VARCHAR(20) NOT NULL DEFAULT 'fact', -- 'fact' | 'preference' | 'policy' | 'lesson'
+    content TEXT NOT NULL,
+    source VARCHAR(20) NOT NULL DEFAULT 'user', -- 'user' (asked to remember) | 'assistant' | 'review' (weekly self-review)
+    status VARCHAR(10) NOT NULL DEFAULT 'active', -- 'active' | 'pending' (needs approval) | 'archived'
+    created_by INT REFERENCES teachers(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_assistant_memory_school ON assistant_memory(school_id, status);
+
+CREATE TABLE IF NOT EXISTS assistant_actions (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    conversation_id INT REFERENCES assistant_conversations(id) ON DELETE SET NULL,
+    action_key VARCHAR(80) NOT NULL, -- must be a registered action (opsService.registerAction)
+    params JSONB NOT NULL DEFAULT '{}'::jsonb,
+    summary TEXT NOT NULL,
+    status VARCHAR(12) NOT NULL DEFAULT 'pending', -- 'pending' | 'approved' | 'rejected' | 'failed'
+    result TEXT,
+    decided_by INT REFERENCES teachers(id),
+    decided_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_assistant_actions_school ON assistant_actions(school_id, status);
+
+CREATE TABLE IF NOT EXISTS assistant_documents (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    conversation_id INT REFERENCES assistant_conversations(id) ON DELETE SET NULL,
+    title VARCHAR(200) NOT NULL,
+    body TEXT NOT NULL,
+    created_by INT REFERENCES teachers(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Weekly self-review output: ideas for making the software better. The
+-- assistant cannot change code or settings itself — these are for the team.
+CREATE TABLE IF NOT EXISTS assistant_suggestions (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    category VARCHAR(30) NOT NULL DEFAULT 'general', -- 'automation' | 'data_quality' | 'workflow' | 'feature' | 'general'
+    title VARCHAR(200) NOT NULL,
+    detail TEXT,
+    evidence TEXT,
+    status VARCHAR(12) NOT NULL DEFAULT 'new', -- 'new' | 'accepted' | 'dismissed'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_assistant_suggestions_school ON assistant_suggestions(school_id, status);
+
+-- ---------- Student learning memory (Oct 2026) ----------
+-- What the AI Home Tutor has learned about each student from their tutoring
+-- sessions (plus teacher observations and exam marks): strengths, what they
+-- struggle with, interests, pace and engagement. The tutor reads it at the
+-- start of every session so it knows the student like a regular teacher does;
+-- teachers and the principal can read, correct or clear it. Learning-related
+-- only — never family, health or other personal details.
+CREATE TABLE IF NOT EXISTS student_learning_profiles (
+    student_id INT PRIMARY KEY REFERENCES students(id) ON DELETE CASCADE,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    summary TEXT,
+    strengths JSONB NOT NULL DEFAULT '[]'::jsonb,
+    struggles JSONB NOT NULL DEFAULT '[]'::jsonb,
+    interests JSONB NOT NULL DEFAULT '[]'::jsonb,
+    engagement TEXT,   -- pace, persistence, how they respond to hints
+    next_steps JSONB NOT NULL DEFAULT '[]'::jsonb, -- what would help them next
+    sessions_reviewed INT NOT NULL DEFAULT 0,
+    edited_by INT REFERENCES teachers(id), -- last human edit, if any
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+ALTER TABLE tutor_sessions ADD COLUMN IF NOT EXISTS memory_reviewed_len INT NOT NULL DEFAULT 0;

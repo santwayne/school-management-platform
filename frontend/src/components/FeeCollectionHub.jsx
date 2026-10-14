@@ -47,6 +47,62 @@ export default function FeeCollectionHub() {
   );
 }
 
+const inr = (n) => `₹${Number(n).toLocaleString('en-IN')}`;
+
+// Search-and-pick student selector — replaces typing a raw database ID, which
+// let reviewers record payments against the wrong student.
+function SlipStudentPicker({ selected, onSelect }) {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState([]);
+
+  useEffect(() => {
+    if (q.trim().length < 2) { setResults([]); return undefined; }
+    const t = setTimeout(() => {
+      apiRequest(`/api/fee-intake/students/search?q=${encodeURIComponent(q.trim())}`).then(setResults).catch(() => setResults([]));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  return (
+    <div className="relative w-64">
+      {selected ? (
+        <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg border border-terracotta/50 bg-terracotta/5 text-sm">
+          <span className="min-w-0">
+            <span className="font-medium text-ink">{selected.name}</span>
+            <span className="block text-[11px] text-ink-soft">
+              {[selected.class_name, selected.admission_number || selected.login_id].filter(Boolean).join(' · ')}
+              {selected.fee_configured ? ` · Due ${inr(selected.fee_due)}` : ' · No fee structure'}
+            </span>
+          </span>
+          <button type="button" onClick={() => onSelect(null)} className="text-xs text-ink-soft hover:text-ink">Change</button>
+        </div>
+      ) : (
+        <>
+          <input
+            value={q}
+            onChange={(ev) => setQ(ev.target.value)}
+            placeholder="Search student name / ID"
+            className="w-full px-2 py-1.5 rounded-lg border border-cream-deep bg-white text-sm"
+          />
+          {results.length > 0 && (
+            <div className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-cream-deep bg-white shadow-lg">
+              {results.map((s) => (
+                <button key={s.id} type="button" onClick={() => { onSelect(s); setQ(''); setResults([]); }} className="block w-full text-left px-3 py-2 text-sm hover:bg-cream-deep/40">
+                  <span className="text-ink">{s.name}</span>
+                  <span className="block text-[11px] text-ink-soft">
+                    {[s.class_name, s.admission_number || s.login_id].filter(Boolean).join(' · ')}
+                    {s.fee_configured ? ` · Due ${inr(s.fee_due)}` : ''}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function WhatsAppQueue() {
   const [pending, setPending] = useState([]);
   const [recent, setRecent] = useState([]);
@@ -67,8 +123,18 @@ function WhatsAppQueue() {
       const initialEdits = {};
       p.forEach((e) => {
         initialEdits[e.id] = {
-          student_id: e.matched_student_id || '',
-          amount: e.ai_extracted_amount || '',
+          student: e.matched_student_id
+            ? {
+                id: e.matched_student_id,
+                name: e.matched_student_name,
+                class_name: e.matched_class_name,
+                admission_number: e.matched_admission_number,
+                login_id: e.matched_login_id,
+                fee_due: e.matched_fee_due,
+                fee_configured: e.matched_fee_configured,
+              }
+            : null,
+          amount: e.ai_extracted_amount ? String(Number(e.ai_extracted_amount)) : '',
         };
       });
       setEdits(initialEdits);
@@ -89,15 +155,15 @@ function WhatsAppQueue() {
 
   const confirm = async (id) => {
     const e = edits[id];
-    if (!e?.student_id || !e?.amount) {
-      setError('Enter both a student ID and amount before confirming.');
+    if (!e?.student?.id || !(Number(e?.amount) > 0)) {
+      setError('Pick the student and enter the amount before confirming.');
       return;
     }
     setError('');
     try {
       await apiRequest(`/api/fee-intake/${id}/confirm`, {
         method: 'PATCH',
-        body: { student_id: Number(e.student_id), amount: Number(e.amount) },
+        body: { student_id: e.student.id, amount: Number(e.amount) },
       });
       load();
     } catch (err) {
@@ -140,13 +206,7 @@ function WhatsAppQueue() {
                       <div className="text-xs text-ink-soft">AI read student name as: "{e.ai_extracted_student_hint}"</div>
                     )}
                     <div className="flex flex-wrap gap-2 items-center">
-                      <input
-                        type="number"
-                        placeholder="Student ID"
-                        value={edits[e.id]?.student_id ?? ''}
-                        onChange={(ev) => setEdit(e.id, 'student_id', ev.target.value)}
-                        className="w-28 px-2 py-1.5 rounded-lg border border-cream-deep bg-white text-sm"
-                      />
+                      <SlipStudentPicker selected={edits[e.id]?.student} onSelect={(st) => setEdit(e.id, 'student', st)} />
                       <input
                         type="number"
                         placeholder="Amount"

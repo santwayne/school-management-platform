@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Pencil, Trash2, X, KeyRound, Copy } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Search, Pencil, Trash2, X, KeyRound, Copy, UserRound } from 'lucide-react';
 import { apiRequest } from '../../api';
 
 // Observations logged by teachers for this student (feature 4.6) — shown
@@ -203,6 +204,7 @@ export default function StudentsTab() {
                     <td className="px-4 py-3 text-ink-soft font-mono text-xs">{s.login_id || '—'}</td>
                     <td className="px-4 py-3 text-ink-soft">{s.parent_name || '—'}</td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <Link to={`/admin/students/${s.id}/profile`} title="Full profile" aria-label={`Open ${s.name}'s full profile`} className="inline-block p-1.5 text-ink-soft hover:text-terracotta-deep"><UserRound className="w-3.5 h-3.5" /></Link>
                       <button onClick={() => openEdit(s)} className="p-1.5 text-ink-soft hover:text-terracotta-deep"><Pencil className="w-3.5 h-3.5" /></button>
                       <button onClick={() => remove(s.id)} className="p-1.5 text-ink-soft hover:text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
                     </td>
