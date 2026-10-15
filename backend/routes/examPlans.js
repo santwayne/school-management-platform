@@ -3,6 +3,7 @@ import pool from '../config/db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { buildStudyPlan, isIsoDate, StudyPlanError } from '../utils/studyPlan.js';
 import { createHomework, HomeworkError } from '../services/homeworkService.js';
+import { istToday } from '../utils/aiAutomation.js';
 
 // Syllabus-based planning: an exam's syllabus is split across the days before
 // the exam into lesson plans, homework, chapter tests and revision.
@@ -135,9 +136,14 @@ router.post('/:examId/import-calendar', wrap(async (req, res) => {
 router.post('/:examId/generate', wrap(async (req, res) => {
   const exam = await loadExam(req.user, req.params.examId);
   if (!exam) return res.status(404).json({ error: 'Exam not found' });
-  const startDate = req.body?.start_date;
   const examDate = req.body?.exam_date || exam.exam_date;
-  if (!isIsoDate(startDate) || !isIsoDate(examDate)) throw new StudyPlanError('Enter a valid start date and exam date.');
+  if (!isIsoDate(req.body?.start_date) || !isIsoDate(examDate)) throw new StudyPlanError('Enter a valid start date and exam date.');
+  // A plan never starts in the past — lesson plans for days already gone
+  // only clutter the list. A past start date is moved to today (IST).
+  const today = istToday();
+  const startMoved = req.body.start_date < today;
+  const startDate = startMoved ? today : req.body.start_date;
+  if (examDate <= today) throw new StudyPlanError('The exam date has already passed — set a future exam date to plan for it.');
   if (req.body?.exam_date && req.body.exam_date !== exam.exam_date) {
     await pool.query('UPDATE exams SET exam_date = $1 WHERE id = $2 AND school_id = $3', [examDate, exam.id, req.user.school_id]);
   }
@@ -180,7 +186,7 @@ router.post('/:examId/generate', wrap(async (req, res) => {
   } finally {
     client.release();
   }
-  res.status(201).json({ generated: plan.length });
+  res.status(201).json({ generated: plan.length, start_date: startDate, start_date_moved: startMoved });
 }));
 
 // POST /api/exam-plans/items/:id/create — turn a plan row into a DRAFT

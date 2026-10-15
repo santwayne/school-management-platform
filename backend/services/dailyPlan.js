@@ -20,7 +20,9 @@ import { AI_SCHOOLS_SQL } from './schoolPlans.js';
 //   body: "Good morning. Today's plan for {{1}}: {{2}}. Open the Control Center for details."
 
 const TEMPLATE = process.env.WHATSAPP_DAILY_PLAN_TEMPLATE || 'principal_daily_plan';
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+// "1 student", "2 students", "3 enquiries" — consonant + y takes "ies".
+const pluralWord = (word) => (/[^aeiou]y$/i.test(word) ? `${word.slice(0, -1)}ies` : /(s|x|z|ch|sh)$/i.test(word) ? `${word}es` : `${word}s`);
+const plural = (n, word) => `${n} ${n === 1 ? word : pluralWord(word)}`;
 const inr = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
 
 export async function planCandidates(schoolId, today) {
@@ -101,7 +103,7 @@ export async function planCandidates(schoolId, today) {
     c.push({ kind: 'admissions', key: 'admissions', priority: 50 + Math.min(enquiries[0].n * 3, 20), title: `Call back ${plural(enquiries[0].n, 'admission enquiry')} not contacted for 2+ days`, evidence: `${enquiries[0].n} recent enquiries without a reply in 2 days`, link: '/ops/admissions' });
   }
   if (fees[0]?.n) {
-    c.push({ kind: 'fees', key: 'fees', priority: 35 + Math.min(fees[0].n, 20), title: `Follow up ${plural(fees[0].n, 'family')} with no fee payment in 60+ days`, evidence: `${inr(fees[0].due)} outstanding across them`, link: '/finance' });
+    c.push({ kind: 'fees', key: 'fees', priority: 35 + Math.min(fees[0].n, 20), title: `Follow up fees for ${plural(fees[0].n, 'student')} with no payment in 60+ days`, evidence: `${inr(fees[0].due)} outstanding across them`, link: '/finance' });
   }
   return c;
 }

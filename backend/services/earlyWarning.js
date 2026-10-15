@@ -206,27 +206,57 @@ export async function runEarlyWarning() {
 }
 
 // Class teachers get an in-app notice listing how many of their students
-// were flagged. Staff only — nothing goes to parents.
+// were flagged. Staff only — nothing goes to parents. Each teacher is told
+// once per week: a teacher who already has this week's notice is skipped,
+// so pressing the button again (or the daily-plan action) never duplicates it.
 export async function notifyClassTeachers(schoolId, period, user) {
   const { rows } = await pool.query(
-    `SELECT c.class_teacher_id AS teacher_id, c.name AS class_name, COUNT(*)::int AS n
+    `SELECT c.class_teacher_id AS teacher_id, string_agg(DISTINCT c.name, ', ') AS class_name, COUNT(*)::int AS n
        FROM student_attention_flags f JOIN classes c ON c.id = f.class_id
-      WHERE f.school_id = $1 AND f.period = $2 AND f.status = 'open' AND c.class_teacher_id IS NOT NULL
-      GROUP BY c.class_teacher_id, c.name`,
+      WHERE f.school_id = $1 AND f.period = $2::text AND f.status = 'open' AND c.class_teacher_id IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM dashboard_notifications d
+           WHERE d.school_id = $1 AND d.trigger_event = 'attention_list' AND d.recipient_type = 'staff'
+             AND d.recipient_id = c.class_teacher_id AND d.payload_sent->>'period' = $2::text)
+      GROUP BY c.class_teacher_id`,
     [schoolId, period]
   );
   for (const r of rows) {
     await pool.query(
-      `INSERT INTO dashboard_notifications (school_id, trigger_event, recipient_type, recipient_id, channel_used, title, body, link)
-       VALUES ($1, 'attention_list', 'staff', $2, 'dashboard', $3, $4, '/teacher/attention')`,
-      [schoolId, r.teacher_id, `${r.n} student${r.n === 1 ? '' : 's'} in ${r.class_name} may need attention`, 'See the evidence and a suggested first step, then mark what you did.']
+      `INSERT INTO dashboard_notifications (school_id, trigger_event, recipient_type, recipient_id, channel_used, title, body, link, payload_sent)
+       VALUES ($1, 'attention_list', 'staff', $2, 'dashboard', $3, $4, '/teacher/attention', $5)`,
+      [schoolId, r.teacher_id, `${r.n} student${r.n === 1 ? '' : 's'} in ${r.class_name} may need attention`, 'See the evidence and a suggested first step, then mark what you did.', JSON.stringify({ period })]
     );
   }
+  const already = await pool.query(
+    `SELECT COUNT(DISTINCT recipient_id)::int AS n FROM dashboard_notifications
+      WHERE school_id = $1 AND trigger_event = 'attention_list' AND recipient_type = 'staff' AND payload_sent->>'period' = $2::text`,
+    [schoolId, period]
+  );
   const orphan = await pool.query(
     `SELECT COUNT(*)::int AS n FROM student_attention_flags f LEFT JOIN classes c ON c.id = f.class_id
       WHERE f.school_id = $1 AND f.period = $2 AND f.status = 'open' AND c.class_teacher_id IS NULL`,
     [schoolId, period]
   );
   await audit({ schoolId, actorType: 'user', actorId: user?.teacher_id, action: 'ai.attention_teachers_notified', detail: { period, teachers: rows.length } });
-  return { teachers_notified: rows.length, students_without_class_teacher: orphan.rows[0].n };
+  return {
+    teachers_notified: rows.length,
+    teachers_already_notified: already.rows[0].n - rows.length,
+    students_without_class_teacher: orphan.rows[0].n,
+  };
+}
+
+// Whether this week's notice has already gone to class teachers (used to
+// disable the "Tell class teachers" button).
+export async function teachersNotifiedAt(schoolId, period) {
+  const r = await pool.query(
+    `SELECT GREATEST(
+        (SELECT MAX(created_at) FROM dashboard_notifications
+          WHERE school_id = $1 AND trigger_event = 'attention_list' AND recipient_type = 'staff' AND payload_sent->>'period' = $2),
+        (SELECT MAX(created_at) FROM audit_log
+          WHERE school_id = $1 AND action = 'ai.attention_teachers_notified' AND detail->>'period' = $2 AND COALESCE((detail->>'teachers')::int, 0) > 0)
+      ) AS at`,
+    [schoolId, period]
+  );
+  return r.rows[0]?.at || null;
 }

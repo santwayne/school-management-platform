@@ -84,12 +84,12 @@ export default function NeedsAttention({ teacher = false }) {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (forPeriod = period) => {
     try {
       const qs = new URLSearchParams();
-      if (period) qs.set('period', period);
+      if (forPeriod) qs.set('period', forPeriod);
       if (onlyOpen) qs.set('status', 'open');
-      setData(await apiRequest(`/api/ai-automation/attention?${qs}`));
+      setData(await apiRequest(`/api/ai-automation/attention?${qs}`, { fresh: true }));
       setError('');
     } catch (err) {
       setError(err.message);
@@ -118,10 +118,14 @@ export default function NeedsAttention({ teacher = false }) {
   const run = async (path, body, done) => {
     setBusy(true);
     setMessage('');
+    setError('');
     try {
       const out = await apiRequest(path, { method: 'POST', body });
       setMessage(done(out));
-      await load();
+      // "Check now" returns the week it just built — show that week straight
+      // away instead of the previously selected one (or "No list yet").
+      if (out?.period && out.period !== period) setPeriod(out.period);
+      await load(out?.period || period);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -146,8 +150,13 @@ export default function NeedsAttention({ teacher = false }) {
                 <RefreshCw className={`w-4 h-4 ${busy ? 'animate-spin' : ''}`} /> Check now
               </button>
               {data?.period && (
-                <button disabled={busy} onClick={() => run('/api/ai-automation/attention/notify-teachers', { period: data.period }, (o) => `${o.teachers_notified} class teacher(s) notified.${o.students_without_class_teacher ? ` ${o.students_without_class_teacher} listed student(s) are in classes with no class teacher set.` : ''}`)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-terracotta text-white text-sm font-medium hover:bg-terracotta-deep disabled:opacity-50">
-                  <Send className="w-4 h-4" /> Tell class teachers
+                <button
+                  disabled={busy || Boolean(data.teachers_notified_at)}
+                  title={data.teachers_notified_at ? `Class teachers were told on ${formatDateTime(data.teachers_notified_at)}` : undefined}
+                  onClick={() => run('/api/ai-automation/attention/notify-teachers', { period: data.period }, (o) => `${o.teachers_notified ? `${o.teachers_notified} class teacher(s) notified.` : 'No new class teachers to notify.'}${o.teachers_already_notified ? ` ${o.teachers_already_notified} were already told this week.` : ''}${o.students_without_class_teacher ? ` ${o.students_without_class_teacher} listed student(s) are in classes with no class teacher set.` : ''}`)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-terracotta text-white text-sm font-medium hover:bg-terracotta-deep disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {data.teachers_notified_at ? <><Check className="w-4 h-4" /> Class teachers told</> : <><Send className="w-4 h-4" /> Tell class teachers</>}
                 </button>
               )}
             </div>

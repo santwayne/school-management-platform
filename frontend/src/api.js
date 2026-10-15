@@ -84,7 +84,9 @@ async function fetchWithRetry(url, options) {
 // refresh-and-retry before falling back to the hard redirect-to-login that
 // handleUnauthorized does. `_retried` caps this at one attempt per call so
 // a refresh token that's itself invalid can't loop.
-export async function apiRequest(path, { method = 'GET', body } = {}, _retried = false) {
+// `fresh: true` skips the browser's HTTP cache — for a list re-read right
+// after a change, where a cached copy would show the old state.
+export async function apiRequest(path, { method = 'GET', body, fresh = false } = {}, _retried = false) {
   const res = await fetchWithRetry(`${API_URL}${path}`, {
     method,
     headers: {
@@ -92,10 +94,11 @@ export async function apiRequest(path, { method = 'GET', body } = {}, _retried =
       ...authHeaders(),
     },
     body: body ? JSON.stringify(body) : undefined,
+    ...(fresh ? { cache: 'no-store' } : {}),
   });
 
   if (res.status === 401 && !_retried && !AUTH_ENDPOINT_RE.test(path)) {
-    if (await refreshAccessToken()) return apiRequest(path, { method, body }, true);
+    if (await refreshAccessToken()) return apiRequest(path, { method, body, fresh }, true);
   }
 
   const data = await res.json().catch(() => ({}));

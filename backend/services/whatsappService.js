@@ -107,6 +107,23 @@ export async function verifyWhatsAppCredentials({ phoneNumberId, accessToken }) 
   }
 }
 
+// Meta rejects template body variables that are empty (error 131008
+// "Parameter of type text is missing text value") or that contain new
+// lines, tabs or more than 4 spaces in a row (error #100 "Invalid
+// parameter"). Every notification goes through here, so each variable is
+// flattened to one line and an empty one becomes "-".
+export const EMPTY_TEMPLATE_VALUE = '-';
+const MAX_TEMPLATE_PARAM_LENGTH = 1000;
+
+export function cleanTemplateParam(value) {
+  const text = String(value ?? '')
+    .replace(/[\r\n\t\f\v\u2028\u2029]+/g, ' ')
+    .replace(/ {2,}/g, ' ')
+    .trim();
+  if (!text) return EMPTY_TEMPLATE_VALUE;
+  return text.length > MAX_TEMPLATE_PARAM_LENGTH ? `${text.slice(0, MAX_TEMPLATE_PARAM_LENGTH - 1).trimEnd()}…` : text;
+}
+
 // Sends a pre-approved Meta template message (required for the first
 // outbound message in a conversation window, e.g. the absence alert).
 // The template must be approved on THIS school's WhatsApp Business Account.
@@ -119,7 +136,7 @@ export async function sendTemplateMessage(schoolId, toPhone, templateName, langu
       name: templateName,
       language: { code: languageCode },
       components: params.length
-        ? [{ type: 'body', parameters: params.map((text) => ({ type: 'text', text: String(text) })) }]
+        ? [{ type: 'body', parameters: params.map((text) => ({ type: 'text', text: cleanTemplateParam(text) })) }]
         : [],
     },
   };

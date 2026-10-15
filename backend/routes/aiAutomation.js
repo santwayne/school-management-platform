@@ -2,7 +2,7 @@ import express from 'express';
 import pool from '../config/db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { audit, registerAction } from '../services/opsService.js';
-import { runEarlyWarningForSchool, notifyClassTeachers } from '../services/earlyWarning.js';
+import { runEarlyWarningForSchool, notifyClassTeachers, teachersNotifiedAt } from '../services/earlyWarning.js';
 import { buildPlanForSchool, getPlan } from '../services/dailyPlan.js';
 import { NotesError, listNotes, editNote, decideNotes, listConsent, setConsent, draftNotesForSchool, notesSettings, approvalScope } from '../services/progressNotes.js';
 import { teacherSignals, istToday } from '../utils/aiAutomation.js';
@@ -84,6 +84,7 @@ router.get('/attention', staffOnly, wrap(async (req, res) => {
     period,
     periods: periods.rows,
     class_teacher: !all,
+    teachers_notified_at: all && period ? await teachersNotifiedAt(req.user.school_id, period) : null,
     flags: rows.map((f) => ({ ...f, signals: all ? f.signals : teacherSignals(f.signals) })),
   });
 }));
