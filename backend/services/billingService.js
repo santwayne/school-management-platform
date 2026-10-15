@@ -91,6 +91,7 @@ export async function quoteChange({ schoolId, planCode, cycle = 'monthly' }) {
   const plans = await getPlans();
   const target = plans[planCode];
   if (!target) throw httpError(400, 'Unknown plan');
+  if (target.billing_mode === 'manual') throw httpError(400, `${target.name} is billed by the Waynur team — contact Waynur to switch.`, { code: 'PLAN_MANUAL_BILLING' });
 
   const schoolRes = await pool.query('SELECT plan, billing_status FROM schools WHERE id = $1', [schoolId]);
   if (!schoolRes.rowCount) throw httpError(404, 'School not found');

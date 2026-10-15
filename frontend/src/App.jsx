@@ -27,6 +27,7 @@ const BlogPost = lazy(() => import('./components/blog/BlogPost'));
 const BlogAdmin = lazy(() => import('./components/blog/BlogAdmin'));
 const TeacherWhatsAppDemo = lazy(() => import('./components/TeacherWhatsAppDemo'));
 const SuperAdminBilling = lazy(() => import('./components/SuperAdminBilling'));
+const SuperAdminPlans = lazy(() => import('./components/SuperAdminPlans'));
 const AdminAttendance = lazy(() => import('./components/AdminAttendance'));
 const AdminStudentAttendance = lazy(() => import('./components/AdminStudentAttendance'));
 const ClassNotesComposer = lazy(() => import('./components/ClassNotesComposer'));
@@ -262,6 +263,7 @@ function AppRoutes() {
         <Route path="/super-admin-login" element={<SuperAdminLogin />} />
         <Route path="/super-admin" element={<ProtectedRoute superAdminOnly>{inShell(SuperAdminShell, SuperAdminHome)}</ProtectedRoute>} />
         <Route path="/super-admin/schools" element={<ProtectedRoute superAdminOnly>{inShell(SuperAdminShell, SuperAdminDashboard)}</ProtectedRoute>} />
+        <Route path="/super-admin/plans" element={<ProtectedRoute superAdminOnly>{inShell(SuperAdminShell, SuperAdminPlans)}</ProtectedRoute>} />
         <Route path="/super-admin/billing" element={<ProtectedRoute superAdminOnly>{inShell(SuperAdminShell, SuperAdminBilling)}</ProtectedRoute>} />
         <Route path="/super-admin/ai-voice-tutor" element={<ProtectedRoute superAdminOnly>{inShell(SuperAdminShell, SuperAdminAiVoiceTutor)}</ProtectedRoute>} />
 

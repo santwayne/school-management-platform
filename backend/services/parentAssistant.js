@@ -7,6 +7,7 @@ import { haversineMeters } from './busProximityService.js';
 import { processPendingRequests } from './certificateService.js';
 import { createPaymentLinkRecord } from '../routes/paymentLinks.js';
 import { getStudentDues } from '../utils/feeDues.js';
+import { schoolHasAi } from './schoolPlans.js';
 
 // ------------------------------------------------------------------
 // Parent WhatsApp assistant.
@@ -660,7 +661,7 @@ export async function handleParentMessage({ parent, text, waMessageId, repliedTo
 
     // A reply to today's absence alert is acknowledged, not treated as a doubt.
     if (!intent && repliedToAbsence) intent = 'absence_reply';
-    if (!intent) intent = await aiIntent(text);
+    if (!intent && await schoolHasAi(parent.school_id)) intent = await aiIntent(text);
 
     if (!intent || intent === 'homework_doubt' || intent === 'other') {
       await saveConversation(parent, state, null);

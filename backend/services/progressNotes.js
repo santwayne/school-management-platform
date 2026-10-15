@@ -4,6 +4,7 @@ import { askJSON, makeBudget } from './aiText.js';
 import { raiseException, audit } from './opsService.js';
 import { sendTemplateMessage } from './whatsappService.js';
 import { sendWithLanguageFallback, parentTemplateLanguage } from '../utils/templateLanguage.js';
+import { AI_SCHOOLS_SQL } from './schoolPlans.js';
 
 // A2 — a short personal weekly note to each parent, in their language.
 //
@@ -193,7 +194,7 @@ export async function draftNotesForSchool(schoolId, { today = istToday() } = {})
 
 export async function runDraftNotes() {
   const schools = await pool.query(
-    `SELECT s.id FROM schools s JOIN school_settings ss ON ss.school_id = s.id WHERE s.status = 'active' AND ss.progress_notes_enabled = TRUE`
+    `SELECT s.id FROM schools s JOIN school_settings ss ON ss.school_id = s.id WHERE s.status = 'active' AND ss.progress_notes_enabled = TRUE AND ${AI_SCHOOLS_SQL}`
   );
   let processed = 0;
   let failed = 0;

@@ -20,6 +20,8 @@ const emptyForm = {
   razorpay_key_id: '',
   razorpay_key_secret: '',
   razorpay_webhook_secret: '',
+  // Free demo of the Waynur AI plan, in days (empty = no demo; set the plan later from Plans).
+  demo_days: '14',
 };
 
 export default function SuperAdminDashboard() {
@@ -57,7 +59,7 @@ export default function SuperAdminDashboard() {
     try {
       // NOTE: apiRequest already JSON.stringifies the body — pass the plain object.
       setNotice('');
-      const out = await apiRequest('/api/super-admin/schools', { method: 'POST', body: form });
+      const out = await apiRequest('/api/super-admin/schools', { method: 'POST', body: { ...form, demo_days: form.demo_days ? Number(form.demo_days) : null } });
       setForm(emptyForm);
       const notes = [];
       const problems = [];
@@ -155,6 +157,12 @@ export default function SuperAdminDashboard() {
           <input type="email" name="principal-email-new" placeholder="Principal Email" autoComplete="off" value={form.principal_email} onChange={(e) => setForm({ ...form, principal_email: e.target.value })} required className="w-full p-2 border rounded" />
           <input type="text" placeholder="Principal Phone" autoComplete="off" value={form.principal_phone} onChange={(e) => setForm({ ...form, principal_phone: e.target.value })} required className="w-full p-2 border rounded" />
           <input type="password" name="principal-password-new" placeholder="Principal Password" autoComplete="new-password" value={form.principal_password} onChange={(e) => setForm({ ...form, principal_password: e.target.value })} required className="w-full p-2 border rounded" />
+          <hr />
+          <h3 className="text-sm font-medium text-ink-soft">Waynur AI demo <span className="font-normal">(optional)</span></h3>
+          <div className="flex items-center gap-2">
+            <input type="number" min="1" max="90" placeholder="Days" value={form.demo_days} onChange={(e) => setForm({ ...form, demo_days: e.target.value })} className="w-24 p-2 border rounded" />
+            <span className="text-xs text-ink-soft">days of free demo (all AI features). Leave empty to start on Core and set the plan later from Plans.</span>
+          </div>
           <hr />
           <h3 className="text-sm font-medium text-ink-soft">School's WhatsApp number <span className="font-normal">(optional — can be added later)</span></h3>
           <input type="text" placeholder="WhatsApp Business number, e.g. +91 98765 43210" autoComplete="off" value={form.whatsapp_number} onChange={(e) => setForm({ ...form, whatsapp_number: e.target.value })} className="w-full p-2 border rounded" />

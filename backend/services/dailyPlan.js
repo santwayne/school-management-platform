@@ -3,6 +3,7 @@ import { pickPlanItems, planWhatsAppLine, istToday, toTemplateParam } from '../u
 import { askJSON } from './aiText.js';
 import { audit, RUN_NOW_ALLOWED } from './opsService.js';
 import { sendTemplateMessage } from './whatsappService.js';
+import { AI_SCHOOLS_SQL } from './schoolPlans.js';
 
 // B1 — the principal's "what I would do today" plan.
 //
@@ -208,7 +209,7 @@ export async function buildPlanForSchool(schoolId, { today = istToday(), force =
 export async function runDailyPlans() {
   const schools = await pool.query(
     `SELECT s.id FROM schools s LEFT JOIN school_settings ss ON ss.school_id = s.id
-      WHERE s.status = 'active' AND COALESCE(ss.daily_plan_enabled, TRUE) = TRUE`
+      WHERE s.status = 'active' AND COALESCE(ss.daily_plan_enabled, TRUE) = TRUE AND ${AI_SCHOOLS_SQL}`
   );
   let processed = 0;
   let failed = 0;

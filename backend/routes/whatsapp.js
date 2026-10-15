@@ -15,6 +15,7 @@ import { generateAIHint, tagDoubtChapter, extractCashSlip, extractExpenseSlip, e
 import { chaptersByClass, chapterChoices, matchChapter, studentForDoubt } from '../utils/doubtTagging.js';
 import { deliveryOutcome, deliveryError } from '../utils/deliveryStatus.js';
 import { sendTextMessage, sendTemplateMessage, downloadMedia, getSchoolWhatsApp } from '../services/whatsappService.js';
+import { schoolHasAi } from '../services/schoolPlans.js';
 
 const router = express.Router();
 
@@ -416,6 +417,10 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
       if (outcome.handled) return res.sendStatus(200);
     }
 
+    // Core plan: no AI doubt-solving. The doubt is still saved so the class
+    // teacher sees it; the parent gets a short acknowledgement instead.
+    const doubtAi = await schoolHasAi(inboundSchoolId);
+
     let userMessageText = '';
     if (message.type === 'text') {
       userMessageText = message.text.body;
@@ -427,6 +432,8 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
       const { buffer, mimeType } = await downloadMedia(inboundSchoolId, message.image.id).catch(() => ({ buffer: null, mimeType: null }));
       if (!buffer) {
         userMessageText = '[Could not download image]';
+      } else if (!doubtAi) {
+        userMessageText = '[Photo of a question — open it in WhatsApp]';
       } else {
         const base64Image = Buffer.from(buffer).toString('base64');
         userMessageText = await extractDoubtImage(base64Image, mimeType || 'image/jpeg');
@@ -435,7 +442,9 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
       return res.sendStatus(200); // unsupported message type (audio/video/etc.) — ignore for now
     }
 
-    const aiResponseHint = await generateAIHint(userMessageText);
+    const aiResponseHint = doubtAi
+      ? await generateAIHint(userMessageText)
+      : 'Thank you — your question has been shared with the class teacher, who will help with it.';
 
     // Which chapter is this doubt about, and which child asked? See
     // utils/doubtTagging.js for the three ways this used to end in
@@ -459,7 +468,7 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
       byClass = chaptersByClass(chaptersRes.rows);
     }
     const chapterNames = chapterChoices(byClass);
-    const chapterTag = matchChapter(await tagDoubtChapter(userMessageText, chapterNames), chapterNames);
+    const chapterTag = doubtAi ? matchChapter(await tagDoubtChapter(userMessageText, chapterNames), chapterNames) : 'Untagged';
     const studentId = studentForDoubt(studentRes.rows, byClass, chapterTag);
 
     await pool.query(
