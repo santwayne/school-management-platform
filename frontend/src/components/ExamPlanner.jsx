@@ -16,13 +16,18 @@ function fmtDate(iso) {
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 }
 
+// Today's date in India (YYYY-MM-DD), matching the server's IST "today".
+function istToday() {
+  return new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
 export default function ExamPlanner() {
   const [exams, setExams] = useState([]);
   const [examId, setExamId] = useState('');
   const [data, setData] = useState(null);
   const [subjectId, setSubjectId] = useState('');
   const [chapters, setChapters] = useState([]);
-  const [startDate, setStartDate] = useState('');
+  const [startDate, setStartDate] = useState(istToday);
   const [examDate, setExamDate] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -90,14 +95,18 @@ export default function ExamPlanner() {
       setChapters(r.chapters);
     }, 'Chapters loaded from the syllabus calendar — review and save.');
 
-  const generate = (all) =>
-    run(async () => {
+  const generate = (all) => {
+    const today = istToday();
+    const from = startDate < today ? today : startDate;
+    if (from !== startDate) setStartDate(from);
+    return run(async () => {
       await apiRequest(`/api/exam-plans/${examId}/generate`, {
         method: 'POST',
-        body: { start_date: startDate, exam_date: examDate, subject_id: all ? undefined : Number(subjectId) },
+        body: { start_date: from, exam_date: examDate, subject_id: all ? undefined : Number(subjectId) },
       });
       await load();
-    }, 'Plan generated. Turn items into drafts below; nothing is sent to students until you share it.');
+    }, `${from !== startDate ? 'The start date was in the past, so the plan starts today. ' : ''}Plan generated. Turn items into drafts below; nothing is sent to students until you share it.`);
+  };
 
   const createDraft = (item) =>
     run(async () => {
@@ -185,7 +194,10 @@ export default function ExamPlanner() {
             <div className="grid sm:grid-cols-2 gap-3">
               <label className="text-sm text-ink-soft space-y-1 block">
                 Start date
-                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={inputCls} />
+                <input type="date" value={startDate} min={istToday()} onChange={(e) => setStartDate(e.target.value)} className={inputCls} />
+                {startDate && startDate < istToday() && (
+                  <span className="block text-xs text-terracotta-deep">This date is in the past — the plan will start from today instead.</span>
+                )}
               </label>
               <label className="text-sm text-ink-soft space-y-1 block">
                 Exam date
