@@ -363,4 +363,34 @@ router.delete('/schools/:id/razorpay', requireAuth, requireSuperAdmin, async (re
   }
 });
 
+// GET /api/super-admin/ai-usage?month=YYYY-MM — real AI bill per school for a
+// month, from ai_usage_log (tokens, ₹ cost, tutor students, ₹ per student).
+router.get('/ai-usage', requireAuth, requireSuperAdmin, async (req, res) => {
+  const month = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? req.query.month : null;
+  try {
+    const { rows } = await pool.query(
+      `WITH m AS (SELECT COALESCE(to_date($1, 'YYYY-MM'), date_trunc('month', CURRENT_DATE)::date) AS start)
+       SELECT s.id AS school_id, s.name AS school_name,
+              COUNT(u.id)::int AS calls,
+              COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_write_tokens + u.cache_read_tokens), 0)::bigint AS tokens,
+              COALESCE(SUM(u.cache_read_tokens), 0)::bigint AS cached_tokens,
+              ROUND(COALESCE(SUM(u.cost_inr), 0), 2) AS cost_inr,
+              COUNT(DISTINCT u.student_id) FILTER (WHERE u.feature = 'tutor')::int AS tutor_students,
+              ROUND(COALESCE(SUM(u.cost_inr) FILTER (WHERE u.feature = 'tutor'), 0)
+                    / NULLIF(COUNT(DISTINCT u.student_id) FILTER (WHERE u.feature = 'tutor'), 0), 2) AS tutor_cost_per_student_inr
+         FROM m
+         JOIN ai_usage_log u ON u.created_at >= m.start AND u.created_at < m.start + INTERVAL '1 month'
+         JOIN schools s ON s.id = u.school_id
+        GROUP BY s.id, s.name
+        ORDER BY cost_inr DESC`,
+      [month]
+    );
+    const total = rows.reduce((a, r) => a + Number(r.cost_inr), 0);
+    res.json({ month: month || new Date().toISOString().slice(0, 7), total_cost_inr: Math.round(total * 100) / 100, schools: rows });
+  } catch (err) {
+    console.error('AI usage report error:', err.message);
+    res.status(500).json({ error: 'Failed to load AI usage' });
+  }
+});
+
 export default router;

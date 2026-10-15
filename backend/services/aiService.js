@@ -2,6 +2,11 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// WhatsApp doubt hints and chapter tagging are short, high-volume calls —
+// a fast model is plenty. Override with DOUBT_MODEL if needed. Receipt/slip
+// reading and broadcast drafting keep their current model.
+const DOUBT_MODEL = process.env.DOUBT_MODEL || 'claude-haiku-4-5';
+
 // Pedagogical Prompting Pattern — the AI must never hand the student the
 // final answer, only guide them toward it. This rule stays true across
 // text, voice-transcribed, and OCR'd image doubts.
@@ -18,7 +23,7 @@ export async function generateAIHint(studentQuery) {
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
+      model: DOUBT_MODEL,
       max_tokens: 300,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: studentQuery }],
@@ -123,7 +128,7 @@ export async function tagDoubtChapter(studentQuery, syllabusChapters = []) {
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
+      model: DOUBT_MODEL,
       max_tokens: 30,
       system:
         'Reply with ONLY the single best-matching chapter name from the provided list, nothing else. If none match, reply "Untagged".',
