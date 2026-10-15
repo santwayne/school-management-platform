@@ -211,6 +211,46 @@ function GstDetails({ details, onSaved }) {
   );
 }
 
+// Core (₹400) / AI (₹650) per-student plans — billed by the Waynur team.
+function WaynurPlanCard({ wp }) {
+  const stateText = {
+    demo: `Free demo of Waynur AI till ${dateIN(wp.demo_ends_at)} (${wp.demo_days_left} day${wp.demo_days_left === 1 ? '' : 's'} left)`,
+    demo_expired: `Demo ended on ${dateIN(wp.demo_ends_at)} — the account is read-only until the plan is activated.`,
+    paid: `Active till ${dateIN(wp.paid_until)}`,
+    grace: `Ended on ${dateIN(wp.paid_until)} — please renew; the account turns read-only after the grace period.`,
+    expired: 'Plan period ended — the account is read-only (all data is safe).',
+    none: 'Plan not activated yet.',
+  }[wp.state];
+  return (
+    <div className="space-y-4">
+      <div className="grid md:grid-cols-[1.2fr_1fr] gap-4">
+        <div className="rounded-2xl bg-white border border-cream-deep/70 p-6">
+          <div className="font-display text-2xl text-ink">{wp.plan_name}</div>
+          <div className="text-sm text-ink mt-2">{stateText}</div>
+          {wp.pending_plan_code && <p className="text-sm text-ink mt-2">Moving to Waynur {wp.pending_plan_code === 'ai' ? 'AI' : 'Core'} at renewal.</p>}
+          <p className="text-sm text-ink-soft mt-3">Payments, renewals and plan changes are handled by the Waynur team — contact Waynur to upgrade, renew or add students.</p>
+        </div>
+        <div className="rounded-2xl bg-white border border-cream-deep/70 p-6">
+          <h2 className="font-display text-lg text-ink mb-1">Usage</h2>
+          <UsageRow label="Students" used={wp.students} limit={wp.licensed_students} />
+          <div className="text-xs text-ink-soft mt-2">AI features: {wp.ai_enabled ? 'on' : 'off'}</div>
+        </div>
+      </div>
+      <div className="grid md:grid-cols-2 gap-4">
+        {wp.catalog.map((p) => (
+          <div key={p.code} className={`rounded-2xl border p-5 ${p.code === wp.plan ? 'border-terracotta bg-terracotta/5' : 'border-cream-deep/70 bg-white'}`}>
+            <div className="font-display text-lg text-ink">{p.name}</div>
+            <div className="text-sm text-ink mt-0.5">{INR(p.per_student_yearly)} per student / year + GST</div>
+            <div className="text-xs text-ink-soft">Minimum {INR(p.min_yearly)} / year</div>
+            <div className="text-xs text-ink-soft mt-2">{p.includes_ai ? 'Everything in Core + AI Tutor, Ask AI, WhatsApp admission & parent assistants, early-warning, principal daily plan, weekly parent notes' : 'Full school management: academics, fees, admissions, staff, payroll, transport, certificates and WhatsApp alerts'}</div>
+            {p.code === wp.plan && <span className="inline-block mt-3 text-xs font-medium px-2 py-1 rounded-lg bg-terracotta/10 text-terracotta">Current plan</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminBilling() {
   const [data, setData] = useState(null);
   const [invoices, setInvoices] = useState([]);
@@ -246,6 +286,9 @@ export default function AdminBilling() {
 
       {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
 
+      {data.waynur_plan && !data.waynur_plan.is_retired_plan && data.waynur_plan.state !== 'legacy' ? (
+        <WaynurPlanCard wp={data.waynur_plan} />
+      ) : (<>
       <div className="grid md:grid-cols-[1.2fr_1fr] gap-4">
         <div className="rounded-2xl bg-white border border-cream-deep/70 p-6">
           <div className="font-display text-2xl text-ink">{data.plan_name}</div>
@@ -315,6 +358,8 @@ export default function AdminBilling() {
           );
         })}
       </div>
+
+      </>)}
 
       <div className="rounded-2xl bg-white border border-cream-deep/70 p-6">
         <h2 className="font-display text-lg text-ink mb-3">Invoices</h2>

@@ -3,6 +3,7 @@ import { getCurrentAcademicYearStart, TUITION_ONLY_FILTER } from '../utils/acade
 import { scoreStudent, teacherSignals, fallbackReason, fallbackFirstStep, isoWeekLabel, istToday, noteProblems } from '../utils/aiAutomation.js';
 import { askJSON, makeBudget } from './aiText.js';
 import { raiseException, autoResolve, audit } from './opsService.js';
+import { AI_SCHOOLS_SQL } from './schoolPlans.js';
 
 // A1 — weekly "needs attention" list.
 //
@@ -186,7 +187,7 @@ export async function runEarlyWarningForSchool(schoolId, { today = istToday() } 
 export async function runEarlyWarning() {
   const schools = await pool.query(
     `SELECT s.id FROM schools s LEFT JOIN school_settings ss ON ss.school_id = s.id
-      WHERE s.status = 'active' AND COALESCE(ss.early_warning_enabled, TRUE) = TRUE`
+      WHERE s.status = 'active' AND COALESCE(ss.early_warning_enabled, TRUE) = TRUE AND ${AI_SCHOOLS_SQL}`
   );
   let processed = 0;
   let failed = 0;

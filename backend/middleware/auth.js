@@ -1,6 +1,13 @@
 import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
 import { isReadOnly } from '../services/billingMath.js';
+import { isPlanReadOnly, hasAi } from '../services/planMath.js';
+
+// AI features that only schools on the Waynur AI plan (or its demo) get.
+// The tutor is blocked entirely; the others only for actions (non-GET), so a
+// Core school can still open anything it made earlier.
+const AI_ONLY_ALL_METHODS = [/^\/api\/tutor(\/|$)/];
+const AI_ONLY_WRITES = [/^\/api\/assistant(\/|$)/, /^\/api\/premium-ai(\/|$)/, /^\/api\/grading(\/|$)/];
 
 // Writes still allowed while a school is billing-restricted: paying (billing),
 // staying logged in (auth), and the student portal's own session actions.
@@ -33,7 +40,9 @@ export async function requireAuth(req, res, next) {
   try {
     if (req.user.school_id) {
       const schoolRes = await pool.query(
-        'SELECT status, billing_status, billing_grace_until, current_period_end FROM schools WHERE id = $1',
+        `SELECT status, billing_status, billing_grace_until, current_period_end,
+                plan, plan_state, demo_ends_at, paid_until
+           FROM schools WHERE id = $1`,
         [req.user.school_id]
       );
       if (schoolRes.rowCount === 0 || schoolRes.rows[0].status === 'suspended') {
@@ -42,12 +51,25 @@ export async function requireAuth(req, res, next) {
       // Halted past grace / cancelled past period end → read-only. Every
       // GET keeps working (no data is ever hidden); only writes are refused.
       const school = schoolRes.rows[0];
-      req.billingReadOnly = isReadOnly(school);
+      const planReadOnly = isPlanReadOnly(school);
+      req.billingReadOnly = isReadOnly(school) || planReadOnly;
       const path = req.originalUrl.split('?')[0];
       if (req.billingReadOnly && !SAFE_METHODS.has(req.method) && !READ_ONLY_WRITE_ALLOWLIST.some((re) => re.test(path))) {
         return res.status(402).json({
-          error: 'Your Waynur subscription is inactive, so the account is read-only. The principal can renew from Billing to resume editing.',
-          code: 'BILLING_READ_ONLY',
+          error: planReadOnly
+            ? 'Your Waynur demo or plan period has ended, so the account is read-only (all your data is safe). Contact Waynur to continue.'
+            : 'Your Waynur subscription is inactive, so the account is read-only. The principal can renew from Billing to resume editing.',
+          code: planReadOnly ? 'PLAN_EXPIRED' : 'BILLING_READ_ONLY',
+        });
+      }
+      // Core plan: AI features are off.
+      req.planHasAi = hasAi(school);
+      const aiOnly = AI_ONLY_ALL_METHODS.some((re) => re.test(path))
+        || (!SAFE_METHODS.has(req.method) && AI_ONLY_WRITES.some((re) => re.test(path)));
+      if (aiOnly && !req.planHasAi) {
+        return res.status(403).json({
+          error: 'This is a Waynur AI plan feature. Your school is on Waynur Core — contact Waynur to upgrade.',
+          code: 'PLAN_NO_AI',
         });
       }
     }

@@ -3048,3 +3048,45 @@ CREATE TABLE IF NOT EXISTS ai_usage_log (
 );
 CREATE INDEX IF NOT EXISTS idx_ai_usage_student_month ON ai_usage_log(student_id, feature, created_at);
 CREATE INDEX IF NOT EXISTS idx_ai_usage_school_month ON ai_usage_log(school_id, created_at);
+-- ---------- Core (₹400) / AI (₹650) per-student plans — manual billing ----------
+-- Price per student per YEAR, before GST, with a yearly minimum per school.
+-- Payment is collected outside Waynur and recorded by the Super Admin.
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS per_student_yearly_paise BIGINT;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS min_yearly_paise BIGINT;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS includes_ai BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS billing_mode VARCHAR(12) NOT NULL DEFAULT 'razorpay'; -- 'razorpay' | 'manual'
+INSERT INTO plans (code, name, price_paise, yearly_price_paise, student_limit, accountant_seats, rank, per_student_yearly_paise, min_yearly_paise, includes_ai, billing_mode) VALUES
+  ('core', 'Waynur Core', 0, NULL, 999999, 999999, 10, 40000, 2500000, FALSE, 'manual'),
+  ('ai',   'Waynur AI',   0, NULL, 999999, 999999, 11, 65000, 3500000, TRUE,  'manual')
+ON CONFLICT (code) DO NOTHING;
+-- Old size-based plans are retired: no new sales. Schools still on them keep
+-- working (plan_state 'legacy') until the Super Admin moves them to Core/AI.
+UPDATE plans SET active = FALSE WHERE code IN ('starter', 'growth', 'district') AND active;
+
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS plan_state VARCHAR(12) NOT NULL DEFAULT 'legacy'; -- none | demo | paid | expired | legacy
+ALTER TABLE schools ALTER COLUMN plan_state SET DEFAULT 'none';  -- existing rows got 'legacy' above, new schools start 'none'
+ALTER TABLE schools ALTER COLUMN plan SET DEFAULT 'core';
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS demo_started_at TIMESTAMPTZ;
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS demo_ends_at TIMESTAMPTZ;
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS paid_until DATE;
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS licensed_students INT;
+
+-- Every plan action on a school: demo, payment, upgrade, downgrade, expiry.
+CREATE TABLE IF NOT EXISTS school_plan_events (
+    id SERIAL PRIMARY KEY,
+    school_id INT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    action VARCHAR(30) NOT NULL,      -- demo_started | demo_extended | payment_recorded | upgraded | downgrade_scheduled | downgrade_cancelled | downgrade_applied | expired | plan_set
+    from_plan VARCHAR(20),
+    to_plan VARCHAR(20),
+    students INT,
+    amount_paise BIGINT,              -- before GST
+    gst_paise BIGINT,
+    period_start DATE,
+    period_end DATE,
+    method VARCHAR(20),               -- bank | upi | cheque | cash | razorpay_link | comp
+    reference VARCHAR(120),
+    note TEXT,
+    actor_id INT,                     -- super_admins.id (NULL = system sweep)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_school_plan_events_school ON school_plan_events(school_id, created_at DESC);

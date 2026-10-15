@@ -2,6 +2,7 @@ import axios from 'axios';
 import pool from '../config/db.js';
 import { sendTextMessage } from './whatsappService.js';
 import { recordRun, raiseException, audit } from './opsService.js';
+import { schoolHasAi } from './schoolPlans.js';
 
 // ------------------------------------------------------------------
 // Admission enquiry assistant (WhatsApp).
@@ -491,7 +492,10 @@ export async function handleEnquiryMessage({ schoolId, phone, text, waMessageId,
     if (created) replies.push(c.greet(ctx.name));
 
     // Understand the message.
-    const ai = q && q !== 'choose_option' ? null : await aiUnderstand({ text, enquiry, awaiting: state.awaiting, kb: ctx.kb, lang });
+    // Core plan: rule-based understanding only (AI plan adds Claude).
+    const ai = (q && q !== 'choose_option') || !(await schoolHasAi(schoolId))
+      ? null
+      : await aiUnderstand({ text, enquiry, awaiting: state.awaiting, kb: ctx.kb, lang });
     const intent = ai?.intent || q || 'provide_info';
     // A question or request ("fee kitni hai?") is not the answer to the
     // pending question — don't let it become the child's name.

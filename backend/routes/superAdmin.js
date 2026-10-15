@@ -71,6 +71,19 @@ router.post('/schools', requireAuth, requireSuperAdmin, async (req, res) => {
     );
     const schoolId = schoolRes.rows[0].id;
 
+    // Optional: start a free demo of the Waynur AI plan straight away.
+    const demoDays = Number(req.body.demo_days);
+    if (Number.isInteger(demoDays) && demoDays >= 1 && demoDays <= 90) {
+      await client.query(
+        `UPDATE schools SET plan = 'ai', plan_state = 'demo', demo_started_at = NOW(), demo_ends_at = NOW() + make_interval(days => $2) WHERE id = $1`,
+        [schoolId, demoDays]
+      );
+      await client.query(
+        `INSERT INTO school_plan_events (school_id, action, to_plan, note, actor_id) VALUES ($1, 'demo_started', 'ai', $2, $3)`,
+        [schoolId, `${demoDays}-day demo (set when school was added)`, req.user.super_admin_id || null]
+      );
+    }
+
     const passwordHash = await bcrypt.hash(principal_password, 10);
 
     // teachers.phone is NOT NULL — must be supplied, unlike the original draft.

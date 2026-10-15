@@ -6,6 +6,8 @@ import { getPlans, getUsage, quoteChange, startCheckout, cancelAtPeriodEnd, proc
 import { withGst, isReadOnly } from '../services/billingMath.js';
 import { verifyCheckoutSignature } from '../utils/razorpay.js';
 import { audit } from '../services/opsService.js';
+import { getNewPlans, describeSchoolPlan, planForClient } from '../services/schoolPlans.js';
+import { isPlanReadOnly } from '../services/planMath.js';
 import {
   keyMode, validatePlanPatch, razorpayPlanProblems, listPlansForAdmin, fetchRazorpayPlan, createRazorpayPlan,
   logPlanChange, listPlanAudit,
@@ -24,13 +26,22 @@ router.get('/', requireAuth, requireFinance, async (req, res) => {
   const schoolId = req.user.school_id;
   try {
     const s = (await pool.query(
-      `SELECT plan, plan_renews_at, billing_status, billing_grace_until, current_period_end, pending_plan_code,
-              current_subscription_id, billing_gstin, billing_legal_name, billing_address, billing_state_code
+      `SELECT id, name, status, plan, plan_renews_at, billing_status, billing_grace_until, current_period_end, pending_plan_code,
+              current_subscription_id, billing_gstin, billing_legal_name, billing_address, billing_state_code,
+              plan_state, demo_started_at, demo_ends_at, to_char(paid_until, 'YYYY-MM-DD') AS paid_until, licensed_students
        FROM schools WHERE id = $1`, [schoolId])).rows[0];
     if (!s) return res.status(404).json({ error: 'School not found' });
     const plans = await getPlans();
-    const plan = plans[s.plan] || plans.starter;
+    // Retired plans (starter/growth/district) are inactive, so getPlans()
+    // no longer lists them — read the school's own plan row directly.
+    let plan = plans[s.plan];
+    if (!plan) {
+      const r = (await pool.query('SELECT * FROM plans WHERE code = $1', [s.plan])).rows[0];
+      plan = r ? { ...r, price_paise: Number(r.price_paise) } : { code: s.plan, name: s.plan, price_paise: 0, student_limit: 999999, rank: 0 };
+    }
     const usage = await getUsage(schoolId);
+    const newPlans = await getNewPlans();
+    const waynurPlan = describeSchoolPlan({ ...s, student_count: usage.students }, newPlans);
     const sub = s.current_subscription_id
       ? (await pool.query(`SELECT billing_cycle, status, cancel_at_period_end, current_period_end FROM subscriptions WHERE id = $1`, [s.current_subscription_id])).rows[0]
       : null;
@@ -48,7 +59,9 @@ router.get('/', requireAuth, requireFinance, async (req, res) => {
       price: plan.price_paise / 100,
       price_with_gst: withGst(plan.price_paise) / 100,
       billing_status: s.billing_status,
-      read_only: isReadOnly(s),
+      read_only: isReadOnly(s) || isPlanReadOnly(s),
+      // Core (₹400) / AI (₹650) per-student plans — billed manually by Waynur.
+      waynur_plan: { ...waynurPlan, catalog: Object.values(newPlans).map(planForClient) },
       grace_until: s.billing_grace_until,
       renews_at: s.current_period_end || s.plan_renews_at,
       pending_plan: s.pending_plan_code,
@@ -60,7 +73,7 @@ router.get('/', requireAuth, requireFinance, async (req, res) => {
         students: { used: usage.students, limit: plan.student_limit },
         staff: { used: usage.staff, limit: null },
       },
-      all_plans: Object.fromEntries(Object.values(plans).map((p) => [p.code, {
+      all_plans: Object.fromEntries(Object.values(plans).filter((p) => p.billing_mode !== 'manual').map((p) => [p.code, {
         name: p.name, price: p.price_paise / 100, yearly_price: p.yearly_price_paise ? p.yearly_price_paise / 100 : null,
         student_limit: p.student_limit, rank: p.rank,
         monthly_online: !!p.razorpay_plan_id, yearly_online: !!p.yearly_price_paise,

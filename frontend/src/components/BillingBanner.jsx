@@ -14,7 +14,20 @@ export default function BillingBanner() {
 
   let tone = 'amber';
   let text = null;
-  if (b.read_only) {
+  const wp = b.waynur_plan;
+  if (wp && wp.state !== 'legacy') {
+    if (wp.state === 'demo_expired' || wp.state === 'expired') {
+      tone = 'red';
+      text = 'Your Waynur demo or plan period has ended, so the account is read-only (all data is safe). Contact Waynur to continue.';
+    } else if (wp.state === 'grace') {
+      tone = 'red';
+      text = 'Your Waynur plan has ended. Please renew with the Waynur team — the account turns read-only after the grace period.';
+    } else if (wp.state === 'demo' && wp.demo_days_left <= 3) {
+      text = `Your Waynur demo ends in ${wp.demo_days_left} day${wp.demo_days_left === 1 ? '' : 's'}. Contact Waynur to continue without interruption.`;
+    } else if (wp.state === 'paid' && wp.paid_days_left != null && wp.paid_days_left <= 15) {
+      text = `Your Waynur plan renews in ${wp.paid_days_left} day${wp.paid_days_left === 1 ? '' : 's'}. Contact Waynur to renew.`;
+    }
+  } else if (b.read_only) {
     tone = 'red';
     text = 'Your Waynur subscription is inactive, so the account is read-only. Data is safe and viewable; renew to resume editing.';
   } else if (b.billing_status === 'halted') {

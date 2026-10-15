@@ -1,6 +1,7 @@
 import { Worker } from 'bullmq';
 import { connection } from '../config/queue.js';
 import { processBillingEvent, sweepBilling } from '../services/billingService.js';
+import { sweepPlans } from '../services/schoolPlans.js';
 
 const worker = new Worker(
   'BillingQueue',
@@ -19,6 +20,8 @@ export function startBillingSweeper() {
     if (sweeping) return;
     sweeping = true;
     try { await sweepBilling(); } catch (err) { console.error('[billing] sweep failed:', err.message); }
+    // Core/AI plans: expire ended demos/paid periods, apply booked downgrades.
+    try { await sweepPlans(); } catch (err) { console.error('[plans] sweep failed:', err.message); }
     finally { sweeping = false; }
   };
   setTimeout(tick, 30 * 1000).unref?.();
