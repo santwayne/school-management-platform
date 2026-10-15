@@ -3028,3 +3028,23 @@ INSERT INTO automation_registry (automation_key, display_name, category, expecte
   ('progress_notes_draft',   'Parent progress notes: weekly drafts (AI)', 'ai', 10080, false, 'AiAutomationQueue', 'draftProgressNotes', NULL),
   ('progress_notes_send',    'Parent progress notes: send approved',   'communication', 30, false, 'AiAutomationQueue', 'sendProgressNotes', 180)
 ON CONFLICT (automation_key) DO NOTHING;
+
+-- ---------- AI usage metering (AI Tutor cost reduction PR) ----------
+-- One row per metered AI call. Used for the Super Admin AI cost report and
+-- for the per-student monthly AI Tutor quota (TUTOR_MONTHLY_TOKEN_CAP).
+CREATE TABLE IF NOT EXISTS ai_usage_log (
+    id BIGSERIAL PRIMARY KEY,
+    school_id INT REFERENCES schools(id) ON DELETE CASCADE,
+    student_id INT REFERENCES students(id) ON DELETE SET NULL,
+    feature VARCHAR(40) NOT NULL,              -- 'tutor', 'doubt_hint', ...
+    model VARCHAR(60) NOT NULL,
+    input_tokens INT NOT NULL DEFAULT 0,
+    output_tokens INT NOT NULL DEFAULT 0,
+    cache_write_tokens INT NOT NULL DEFAULT 0,
+    cache_read_tokens INT NOT NULL DEFAULT 0,
+    cost_inr NUMERIC(12,4) NOT NULL DEFAULT 0,
+    ref_id INT,                                -- e.g. tutor_sessions.id
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_student_month ON ai_usage_log(student_id, feature, created_at);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_school_month ON ai_usage_log(school_id, created_at);
