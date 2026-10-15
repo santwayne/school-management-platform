@@ -3,7 +3,7 @@ import pool from '../config/db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { audit, registerAction } from '../services/opsService.js';
 import { runEarlyWarningForSchool, notifyClassTeachers, teachersNotifiedAt } from '../services/earlyWarning.js';
-import { buildPlanForSchool, getPlan } from '../services/dailyPlan.js';
+import { buildPlanForSchool, getPlan, sendPlanWhatsApp } from '../services/dailyPlan.js';
 import { NotesError, listNotes, editNote, decideNotes, listConsent, setConsent, draftNotesForSchool, notesSettings, approvalScope } from '../services/progressNotes.js';
 import { teacherSignals, istToday } from '../utils/aiAutomation.js';
 
@@ -122,8 +122,8 @@ router.get('/plan', operatorOnly, wrap(async (req, res) => {
   res.json({ date, plan: await getPlan(req.user.school_id, date) });
 }));
 
-// Builds today's plan on demand (no WhatsApp — that only goes out with the
-// 7:30 AM run). force=true rebuilds it from the latest data.
+// Builds today's plan on demand (no WhatsApp — that goes out with the
+// 7:30 AM run, or via POST /plan/send). force=true rebuilds it from the latest data.
 router.post('/plan/generate', operatorOnly, wrap(async (req, res) => {
   // Only manual rebuilds are rate-limited, so a refresh right after the
   // morning run (e.g. after approving something) still works.
@@ -133,6 +133,18 @@ router.post('/plan/generate', operatorOnly, wrap(async (req, res) => {
   }
   const out = await buildPlanForSchool(req.user.school_id, { force: Boolean(req.body?.force), send: false });
   res.json(out);
+}));
+
+// Sends today's plan to the principal/operator WhatsApp numbers now — to
+// confirm delivery without waiting for 7:30 AM. Builds the plan first if
+// there is none yet. The per-number result is shown on the plan card.
+router.post('/plan/send', operatorOnly, wrap(async (req, res) => {
+  await cooldown(req.user.school_id, 'ai.daily_plan_sent_manually', 5);
+  const date = istToday();
+  if (!(await getPlan(req.user.school_id, date))) await buildPlanForSchool(req.user.school_id, { send: false });
+  await audit({ schoolId: req.user.school_id, actorType: 'user', actorId: req.user.teacher_id, action: 'ai.daily_plan_sent_manually' });
+  const out = await sendPlanWhatsApp(req.user.school_id, date);
+  res.json({ ...out, plan: await getPlan(req.user.school_id, date) });
 }));
 
 router.post('/plan/items/:key/feedback', operatorOnly, wrap(async (req, res) => {

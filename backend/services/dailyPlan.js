@@ -182,30 +182,60 @@ export async function buildPlanForSchool(schoolId, { today = istToday(), force =
   );
 
   let whatsappSent = 0;
-  if (send && stored.length && !existing) {
-    const staff = await pool.query(`SELECT id FROM teachers WHERE school_id = $1 AND role IN ('principal','operator')`, [schoolId]);
-    const body = stored.map((i, n) => `${n + 1}. ${i.title}`).join('\n');
-    for (const t of staff.rows) {
-      await pool.query(
-        `INSERT INTO dashboard_notifications (school_id, trigger_event, recipient_type, recipient_id, channel_used, title, body, link)
-         VALUES ($1, 'principal_daily_plan', 'staff', $2, 'dashboard', 'Today''s plan', $3, '/ops')`,
-        [schoolId, t.id, body]
-      );
-    }
-    const s = await pool.query('SELECT principal_digest_phone, operator_digest_phone FROM school_settings WHERE school_id = $1', [schoolId]);
-    const phones = [...new Set([s.rows[0]?.principal_digest_phone, s.rows[0]?.operator_digest_phone].filter(Boolean))];
-    for (const phone of phones) {
-      try {
-        await sendTemplateMessage(schoolId, phone, TEMPLATE, 'en', [toTemplateParam(schoolName, 100), planWhatsAppLine(stored)]);
-        whatsappSent += 1;
-      } catch (err) {
-        console.error(`[daily plan] WhatsApp send failed for school ${schoolId}:`, err.response?.data?.error?.message || err.message);
+  if (send && !existing) {
+    if (stored.length) {
+      const staff = await pool.query(`SELECT id FROM teachers WHERE school_id = $1 AND role IN ('principal','operator')`, [schoolId]);
+      const body = stored.map((i, n) => `${n + 1}. ${i.title}`).join('\n');
+      for (const t of staff.rows) {
+        await pool.query(
+          `INSERT INTO dashboard_notifications (school_id, trigger_event, recipient_type, recipient_id, channel_used, title, body, link)
+           VALUES ($1, 'principal_daily_plan', 'staff', $2, 'dashboard', 'Today''s plan', $3, '/ops')`,
+          [schoolId, t.id, body]
+        );
       }
     }
-    await pool.query('UPDATE principal_daily_plans SET whatsapp_sent = $3 WHERE school_id = $1 AND plan_date = $2', [schoolId, today, whatsappSent]);
+    whatsappSent = (await sendPlanWhatsApp(schoolId, today, { schoolName, items: stored })).sent;
   }
   await audit({ schoolId, action: 'ai.daily_plan', detail: { date: today, candidates: candidates.length, items: stored.length, by, whatsapp_sent: whatsappSent, rebuilt: Boolean(existing) } });
   return { plan: await getPlan(schoolId, today), created: !existing, whatsapp_sent: whatsappSent };
+}
+
+const maskPhone = (p) => (p ? `••••${String(p).slice(-4)}` : '');
+
+// Sends the plan to the principal / operator numbers from Control Center →
+// Daily report and records, per number, whether Meta accepted it (and why
+// not), so "did it go out?" is answered on the plan card itself. Returns
+// { sent, results }. A quiet day still sends a short "nothing urgent" line so
+// the principal knows the plan ran.
+export async function sendPlanWhatsApp(schoolId, date, { schoolName, items } = {}) {
+  if (!schoolName) {
+    const school = await pool.query('SELECT name FROM schools WHERE id = $1', [schoolId]);
+    schoolName = school.rows[0]?.name || 'the school';
+  }
+  if (!items) items = (await getPlan(schoolId, date))?.items || [];
+  const s = await pool.query('SELECT principal_digest_phone, operator_digest_phone FROM school_settings WHERE school_id = $1', [schoolId]);
+  const phones = [...new Set([s.rows[0]?.principal_digest_phone, s.rows[0]?.operator_digest_phone].filter(Boolean))];
+  const line = items.length ? planWhatsAppLine(items) : 'Nothing urgent today - all clear';
+  const results = [];
+  if (!phones.length) {
+    results.push({ ok: false, error: 'No principal/operator WhatsApp number set in Control Center → Daily report.' });
+  }
+  for (const phone of phones) {
+    try {
+      await sendTemplateMessage(schoolId, phone, TEMPLATE, 'en', [toTemplateParam(schoolName, 100), line]);
+      results.push({ phone: maskPhone(phone), ok: true });
+    } catch (err) {
+      const reason = err.response?.data?.error?.message || err.message;
+      console.error(`[daily plan] WhatsApp send failed for school ${schoolId}:`, reason);
+      results.push({ phone: maskPhone(phone), ok: false, error: String(reason).slice(0, 300) });
+    }
+  }
+  const sent = results.filter((r) => r.ok).length;
+  await pool.query(
+    'UPDATE principal_daily_plans SET whatsapp_sent = $3, whatsapp_result = $4, whatsapp_sent_at = CURRENT_TIMESTAMP WHERE school_id = $1 AND plan_date = $2',
+    [schoolId, date, sent, JSON.stringify(results)]
+  );
+  return { sent, results };
 }
 
 export async function runDailyPlans() {

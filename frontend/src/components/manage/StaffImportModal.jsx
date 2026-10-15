@@ -20,14 +20,26 @@ function downloadTemplate() {
   XLSX.writeFile(wb, 'staff-import-template.xlsx');
 }
 
-// Accepts the common header spellings (Name, Email, Mobile, Role, Password…).
-const pick = (r, ...keys) => {
-  for (const k of keys) {
-    const hit = Object.keys(r).find((h) => h.trim().toLowerCase() === k);
-    if (hit !== undefined && String(r[hit]).trim() !== '') return String(r[hit]).trim();
+// Accepts the header spellings real school files use ("Name*", "Mobile No.",
+// "Email Address", "Designation"…): headers are compared with case, spaces and
+// punctuation stripped.
+const headerKey = (h) => String(h).replace(/^\ufeff/, '').toLowerCase().replace(/[^a-z]/g, '');
+const HEADER_ALIASES = {
+  name: ['name', 'staffname', 'fullname', 'teachername', 'employeename', 'nameofstaff', 'nameoftheemployee', 'nameofemployee'],
+  email: ['email', 'emailid', 'emailaddress', 'mail', 'mailid', 'gmail'],
+  phone: ['phone', 'mobile', 'phonenumber', 'mobilenumber', 'phoneno', 'mobileno', 'contact', 'contactno', 'contactnumber', 'whatsapp', 'whatsappnumber', 'whatsappno', 'cell', 'cellno'],
+  role: ['role', 'designation', 'position', 'post', 'staffrole', 'stafftype'],
+  password: ['password', 'pass', 'pwd'],
+};
+const pick = (r, field) => {
+  const wanted = HEADER_ALIASES[field];
+  for (const h of Object.keys(r)) {
+    if (wanted.includes(headerKey(h)) && String(r[h]).trim() !== '') return String(r[h]).trim();
   }
   return '';
 };
+// Header row present at all? (Used to explain an empty parse.)
+const hasHeader = (r, field) => Object.keys(r).some((h) => HEADER_ALIASES[field].includes(headerKey(h)));
 
 function parseFile(file) {
   return new Promise((resolve, reject) => {
@@ -35,16 +47,26 @@ function parseFile(file) {
     reader.onerror = () => reject(new Error('Could not read the file'));
     reader.onload = (evt) => {
       try {
-        const wb = XLSX.read(evt.target.result, { type: 'array' });
+        // CSV is read as plain text (raw) so a phone Excel saved as
+        // "9.19877E+11" reaches the server as written and is flagged, instead
+        // of being turned into a wrong number.
+        const isCsv = /\.csv$/i.test(file.name);
+        const wb = XLSX.read(evt.target.result, { type: 'array', raw: isCsv });
         const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+        if (json.length) {
+          const missing = ['name', 'email', 'phone'].filter((f) => !hasHeader(json[0], f));
+          if (missing.length) {
+            throw new Error(`The first row must be headers. Missing column(s): ${missing.join(', ')}. Found: ${Object.keys(json[0]).join(', ') || 'nothing'}. Download the template to see the format.`);
+          }
+        }
         resolve(
           json
             .map((r, i) => ({
               row_number: i + 2, // header is row 1
-              name: pick(r, 'name', 'staff name', 'full name'),
-              email: pick(r, 'email', 'email id', 'e-mail'),
-              phone: pick(r, 'phone', 'mobile', 'phone number', 'mobile number'),
-              role: pick(r, 'role', 'designation', 'position'),
+              name: pick(r, 'name'),
+              email: pick(r, 'email'),
+              phone: pick(r, 'phone'),
+              role: pick(r, 'role'),
               password: pick(r, 'password'),
             }))
             .filter((r) => r.name || r.email || r.phone)
@@ -55,6 +77,17 @@ function parseFile(file) {
     };
     reader.readAsArrayBuffer(file);
   });
+}
+
+function downloadErrors(results) {
+  const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = ['row,name,email,problem', ...results.filter((r) => r.status === 'error').map((r) => [r.row_number, r.name, r.email, r.error].map(q).join(','))];
+  const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'staff-import-problems.csv';
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function downloadCredentials(created) {
@@ -150,7 +183,15 @@ export default function StaffImportModal({ onClose, onDone }) {
         {preview && !result && (
           <p className="text-sm text-ink">
             <strong>{preview.summary.valid}</strong> ready to import{preview.summary.failed > 0 && <>, <strong className="text-destructive">{preview.summary.failed}</strong> with problems (these will be skipped)</>}.
+            {preview.summary.failed > 0 && (
+              <button onClick={() => downloadErrors(preview.results)} className="ml-2 underline text-xs text-ink-soft hover:text-ink">Download problem list</button>
+            )}
           </p>
+        )}
+        {preview && !result && preview.summary.valid === 0 && preview.summary.failed > 0 && (
+          <div className="rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm px-3 py-2">
+            No row can be imported yet. Fix the problem shown next to each row in your file, then choose the file again.
+          </div>
         )}
         {result && (
           <div className="space-y-2">

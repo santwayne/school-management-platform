@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { GraduationCap, Plus, X, Upload, CheckCircle2, AlertTriangle, ClipboardCheck, PencilLine, Trash2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { GraduationCap, Plus, X, Upload, CheckCircle2, AlertTriangle, ClipboardCheck, PencilLine, Trash2, Loader2, RotateCcw } from 'lucide-react';
 import { apiRequest } from '../api';
 
 const CONFIDENCE_STYLE = {
@@ -366,6 +366,28 @@ export default function AIGrading() {
     apiRequest('/api/academics/classes').then(setClasses).catch(() => {});
   }, []);
 
+  // Tests are generated in the background; refresh the list every few
+  // seconds while any test is still generating.
+  const generating = (tests || []).some((t) => t.status === 'generating');
+  const pollRef = useRef(null);
+  useEffect(() => {
+    if (!generating) return undefined;
+    pollRef.current = setInterval(() => {
+      apiRequest('/api/grading/tests').then(setTests).catch(() => {});
+    }, 5000);
+    return () => clearInterval(pollRef.current);
+  }, [generating]);
+
+  const retry = async (test) => {
+    setError('');
+    try {
+      await apiRequest(`/api/premium-ai/test/${test.id}/retry`, { method: 'POST' });
+      await loadTests();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const openForGrading = async (test) => {
     try {
       const full = await apiRequest(`/api/grading/tests/${test.id}`);
@@ -411,8 +433,19 @@ export default function AIGrading() {
               <div key={t.id} className="p-4 flex items-center justify-between gap-3">
                 <div>
                   <div className="font-medium text-ink">{t.title}</div>
-                  <div className="text-xs text-ink-soft">{t.subject_id} · {t.chapter_id} · {t.difficulty} · {t.question_count} question{t.question_count === 1 ? '' : 's'}</div>
+                  <div className="text-xs text-ink-soft">{t.subject_id} · {t.chapter_id} · {t.difficulty}{t.status === 'ready' || !t.status ? ` · ${t.question_count} question${t.question_count === 1 ? '' : 's'}` : ''}</div>
+                  {t.status === 'generating' && (
+                    <div className="mt-1 inline-flex items-center gap-1 text-xs text-amber-700"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating questions… this can take a minute or two.</div>
+                  )}
+                  {t.status === 'failed' && (
+                    <div className="mt-1 inline-flex items-center gap-1 text-xs text-destructive"><AlertTriangle className="w-3.5 h-3.5" /> Could not generate: {t.error || 'unknown error'}</div>
+                  )}
                 </div>
+                {t.status === 'failed' ? (
+                  <button onClick={() => retry(t)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-cream-deep text-ink text-sm font-medium hover:bg-cream-deep/40 shrink-0">
+                    <RotateCcw className="w-4 h-4" /> Retry
+                  </button>
+                ) : t.status === 'generating' ? null : (
                 <div className="flex gap-2 shrink-0">
                   <button onClick={() => openRubric(t)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-cream-deep text-ink text-sm font-medium hover:bg-cream-deep/40">
                     <PencilLine className="w-4 h-4" /> Answer key
@@ -421,6 +454,7 @@ export default function AIGrading() {
                     Grade answers
                   </button>
                 </div>
+                )}
               </div>
             ))}
           </div>

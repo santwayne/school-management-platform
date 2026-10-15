@@ -59,6 +59,19 @@ export function computePay({ base, workingDays, lopDays = 0, components = [], pf
   return { base: r2(baseAmt), earnings, deductions, gross, deductions_total: totalDeductions, net: Math.max(0, net), negative: net < 0, working_days: workingDays, lop_days: lopDays };
 }
 
+// Salary components that apply to one staff member: their own, plus
+// school-wide ones (no role) and ones scoped to their role.
+export function componentsFor(staff, comps) {
+  return comps.filter((c) => c.teacher_id === staff.id || (c.teacher_id == null && (c.role == null || c.role === staff.role)));
+}
+
+// Effective monthly base: a personal salary always wins over the role's.
+export function effectiveMonthly(ownAmount, roleAmount) {
+  if (ownAmount != null) return Number(ownAmount);
+  if (roleAmount != null) return Number(roleAmount);
+  return null;
+}
+
 export function periodLabel(period) {
   const [y, m] = period.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -140,7 +153,7 @@ export async function preparePayroll(schoolId, period) {
         anomalies.push({ type: 'no_salary', teacher_id: s.id, text: `${s.name}: no salary set, not included.` });
         continue;
       }
-      const components = comps.rows.filter((c) => c.teacher_id === s.id || (c.teacher_id == null && (c.role == null || c.role === s.role)));
+      const components = componentsFor(s, comps.rows);
       const lopDays = attendanceTracked ? lopMap.get(s.id) || 0 : 0;
       const pay = computePay({ base: s.monthly_amount, workingDays, lopDays, components, pfEnabled, esiEnabled });
       if (pay.negative) anomalies.push({ type: 'negative', teacher_id: s.id, text: `${s.name}: deductions exceed pay; net set to ₹0.` });

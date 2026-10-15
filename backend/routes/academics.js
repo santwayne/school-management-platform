@@ -5,7 +5,7 @@ import { requireAuth, requirePrincipal, requireLibrary } from '../middleware/aut
 import { normalizePhone } from '../utils/phone.js';
 import { audit } from '../services/opsService.js';
 import { assertCapacity } from '../services/billingService.js';
-import { MAX_STAFF_IMPORT_ROWS, generateTempPassword, validateStaffRows } from '../utils/staffImport.js';
+import { MAX_STAFF_IMPORT_ROWS, generateTempPassword, validateStaffRows, cleanStaffEmail } from '../utils/staffImport.js';
 import { send as sendNotification } from '../services/notificationService.js';
 
 const router = express.Router();
@@ -607,7 +607,7 @@ router.post('/teachers/bulk', requireAuth, requirePrincipal, async (req, res) =>
   if (rows.length > MAX_STAFF_IMPORT_ROWS) return res.status(400).json({ error: `Import at most ${MAX_STAFF_IMPORT_ROWS} staff at a time.` });
 
   try {
-    const emails = rows.map((r) => String(r?.email ?? '').trim().toLowerCase()).filter(Boolean);
+    const emails = rows.map((r) => cleanStaffEmail(r?.email)).filter(Boolean);
     const existing = await pool.query('SELECT LOWER(email) AS email FROM teachers WHERE LOWER(email) = ANY($1::text[])', [emails]);
     const checked = validateStaffRows(rows.map((r, i) => ({ ...r, row_number: r?.row_number ?? i + 2 })), new Set(existing.rows.map((e) => e.email)));
 

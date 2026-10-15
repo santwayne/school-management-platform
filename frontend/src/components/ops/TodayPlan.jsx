@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { RefreshCw, Check, ThumbsDown, ArrowRight, Sun } from 'lucide-react';
+import { RefreshCw, Check, ThumbsDown, ArrowRight, Sun, Send } from 'lucide-react';
 import { apiRequest } from '../../api';
 
 // B1 — "what I would do today", top of the Control Center. Each item says
@@ -31,6 +31,7 @@ export default function TodayPlan() {
   };
   const generate = (force) => act(() => apiRequest('/api/ai-automation/plan/generate', { method: 'POST', body: { force } }));
   const decide = (id, approve) => act(() => apiRequest(`/api/assistant/actions/${id}/${approve ? 'approve' : 'reject'}`, { method: 'POST' }));
+  const sendNow = () => act(() => apiRequest('/api/ai-automation/plan/send', { method: 'POST' }));
   const feedback = (key, value) => act(() => apiRequest(`/api/ai-automation/plan/items/${encodeURIComponent(key)}/feedback`, { method: 'POST', body: { feedback: value } }));
 
   if (!data) return null;
@@ -48,6 +49,7 @@ export default function TodayPlan() {
         )}
       </div>
       {error && <div className="mx-5 mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
+      {plan && <WhatsAppStatus plan={plan} busy={busy} onSend={sendNow} />}
 
       {!plan ? (
         <div className="px-5 pb-4 text-sm text-ink-soft">
@@ -99,5 +101,29 @@ export default function TodayPlan() {
         </>
       )}
     </section>
+  );
+}
+
+// Whether this morning's plan reached WhatsApp, per number, with Meta's reason
+// when it did not — plus a button to send it now to confirm delivery.
+function WhatsAppStatus({ plan, busy, onSend }) {
+  const results = Array.isArray(plan.whatsapp_result) ? plan.whatsapp_result : null;
+  const at = plan.whatsapp_sent_at ? new Date(plan.whatsapp_sent_at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : null;
+  return (
+    <div className="mx-5 mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+      <span className="text-ink-soft">WhatsApp:</span>
+      {!results ? (
+        <span className="text-ink-soft">not sent yet</span>
+      ) : (
+        results.map((r, i) => (
+          <span key={i} className={r.ok ? 'text-emerald-700' : 'text-destructive'}>
+            {r.phone ? `${r.phone} ` : ''}{r.ok ? `sent${at ? ` at ${at}` : ''}` : `failed: ${r.error}`}
+          </span>
+        ))
+      )}
+      <button disabled={busy} onClick={onSend} className="ml-auto inline-flex items-center gap-1 text-terracotta-deep hover:underline disabled:opacity-50" title="Send today's plan to the Daily report numbers now">
+        <Send className="w-3.5 h-3.5" /> Send to WhatsApp now
+      </button>
+    </div>
   );
 }

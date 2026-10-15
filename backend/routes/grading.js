@@ -22,7 +22,11 @@ router.get('/tests', requireAuth, async (req, res) => {
     }
     const { rows } = await pool.query(
       `SELECT id, title, subject_id, chapter_id, difficulty, class_id, created_at,
-         jsonb_array_length(questions) AS question_count
+         jsonb_array_length(questions) AS question_count,
+         -- A test left 'generating' for 10+ minutes was interrupted (e.g. a
+         -- server restart) — show it as failed so it can be retried.
+         CASE WHEN status = 'generating' AND created_at < NOW() - INTERVAL '10 minutes' THEN 'failed' ELSE COALESCE(status, 'ready') END AS status,
+         CASE WHEN status = 'generating' AND created_at < NOW() - INTERVAL '10 minutes' THEN 'Generation was interrupted. Please retry.' ELSE error END AS error
        FROM generated_tests WHERE ${where} ORDER BY created_at DESC`,
       params
     );
