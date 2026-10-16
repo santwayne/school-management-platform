@@ -3090,3 +3090,18 @@ CREATE TABLE IF NOT EXISTS school_plan_events (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_school_plan_events_school ON school_plan_events(school_id, created_at DESC);
+
+-- ---------- Daily plan: per-number WhatsApp delivery result (QA Oct 16) ----------
+ALTER TABLE principal_daily_plans ADD COLUMN IF NOT EXISTS whatsapp_result JSONB;
+ALTER TABLE principal_daily_plans ADD COLUMN IF NOT EXISTS whatsapp_sent_at TIMESTAMP;
+-- The daily plan runs Mon–Sat, so Saturday → Monday is 48h. With a 1440-minute
+-- interval it showed as stale/overdue every Sunday and Monday morning.
+UPDATE automation_registry SET expected_interval_minutes = 2160 WHERE automation_key = 'principal_daily_plan' AND expected_interval_minutes = 1440;
+-- ---------- AI grading: tests are generated in the background (QA Oct 16) ----------
+-- Free-text subject / chapter longer than 50 characters made the insert fail
+-- after the AI call; widened. status: generating | ready | failed.
+ALTER TABLE generated_tests ALTER COLUMN subject_id TYPE VARCHAR(255);
+ALTER TABLE generated_tests ALTER COLUMN chapter_id TYPE VARCHAR(255);
+ALTER TABLE generated_tests ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'ready';
+ALTER TABLE generated_tests ADD COLUMN IF NOT EXISTS error TEXT;
+ALTER TABLE generated_tests ADD COLUMN IF NOT EXISTS requested_questions INT;

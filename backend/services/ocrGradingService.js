@@ -134,7 +134,7 @@ export async function generateTestWithRubric({ subject, chapter, difficulty, que
         content: `Generate ${questionCount} exam questions for subject "${subject}", chapter "${chapter}", difficulty "${difficulty}". Each needs a model correct_answer suitable for grading a student's handwritten response against.`,
       },
     ],
-  });
+ }, { timeout: 4 * 60 * 1000 });
 
   const textBlock = response.content.find((b) => b.type === 'text');
   const questions = parseModelJson(textBlock?.text, '[', ']');

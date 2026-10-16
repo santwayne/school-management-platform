@@ -24,7 +24,7 @@ export async function handleTeacherMessage({ schoolId, fromCandidates, fromPhone
       WHERE school_id = $1 AND whatsapp_number = ANY($2::text[]) AND role IN ('teacher', 'principal', 'operator') LIMIT 1`,
     [schoolId, fromCandidates]
   );
-  if (!t.rowCount) return false;
+  if (!t.rowCount) return handleDigestApproval({ schoolId, fromCandidates, fromPhone, message });
   const teacher = t.rows[0];
   const user = { school_id: schoolId, role: teacher.role, teacher_id: teacher.id };
 
@@ -112,6 +112,36 @@ export async function handleTeacherMessage({ schoolId, fromCandidates, fromPhone
   return true;
 }
 
+// The morning plan goes to the numbers in Control Center → Daily report, which
+// need not be saved on a staff record. An APPROVE n / NO n reply from such a
+// number is accepted and recorded against that school's principal (operator
+// number → an operator account if one exists). Only approve/reject replies are
+// handled here; anything else falls through to the normal flow, so this does
+// not open Ask AI to the number.
+export const APPROVAL_REPLY_RE = /^\s*(approve|yes|reject|no)\s+#?(\d+)\s*$/i;
+
+async function handleDigestApproval({ schoolId, fromCandidates, fromPhone, message }) {
+  const text = message.type === 'text' ? message.text?.body : null;
+  if (!text || !APPROVAL_REPLY_RE.test(text)) return false;
+  const s = await pool.query(
+    `SELECT CASE WHEN principal_digest_phone = ANY($2::text[]) THEN 'principal'
+                 WHEN operator_digest_phone = ANY($2::text[]) THEN 'operator' END AS role
+       FROM school_settings WHERE school_id = $1`,
+    [schoolId, fromCandidates]
+  );
+  const role = s.rows[0]?.role;
+  if (!role) return false;
+  const acct = await pool.query(
+    `SELECT id, role FROM teachers WHERE school_id = $1 AND role IN ('principal', 'operator')
+      ORDER BY (role = $2) DESC, id LIMIT 1`,
+    [schoolId, role]
+  );
+  if (!acct.rowCount) return false;
+  const user = { school_id: schoolId, role: acct.rows[0].role, teacher_id: acct.rows[0].id };
+  await handleAssistantMessage({ schoolId, fromPhone, user, text: text.trim() });
+  return true;
+}
+
 // ---------- Principal / operator ↔ AI assistant on WhatsApp ----------
 
 // WhatsApp text: **bold** -> *bold*, split into <= 4000 character messages.
@@ -133,11 +163,11 @@ async function handleAssistantMessage({ schoolId, fromPhone, user, text }) {
     for (const part of toWhatsAppText(body)) await sendTextMessage(schoolId, fromPhone, part).catch((e) => console.error('[assistant whatsapp] send failed:', e.message));
   };
   try {
-    const decision = /^(approve|yes|reject|no)\s+#?(\d+)$/i.exec(text);
+    const decision = APPROVAL_REPLY_RE.exec(text);
     if (decision) {
       const approve = /^(approve|yes)$/i.test(decision[1]);
       const out = await decideAction({ user, actionId: Number(decision[2]), approve });
-      return send(approve ? `Done. ${out.result ? `Result: ${out.result}` : ''}`.trim() : 'Okay, cancelled.');
+      return send(approve ? `Approved #${decision[2]}. ${out.result ? `Result: ${out.result}` : 'Done.'}`.trim() : `Okay, #${decision[2]} cancelled.`);
     }
     // Continue today's WhatsApp conversation if there is a recent one.
     const recent = await pool.query(
