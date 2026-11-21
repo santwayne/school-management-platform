@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { LandingNav, LandingFooter } from './LandingLayout';
 import Seo from './Seo';
+import { FEATURE_PAGES } from '../data/featurePages';
+import { PRICING } from '../data/siteContent';
 
 const GROUPS = [
   {
@@ -61,7 +63,7 @@ export default function Features() {
         <div className="mx-auto max-w-7xl px-6 pt-16 pb-10">
           <p className="text-xs uppercase tracking-widest text-terracotta font-semibold">What Waynur does</p>
           <h1 className="mt-3 font-display text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tight text-ink">
-            School management software features
+            Everything your school runs, in one place and on WhatsApp
           </h1>
           <p className="mt-4 font-display text-2xl md:text-3xl font-medium tracking-tight text-terracotta">
             Everything a school needs. Nothing that gets in the way.
@@ -70,6 +72,18 @@ export default function Features() {
             Waynur is one WhatsApp-first platform for attendance, teaching, fees, transport and
             payroll, with an AI co-pilot built in wherever it saves time for teachers and school staff.
           </p>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-6 pb-16">
+        <h2 className="font-display text-2xl md:text-3xl font-semibold tracking-tight text-ink">Feature guides</h2>
+        <div className="mt-6 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {FEATURE_PAGES.map((p) => (
+            <Link key={p.slug} to={`/features/${p.slug}`} className="group rounded-3xl border border-cream-deep bg-white p-6 hover:shadow-lg hover:-translate-y-0.5 transition">
+              <h3 className="font-display text-lg font-semibold text-ink group-hover:text-terracotta">{p.navLabel}</h3>
+              <p className="mt-2 text-sm text-ink-soft leading-relaxed">{p.description}</p>
+            </Link>
+          ))}
         </div>
       </section>
 
@@ -107,6 +121,8 @@ export default function Features() {
           </div>
         </div>
       </section>
+
+      <p className="mx-auto max-w-7xl px-6 pb-10 text-xs text-ink-soft">Last updated: {PRICING.updated}</p>
 
       <LandingFooter />
     </div>

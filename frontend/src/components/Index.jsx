@@ -9,6 +9,7 @@ import parentImg from '../assets/parent.jpg';
 import schoolImg from '../assets/school-principal.jpg';
 import { LandingNav, LandingFooter } from './LandingLayout';
 import Seo from './Seo';
+import { HOME_INTRO, PRICING, PRICE_SENTENCE } from '../data/siteContent';
 
 function Hero() {
   return (
@@ -31,10 +32,7 @@ function Hero() {
             AI school management software, built on WhatsApp
           </h1>
           <p className="mt-6 max-w-xl text-lg text-ink-soft leading-relaxed">
-            Waynur is an AI-powered school management platform for Indian schools. Attendance,
-            marks, homework, fees, payroll and bus tracking run from one dashboard, and every
-            parent gets updates on WhatsApp, with no new app to install. Most schools go live in
-            under a week.
+            {HOME_INTRO}
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <a href="#pricing" className="inline-flex items-center gap-2 rounded-full bg-terracotta text-white px-6 py-3.5 text-sm font-medium shadow-md hover:bg-terracotta-deep transition">
@@ -206,12 +204,6 @@ function Security() {
   );
 }
 
-const PLANS = [
-  { name: 'Starter', tag: 'For single schools under 500 students', features: ['WhatsApp updates for every parent', 'Attendance, marks & homework', 'Accountant logins included', 'Email support'] },
-  { name: 'Growth', tag: 'For growing schools & small chains', features: ['Everything in Starter', 'Fees, payroll & bus tracking', 'AI tutor', 'Priority WhatsApp support'], highlight: true },
-  { name: 'District', tag: 'For groups, trusts & districts', features: ['Everything in Growth', 'Multi-school dashboards', 'Custom integrations', 'Dedicated support'] },
-];
-
 function Pricing() {
   return (
     <section id="pricing" className="bg-cream-deep/60 border-y border-cream-deep">
@@ -221,13 +213,16 @@ function Pricing() {
           <h2 className="mt-3 font-display text-4xl md:text-5xl font-semibold tracking-tight text-ink">
             Simple, per-student school software pricing
           </h2>
-          <p className="mt-4 text-ink-soft">Billed to the school. No parent ever pays.</p>
+          <p className="mt-4 text-ink-soft">{PRICE_SENTENCE}</p>
         </div>
-        <div className="mt-14 grid md:grid-cols-3 gap-5">
-          {PLANS.map((p) => (
-            <div key={p.name} className={`rounded-3xl p-8 border transition ${p.highlight ? 'bg-gradient-to-br from-terracotta to-terracotta-deep text-white border-transparent shadow-xl' : 'bg-white border-cream-deep'}`}>
+        <div className="mt-14 grid md:grid-cols-2 gap-5 max-w-5xl">
+          {PRICING.plans.map((p) => (
+            <div key={p.code} className={`rounded-3xl p-8 border transition ${p.highlight ? 'bg-gradient-to-br from-terracotta to-terracotta-deep text-white border-transparent shadow-xl' : 'bg-white border-cream-deep'}`}>
               <div className={`text-xs uppercase tracking-widest font-semibold ${p.highlight ? 'opacity-80' : 'text-ink-soft'}`}>{p.name}</div>
-              <h3 className="mt-3 font-display text-2xl font-semibold">{p.tag}</h3>
+              <h3 className="mt-3 font-display text-3xl font-semibold">
+                ₹{p.price} <span className="text-base font-medium opacity-80">per student / year</span>
+              </h3>
+              <p className={`mt-2 text-sm ${p.highlight ? 'opacity-90' : 'text-ink-soft'}`}>{p.bestFor}</p>
               <ul className={`mt-6 space-y-3 text-sm ${p.highlight ? 'opacity-95' : 'text-ink-soft'}`}>
                 {p.features.map((f) => (
                   <li key={f} className="flex gap-3">
@@ -240,10 +235,10 @@ function Pricing() {
           ))}
         </div>
         <div className="mt-10 flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-cream-deep bg-white px-8 py-6">
-          <p className="text-ink-soft">Every plan starts with a free walkthrough tailored to your school.</p>
-          <a href="#cta" className="inline-flex items-center gap-2 rounded-full bg-terracotta text-white px-5 py-2.5 text-sm font-medium hover:bg-terracotta-deep transition">
-            Talk to us for a quote <ArrowRight className="h-4 w-4" />
-          </a>
+          <p className="text-ink-soft">Every school starts with a free walkthrough. Prices are {PRICING.gstNote}.</p>
+          <Link to="/pricing" className="inline-flex items-center gap-2 rounded-full bg-terracotta text-white px-5 py-2.5 text-sm font-medium hover:bg-terracotta-deep transition">
+            See full pricing <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
       </div>
     </section>

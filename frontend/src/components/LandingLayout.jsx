@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Menu, X, Instagram } from 'lucide-react';
+import { Menu, X, Instagram, ChevronDown } from 'lucide-react';
+import { FEATURE_PAGES } from '../data/featurePages';
 import logoFull from '../assets/waynur-logo.png';
 
 const NAV_LINKS = [
@@ -22,11 +23,28 @@ export function LandingNav() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-8 text-sm text-ink-soft">
-          {NAV_LINKS.map((l) => (
+          {NAV_LINKS.map((l) => (l.label === 'Features' ? (
+            <div key={l.label} className="relative group">
+              <Link to={l.to} className="inline-flex items-center gap-1 hover:text-ink transition">
+                {l.label} <ChevronDown className="h-3.5 w-3.5" />
+              </Link>
+              {/* Plain links in the HTML so crawlers can reach every feature page. */}
+              <div className="invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 transition absolute left-0 top-full pt-3 z-40">
+                <ul className="w-64 rounded-2xl border border-cream-deep bg-white p-2 shadow-lg">
+                  {FEATURE_PAGES.map((f) => (
+                    <li key={f.slug}>
+                      <Link to={`/features/${f.slug}`} className="block rounded-xl px-3 py-2 hover:bg-cream-deep/50 hover:text-ink">{f.navLabel}</Link>
+                    </li>
+                  ))}
+                  <li><Link to="/features" className="block rounded-xl px-3 py-2 font-medium text-terracotta hover:bg-cream-deep/50">All features</Link></li>
+                </ul>
+              </div>
+            </div>
+          ) : (
             <Link key={l.label} to={l.to} className="hover:text-ink transition">
               {l.label}
             </Link>
-          ))}
+          )))}
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
@@ -111,7 +129,7 @@ function FooterCol({ title, links }) {
 export function LandingFooter() {
   return (
     <footer className="border-t border-cream-deep bg-cream-deep/40">
-      <div className="mx-auto max-w-7xl px-6 py-14 grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+      <div className="mx-auto max-w-7xl px-6 py-14 grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
         <div>
           <div className="flex items-center gap-2">
             <img src={logoFull} alt="Waynur logo" className="h-10 w-auto object-contain" />
@@ -138,6 +156,10 @@ export function LandingFooter() {
           ]}
         />
         <FooterCol
+          title="Features"
+          links={FEATURE_PAGES.map((f) => ({ label: f.navLabel, to: `/features/${f.slug}` }))}
+        />
+        <FooterCol
           title="Company"
           links={[
             { label: 'Team', to: '/team' },
@@ -156,7 +178,11 @@ export function LandingFooter() {
       </div>
       <div className="border-t border-cream-deep">
         <div className="mx-auto max-w-7xl px-6 py-6 flex flex-wrap items-center justify-between gap-3 text-xs text-ink-soft">
-          <div>© {new Date().getFullYear()} Wayne E Solutions. Made with care in India.</div>
+          <div>© {new Date().getFullYear()} Waynur · info@waynur.com · Ludhiana, Punjab, India</div>
+          <div>
+            Made by{' '}
+            <a href="https://wayneesolutions.com" target="_blank" rel="noopener" className="hover:text-terracotta underline">Wayne E Solutions</a>
+          </div>
         </div>
       </div>
     </footer>

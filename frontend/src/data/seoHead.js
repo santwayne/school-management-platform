@@ -1,5 +1,8 @@
 // Generated from Waynur_SEO_Files/head/*.html (Waynur_OnPage_SEO.docx, section 4).
 // Keyed by route path. Consumed by <Seo page="..." /> in src/components/Seo.jsx.
+import { ALL_FAQS, PRICING, PRICING_FAQS } from './siteContent.js';
+import { FEATURE_PAGES, featureSeo, faqJsonLd, breadcrumbJsonLd } from './featurePages.js';
+
 const SEO = {
   "/": {
     "title": "AI School Management Software on WhatsApp | Waynur",
@@ -464,5 +467,105 @@ const SEO = {
     }
   }
 };
+
+// ---------------------------------------------------------------------------
+// Nov 2026 on-page / AI-search update (Waynur.com On-Page & AI-Search Fix Guide).
+// Titles/descriptions per the guide's table; JSON-LD built from the same data
+// as the visible page so they never drift apart.
+// ---------------------------------------------------------------------------
+
+function setMeta(path, title, description) {
+  const d = SEO[path];
+  d.title = title;
+  d.ogTitle = title;
+  d.description = description;
+  d.ogDescription = description;
+}
+
+const ORG = {
+  '@type': 'Organization',
+  '@id': 'https://waynur.com/#organization',
+  name: 'Waynur',
+  url: 'https://waynur.com/',
+  logo: 'https://waynur.com/waynur-logo.png',
+  email: 'info@waynur.com',
+  description: 'AI school management software for private schools in India, built around WhatsApp.',
+  founder: { '@type': 'Person', name: 'Pankaj Thakur' },
+  parentOrganization: { '@type': 'Organization', name: 'Wayne E Solutions', url: 'https://wayneesolutions.com' },
+  address: { '@type': 'PostalAddress', addressLocality: 'Ludhiana', addressRegion: 'Punjab', addressCountry: 'IN' },
+  // Add the YouTube / Facebook / G2 / Capterra URLs here once they exist.
+  sameAs: ['https://www.instagram.com/waynur___/'],
+};
+
+const SOFTWARE = {
+  '@type': 'SoftwareApplication',
+  '@id': 'https://waynur.com/#software',
+  name: 'Waynur',
+  url: 'https://waynur.com/',
+  applicationCategory: 'EducationalApplication',
+  applicationSubCategory: 'School management software',
+  operatingSystem: 'Web, WhatsApp',
+  description: 'AI school management software for Indian schools: WhatsApp alerts to parents for absence, homework, results and fees; admission enquiries on WhatsApp; teacher substitutions; fee reminders with payment links; an AI tutor that guides students.',
+  featureList: ['WhatsApp parent alerts', 'Fee reminders with payment links', 'Admission enquiry assistant on WhatsApp', 'Exam results to parents', 'Teacher substitution management', 'Student early warning', 'AI tutor', 'Payroll', 'Bus tracking', 'Report cards and certificates'],
+  offers: PRICING.plans.map((p) => ({
+    '@type': 'Offer',
+    name: p.name,
+    price: String(p.price),
+    priceCurrency: PRICING.currency,
+    description: 'Per student per year, billed to the school, plus GST',
+  })),
+  publisher: { '@id': 'https://waynur.com/#organization' },
+};
+
+setMeta('/', 'AI School Management Software on WhatsApp | Waynur',
+  'Waynur is AI school management software for Indian schools. Attendance, fees, exam results and admissions, with updates to parents on WhatsApp. Book a free demo.');
+{
+  const homeFaq = SEO['/'].jsonLd['@graph'].find((n) => n['@type'] === 'FAQPage');
+  SEO['/'].jsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      ORG,
+      { '@type': 'WebSite', '@id': 'https://waynur.com/#website', url: 'https://waynur.com/', name: 'Waynur', publisher: { '@id': 'https://waynur.com/#organization' }, inLanguage: 'en-IN' },
+      SOFTWARE,
+      ...(homeFaq ? [homeFaq] : []),
+    ],
+  };
+}
+
+setMeta('/features', 'School Management Software Features | Waynur',
+  'Attendance and absence alerts, fee reminders with payment links, exam results, admissions, substitutions and an AI tutor, all on WhatsApp. See every Waynur feature.');
+SEO['/features'].jsonLd['@graph'].push({
+  '@type': 'ItemList',
+  itemListElement: FEATURE_PAGES.map((p, i) => ({ '@type': 'ListItem', position: i + 1, name: p.navLabel, url: `https://waynur.com/features/${p.slug}` })),
+});
+
+setMeta('/pricing', 'School Management Software Pricing (Per Student) | Waynur',
+  'Waynur pricing is per student per year, billed to the school: Core ₹400, AI ₹650, plus GST. Parents never pay. Book a free walkthrough.');
+SEO['/pricing'].jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    SOFTWARE,
+    faqJsonLd(PRICING_FAQS),
+    breadcrumbJsonLd([{ name: 'Home', path: '/' }, { name: 'Pricing', path: '/pricing' }]),
+  ],
+};
+
+setMeta('/faq', 'School Management Software FAQs | Waynur',
+  'Go-live time, WhatsApp setup, data security and DPDP, AI tutor, fees and payments. Answers to the questions schools ask about Waynur.');
+SEO['/faq'].jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    faqJsonLd(ALL_FAQS),
+    breadcrumbJsonLd([{ name: 'Home', path: '/' }, { name: 'FAQ', path: '/faq' }]),
+  ],
+};
+
+setMeta('/team', 'About Waynur and the Team | Wayne E Solutions',
+  'Waynur is built by Wayne E Solutions in Ludhiana, Punjab, led by Pankaj Thakur. Meet the team behind the WhatsApp-first school management system.');
+
+setMeta('/demo/teacher-whatsapp', 'Teacher WhatsApp Demo: AI Lesson Plans | Waynur',
+  'See how teachers get AI-drafted lesson plans, homework and grading summaries on WhatsApp and approve with one word.');
+
+for (const page of FEATURE_PAGES) SEO[`/features/${page.slug}`] = featureSeo(page);
 
 export default SEO;

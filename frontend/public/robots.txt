@@ -1,5 +1,21 @@
+# One group for every crawler: the AI search bots are named so it's explicit
+# they are welcome, but they still skip the app routes below. (A bot given its
+# own separate group would ignore the * rules.)
 User-agent: *
+User-agent: Googlebot
+User-agent: Bingbot
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: GPTBot
+User-agent: ClaudeBot
+User-agent: Claude-SearchBot
+User-agent: Claude-User
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+User-agent: Google-Extended
 Allow: /
+Allow: /features/
+Allow: /blog/
 Disallow: /login
 Disallow: /onboarding
 Disallow: /student-login
@@ -32,4 +48,3 @@ Disallow: /syllabus
 Disallow: /tutor
 
 Sitemap: https://waynur.com/sitemap.xml
-Sitemap: https://waynur.com/api/public/blog/sitemap.xml
