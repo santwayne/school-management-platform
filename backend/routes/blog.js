@@ -8,6 +8,16 @@ import pool from '../config/db.js';
 import { loginLimiter } from '../middleware/rateLimit.js';
 import { s3, s3PublicUrl } from '../utils/s3.js';
 import { normalisePost, escapeXml } from '../services/blogContent.js';
+import { clearSiteCache } from './site.js';
+import { pingIndexNow } from '../services/indexNow.js';
+
+// After any publish / edit / delete: drop the server-rendered HTML cache and
+// tell IndexNow (Bing -> ChatGPT) which URLs changed.
+function afterChange(...slugs) {
+  clearSiteCache();
+  const paths = [...new Set(slugs.filter(Boolean))].map((s) => `/blog/${s}`);
+  pingIndexNow([...paths, '/blog', '/sitemap.xml']);
+}
 
 // ------------------------------------------------------------------
 // Website blog (waynur.com/blog).
@@ -111,6 +121,9 @@ adminRouter.post('/posts', requireBlogAdmin, async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [p.slug, p.title, p.description, p.meta_title, p.meta_description, p.tags, p.image_url]
     );
+    // A new post may reuse a slug that used to redirect elsewhere.
+    await pool.query('DELETE FROM blog_slug_redirects WHERE old_slug = $1', [p.slug]).catch(() => {});
+    afterChange(p.slug);
     res.status(201).json({ post: r.rows[0] });
   } catch (err) { sendError(res, err, 'Failed to save post'); }
 });
@@ -121,6 +134,8 @@ adminRouter.put('/posts/:id', requireBlogAdmin, async (req, res) => {
   const { value: p, error } = normalisePost(req.body);
   if (error) return res.status(400).json({ error });
   try {
+    const before = await pool.query('SELECT slug FROM blog_posts WHERE id = $1', [id]);
+    const oldSlug = before.rows[0]?.slug;
     const r = await pool.query(
       `UPDATE blog_posts
        SET slug = $2, title = $3, description = $4, meta_title = $5, meta_description = $6, tags = $7, image_url = $8, updated_at = NOW()
@@ -128,6 +143,18 @@ adminRouter.put('/posts/:id', requireBlogAdmin, async (req, res) => {
       [id, p.slug, p.title, p.description, p.meta_title, p.meta_description, p.tags, p.image_url]
     );
     if (!r.rowCount) return res.status(404).json({ error: 'Post not found' });
+    if (oldSlug && oldSlug !== p.slug) {
+      // Slug changed: keep the old URL alive with a 301 (backlinks point at it),
+      // and repoint any older redirects so there are no redirect chains.
+      await pool.query(
+        `INSERT INTO blog_slug_redirects (old_slug, new_slug) VALUES ($1, $2)
+         ON CONFLICT (old_slug) DO UPDATE SET new_slug = EXCLUDED.new_slug`,
+        [oldSlug, p.slug]
+      ).catch((err) => console.error('Could not save blog slug redirect:', err.message));
+      await pool.query('UPDATE blog_slug_redirects SET new_slug = $1 WHERE new_slug = $2', [p.slug, oldSlug]).catch(() => {});
+      await pool.query('DELETE FROM blog_slug_redirects WHERE old_slug = $1', [p.slug]).catch(() => {});
+    }
+    afterChange(oldSlug, p.slug);
     res.json({ post: r.rows[0] });
   } catch (err) { sendError(res, err, 'Failed to save post'); }
 });
@@ -136,8 +163,9 @@ adminRouter.delete('/posts/:id', requireBlogAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(404).json({ error: 'Post not found' });
   try {
-    const r = await pool.query('DELETE FROM blog_posts WHERE id = $1', [id]);
+    const r = await pool.query('DELETE FROM blog_posts WHERE id = $1 RETURNING slug', [id]);
     if (!r.rowCount) return res.status(404).json({ error: 'Post not found' });
+    afterChange(r.rows[0].slug);
     res.json({ deleted: true });
   } catch (err) { sendError(res, err, 'Failed to delete post'); }
 });
@@ -209,8 +237,8 @@ publicRouter.get('/', async (req, res) => {
   } catch (err) { sendError(res, err, 'Failed to load blog'); }
 });
 
-// Listed in robots.txt next to the static sitemap, so new posts are
-// discoverable without rebuilding the frontend.
+// Kept for old links only. The one sitemap is now /sitemap.xml (routes/site.js),
+// which lists static pages, /features/* and every post.
 publicRouter.get('/sitemap.xml', async (req, res) => {
   try {
     const r = await pool.query('SELECT slug, updated_at FROM blog_posts ORDER BY created_at DESC LIMIT 5000');

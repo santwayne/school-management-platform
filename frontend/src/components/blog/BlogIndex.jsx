@@ -3,10 +3,11 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { LandingNav, LandingFooter } from '../LandingLayout';
 import { blogPublicRequest, formatBlogDate } from '../../blogApi';
+import { BLOG_META } from '../../data/siteContent';
 
 const PAGE_SIZE = 12;
-const TITLE = 'Waynur Blog: School Management Ideas and Guides';
-const DESCRIPTION = 'Practical guides for school owners, principals and administrators on fees, attendance, parent communication and running a school with less manual work.';
+const TITLE = BLOG_META.title;
+const DESCRIPTION = BLOG_META.description;
 
 function PostRow({ post, lead }) {
   return (
@@ -44,9 +45,15 @@ export default function BlogIndex() {
   const [params, setParams] = useSearchParams();
   const tag = params.get('tag') || '';
   const page = Math.max(parseInt(params.get('page'), 10) || 1, 1);
-  const [state, setState] = useState({ loading: true, posts: [], total: 0, error: '' });
+  // First page of /blog arrives server-rendered with its data in
+  // window.__WAYNUR_BLOG__.list, so the list shows instantly.
+  const boot = typeof window !== 'undefined' && !tag && page === 1 ? window.__WAYNUR_BLOG__?.list : null;
+  const [state, setState] = useState(() => (boot
+    ? { loading: false, posts: boot.posts, total: boot.total, error: '' }
+    : { loading: true, posts: [], total: 0, error: '' }));
 
   useEffect(() => {
+    if (boot && state.posts === boot.posts) return undefined;
     let alive = true;
     setState((s) => ({ ...s, loading: true, error: '' }));
     const qs = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });

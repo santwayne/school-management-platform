@@ -3,53 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Check, HelpCircle } from 'lucide-react';
 import { LandingNav, LandingFooter } from './LandingLayout';
 import Seo from './Seo';
-
-const PLANS = [
-  {
-    name: 'Starter',
-    heading: 'Starter plan: for single schools under 500 students',
-    tag: 'For single schools under 500 students',
-    features: [
-      'WhatsApp updates for every parent',
-      'Attendance, marks & homework',
-      'Student & staff records',
-      'Accountant logins included',
-      'Email support',
-    ],
-  },
-  {
-    name: 'Growth',
-    heading: 'Growth plan: for growing schools and small chains',
-    tag: 'For growing schools & small chains',
-    highlight: true,
-    features: [
-      'Everything in Starter',
-      'Fees, payroll & bus tracking',
-      'AI tutor',
-      'Lesson plans & syllabus tracking',
-      'Priority WhatsApp support',
-    ],
-  },
-  {
-    name: 'District',
-    heading: 'District plan: for school groups, trusts and districts',
-    tag: 'For groups, trusts & districts',
-    features: [
-      'Everything in Growth',
-      'Multi-school dashboards',
-      'AI-assisted grading',
-      'Custom integrations',
-      'Dedicated support',
-    ],
-  },
-];
-
-const PRICING_FAQS = [
-  { q: 'How is pricing calculated?', a: 'Per-student, billed to the school — no parent, teacher, or student ever pays anything directly.' },
-  { q: 'Is there a setup fee?', a: 'Onboarding and data migration are quoted per school based on your current records and how many systems we\u2019re replacing.' },
-  { q: 'Can we switch plans later?', a: 'Yes. Upgrades take effect immediately; downgrades apply from the next billing cycle.' },
-  { q: 'Do you offer annual billing?', a: 'Yes, both monthly and annual billing are available — talk to us for annual pricing.' },
-];
+import { PRICING, PRICE_SENTENCE, PRICING_FAQS } from '../data/siteContent';
 
 export default function Pricing() {
   return (
@@ -65,28 +19,25 @@ export default function Pricing() {
         />
         <div className="mx-auto max-w-7xl px-6 pt-16 pb-10">
           <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tight text-ink">
-            School management software pricing
+            Waynur pricing: simple, per student
           </h1>
-          <p className="mt-4 font-display text-2xl md:text-3xl font-medium tracking-tight text-terracotta">
-            Simple, per-student pricing
-          </p>
           <p className="mt-5 max-w-2xl text-lg text-ink-soft leading-relaxed">
-            Waynur is billed to the school, per student, per month. No parent ever pays, and
-            WhatsApp message charges are built into every plan. Every plan starts with a free
-            walkthrough for your school.
+            {PRICE_SENTENCE} Waynur Core includes WhatsApp updates for parents, attendance, homework,
+            marks, fees, payroll and transport. Waynur AI adds the AI tutor and AI help for teachers
+            and the office. Every school starts with a free walkthrough.
           </p>
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-6 pb-20">
-        <div className="grid md:grid-cols-3 gap-5">
-          {PLANS.map((p) => (
-            <div key={p.name} className={`rounded-3xl p-8 border transition ${p.highlight ? 'bg-gradient-to-br from-terracotta to-terracotta-deep text-white border-transparent shadow-xl md:-translate-y-2' : 'bg-white border-cream-deep'}`}>
-              {p.highlight && (
-                <div className="inline-flex items-center rounded-full bg-white/20 px-3 py-1 text-xs font-semibold mb-4">Most popular</div>
-              )}
+        <div className="grid md:grid-cols-2 gap-5 max-w-5xl">
+          {PRICING.plans.map((p) => (
+            <div key={p.code} className={`rounded-3xl p-8 border transition ${p.highlight ? 'bg-gradient-to-br from-terracotta to-terracotta-deep text-white border-transparent shadow-xl' : 'bg-white border-cream-deep'}`}>
               <div className={`text-xs uppercase tracking-widest font-semibold ${p.highlight ? 'opacity-80' : 'text-ink-soft'}`}>{p.name}</div>
-              <h2 className="mt-3 font-display text-2xl font-semibold">{p.heading}</h2>
+              <h2 className="mt-3 font-display text-3xl font-semibold">
+                ₹{p.price} <span className="text-base font-medium opacity-80">per student / year, {PRICING.gstNote}</span>
+              </h2>
+              <p className={`mt-2 text-sm ${p.highlight ? 'opacity-90' : 'text-ink-soft'}`}>{p.bestFor}</p>
               <ul className={`mt-6 space-y-3 text-sm ${p.highlight ? 'opacity-95' : 'text-ink-soft'}`}>
                 {p.features.map((f) => (
                   <li key={f} className="flex gap-3">
@@ -98,9 +49,7 @@ export default function Pricing() {
               <a
                 href="#cta"
                 className={`mt-8 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium transition ${
-                  p.highlight
-                    ? 'bg-white text-terracotta-deep hover:scale-[1.03]'
-                    : 'bg-terracotta text-white hover:bg-terracotta-deep'
+                  p.highlight ? 'bg-white text-terracotta-deep hover:scale-[1.03]' : 'bg-terracotta text-white hover:bg-terracotta-deep'
                 }`}
               >
                 Talk to us <ArrowRight className="h-4 w-4" />
@@ -108,12 +57,38 @@ export default function Pricing() {
             </div>
           ))}
         </div>
+
+        <div className="mt-12 overflow-x-auto rounded-3xl border border-cream-deep bg-white">
+          <table className="w-full text-left text-sm">
+            <caption className="sr-only">Waynur plans and prices</caption>
+            <thead className="bg-cream-deep/40 text-ink">
+              <tr>
+                <th scope="col" className="px-6 py-4 font-semibold">Plan</th>
+                <th scope="col" className="px-6 py-4 font-semibold">Price per student</th>
+                <th scope="col" className="px-6 py-4 font-semibold">Best for</th>
+                <th scope="col" className="px-6 py-4 font-semibold">Billing</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-cream-deep text-ink-soft">
+              {PRICING.plans.map((p) => (
+                <tr key={p.code}>
+                  <th scope="row" className="px-6 py-4 font-semibold text-ink">{p.name}</th>
+                  <td className="px-6 py-4">₹{p.price} per year, {PRICING.gstNote}</td>
+                  <td className="px-6 py-4">{p.bestFor}</td>
+                  <td className="px-6 py-4">Yearly, billed to the school</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
         <div className="mt-10 flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-cream-deep bg-white px-8 py-6">
-          <p className="text-ink-soft">Every plan starts with a free walkthrough tailored to your school.</p>
+          <p className="text-ink-soft">Every school starts with a free walkthrough tailored to your school.</p>
           <a href="#cta" className="inline-flex items-center gap-2 rounded-full bg-terracotta text-white px-5 py-2.5 text-sm font-medium hover:bg-terracotta-deep transition">
             Talk to us for a quote <ArrowRight className="h-4 w-4" />
           </a>
         </div>
+        <p className="mt-6 text-xs text-ink-soft">Last updated: {PRICING.updated}</p>
       </section>
 
       <section className="bg-cream-deep/60 border-y border-cream-deep">

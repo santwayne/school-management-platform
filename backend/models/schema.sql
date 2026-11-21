@@ -2558,6 +2558,13 @@ CREATE TABLE IF NOT EXISTS blog_posts (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_blog_posts_created ON blog_posts(created_at DESC);
+-- Old slug -> new slug, written automatically when a post's slug is changed in
+-- /blog-admin, so backlinks to the old URL get a 301 instead of a 404.
+CREATE TABLE IF NOT EXISTS blog_slug_redirects (
+    old_slug VARCHAR(120) PRIMARY KEY,
+    new_slug VARCHAR(120) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 -- ---------- Per-school WhatsApp Business connection (added by Super Admin) ----------
 -- Each school sends from its own number. The number + Phone Number ID stay on

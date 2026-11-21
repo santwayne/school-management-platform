@@ -16,16 +16,20 @@ const ClassManager = lazy(() => import('./components/ClassManager'));
 const SyllabusManager = lazy(() => import('./components/SyllabusManager'));
 const ManageSchool = lazy(() => import('./components/ManageSchool'));
 const Onboarding = lazy(() => import('./components/Onboarding'));
+// Public marketing pages are pre-rendered to HTML at build time (or by the
+// backend for /blog), so they load eagerly: a lazy chunk would flash the
+// page loader over the already-visible content.
 import Index from './components/Index';
-const Team = lazy(() => import('./components/Team'));
-const Legal = lazy(() => import('./components/Legal'));
-const Features = lazy(() => import('./components/Features'));
-const Pricing = lazy(() => import('./components/Pricing'));
-const Faq = lazy(() => import('./components/Faq'));
-const BlogIndex = lazy(() => import('./components/blog/BlogIndex'));
-const BlogPost = lazy(() => import('./components/blog/BlogPost'));
+import Team from './components/Team';
+import Legal from './components/Legal';
+import Features from './components/Features';
+import Pricing from './components/Pricing';
+import Faq from './components/Faq';
+import FeaturePage from './components/FeaturePage';
+import BlogIndex from './components/blog/BlogIndex';
+import BlogPost from './components/blog/BlogPost';
 const BlogAdmin = lazy(() => import('./components/blog/BlogAdmin'));
-const TeacherWhatsAppDemo = lazy(() => import('./components/TeacherWhatsAppDemo'));
+import TeacherWhatsAppDemo from './components/TeacherWhatsAppDemo';
 const SuperAdminBilling = lazy(() => import('./components/SuperAdminBilling'));
 const SuperAdminPlans = lazy(() => import('./components/SuperAdminPlans'));
 const AdminAttendance = lazy(() => import('./components/AdminAttendance'));
@@ -167,6 +171,11 @@ function AppRoutes() {
         <Route path="/legal" element={<Legal />} />
         <Route path="/legal/:sectionId" element={<Legal />} />
         <Route path="/features" element={<Features />} />
+        <Route path="/features/:slug" element={<FeaturePage />} />
+        {/* Old marketing URLs (nginx 301s these too). */}
+        <Route path="/fees" element={<Navigate to="/features/fee-management" replace />} />
+        <Route path="/parent-app" element={<Navigate to="/features/whatsapp-parent-alerts" replace />} />
+        <Route path="/exams" element={<Navigate to="/features/exam-results-to-parents" replace />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/faq" element={<Faq />} />
         <Route path="/blog" element={<BlogIndex />} />

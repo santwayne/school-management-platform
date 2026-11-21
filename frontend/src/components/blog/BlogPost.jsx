@@ -4,19 +4,38 @@ import { Helmet } from 'react-helmet-async';
 import { ArrowLeft } from 'lucide-react';
 import { LandingNav, LandingFooter } from '../LandingLayout';
 import { blogPublicRequest, formatBlogDate } from '../../blogApi';
+import { featureForPost } from '../../data/featurePages';
 
 export default function BlogPost() {
   const { slug } = useParams();
-  const [state, setState] = useState({ loading: true, post: null, missing: false });
+  // The server renders /blog/:slug with the post already in the HTML and hands
+  // the same data over in window.__WAYNUR_BLOG__, so there is no loading flash
+  // and no second request on first load.
+  const [state, setState] = useState(() => {
+    const boot = typeof window !== 'undefined' ? window.__WAYNUR_BLOG__ : null;
+    if (boot?.post?.slug === slug) return { loading: false, post: boot.post, related: boot.related || [], missing: false, error: false };
+    return { loading: true, post: null, related: [], missing: false, error: false };
+  });
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
+    if (state.post?.slug === slug) return undefined;
     let alive = true;
-    setState({ loading: true, post: null, missing: false });
+    setState({ loading: true, post: null, related: [], missing: false, error: false });
     blogPublicRequest(`/${encodeURIComponent(slug)}`)
-      .then((d) => alive && setState({ loading: false, post: d.post, missing: false }))
-      .catch(() => alive && setState({ loading: false, post: null, missing: true }));
+      .then((d) => {
+        if (!alive) return;
+        setState({ loading: false, post: d.post, related: [], missing: false, error: false });
+        blogPublicRequest('?limit=4')
+          .then((l) => alive && setState((s) => ({ ...s, related: (l.posts || []).filter((p) => p.slug !== d.post.slug).slice(0, 3) })))
+          .catch(() => {});
+      })
+      // Only a real 404 means the post is gone. A 500 or a network blip must
+      // not tell readers (and Google) the post was removed.
+      .catch((err) => alive && setState({ loading: false, post: null, related: [], missing: err?.status === 404, error: err?.status !== 404 }));
     return () => { alive = false; };
-  }, [slug]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, retry]);
 
   const { post } = state;
   const url = `https://waynur.com/blog/${slug}`;
@@ -69,6 +88,16 @@ export default function BlogPost() {
           </div>
         )}
 
+        {state.error && (
+          <div className="mx-auto max-w-2xl px-6 py-24" role="alert">
+            <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">This article couldn't load right now</h1>
+            <p className="mt-4 text-lg text-ink-soft">Please try again in a moment.</p>
+            <button type="button" onClick={() => setRetry((n) => n + 1)} className="mt-8 rounded-full bg-terracotta px-5 py-2.5 text-sm font-semibold text-white hover:bg-terracotta-deep">
+              Try again
+            </button>
+          </div>
+        )}
+
         {state.missing && (
           <div className="mx-auto max-w-2xl px-6 py-24">
             <h1 className="font-display text-4xl font-semibold tracking-tight text-ink">This post is no longer here</h1>
@@ -85,7 +114,16 @@ export default function BlogPost() {
               <ArrowLeft className="h-4 w-4" /> Blog
             </Link>
             <h1 className="mt-6 font-display text-4xl md:text-5xl font-semibold tracking-tight leading-[1.1] text-ink">{post.title}</h1>
-            <time dateTime={post.created_at} className="mt-5 block text-sm text-ink-soft">{formatBlogDate(post.created_at)}</time>
+            <p className="mt-5 text-sm text-ink-soft">
+              By Waynur team · Published <time dateTime={post.created_at}>{formatBlogDate(post.created_at)}</time>
+              {post.updated_at && formatBlogDate(post.updated_at) !== formatBlogDate(post.created_at) && (
+                <> · Updated <time dateTime={post.updated_at}>{formatBlogDate(post.updated_at)}</time></>
+              )}
+            </p>
+
+            {post.meta_description && (
+              <p className="mt-6 text-lg text-ink leading-relaxed">{post.meta_description}</p>
+            )}
 
             {post.image_url && (
               <img src={post.image_url} alt={post.title} className="mt-8 aspect-[16/9] w-full rounded-2xl object-cover bg-cream-deep" />
@@ -104,6 +142,26 @@ export default function BlogPost() {
                   </li>
                 ))}
               </ul>
+            )}
+
+            {(() => {
+              const f = featureForPost(post);
+              return (
+                <p className="mt-10 text-ink-soft">
+                  Related feature: <Link to={`/features/${f.slug}`} className="font-medium text-terracotta hover:underline">{f.navLabel}</Link>
+                </p>
+              );
+            })()}
+
+            {state.related.length > 0 && (
+              <nav aria-label="Related guides" className="mt-10">
+                <h2 className="font-display text-2xl font-semibold text-ink">Related guides</h2>
+                <ul className="mt-4 space-y-2">
+                  {state.related.map((r) => (
+                    <li key={r.slug}><Link to={`/blog/${r.slug}`} className="text-terracotta hover:underline">{r.title}</Link></li>
+                  ))}
+                </ul>
+              </nav>
             )}
 
             <aside className="mt-12 rounded-2xl bg-ink px-7 py-8 text-cream">

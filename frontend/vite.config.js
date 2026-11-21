@@ -5,6 +5,9 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   server: { port: 5173 },
+  // Build-time pre-render (src/entry-server.jsx): bundle this CommonJS
+  // package into the SSR build so Node can import its named exports.
+  ssr: { noExternal: ['react-helmet-async'] },
   build: {
     rollupOptions: {
       output: {
